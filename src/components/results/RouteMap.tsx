@@ -101,6 +101,68 @@ function arc([x1, y1]: [number, number], [x2, y2]: [number, number]): string {
   return `M ${x1} ${y1} Q ${mx} ${my - bow} ${x2} ${y2}`;
 }
 
+/** A city's code tag, in chart units. */
+const LABEL_H = 16;
+export const labelWidth = (code: string) => code.length * 7.4 + 10;
+
+export interface CityLabel {
+  code: string;
+  /** The dot. */
+  x: number;
+  y: number;
+  /** The tag's top-left corner. */
+  left: number;
+  top: number;
+  width: number;
+  /** Set out away from its dot, with a thin line back to it. */
+  leader: boolean;
+}
+
+interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+const overlap = (a: Box, b: Box) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+
+/**
+ * Where each city's code tag goes. Every tag used to sit straight above its dot, so two cities close on the chart (MEM
+ * and ATL, HKG and HAN on a B777 line) printed one tag over the other and a city couldn't be read. Each tag now takes
+ * the first place around its dot that's clear of the other tags, the dots and the frame's edge (above, below, beside,
+ * then corners); in a tight cluster it steps further out, with a thin line back to its dot. Base goes first, then the
+ * most crowded cities, so the cities with the fewest free places choose first.
+ */
+export function placeLabels(cities: { code: string; x: number; y: number }[], width: number, height: number, homeBase: string): CityLabel[] {
+  const dots: Box[] = cities.map(({ x, y }) => ({ left: x - 6, top: y - 6, right: x + 6, bottom: y + 6 }));
+  const crowd = (c: { x: number; y: number }) => cities.filter((o) => Math.abs(o.x - c.x) < 60 && Math.abs(o.y - c.y) < 40).length;
+  const order = [...cities].sort((a, b) => Number(b.code === homeBase) - Number(a.code === homeBase) || crowd(b) - crowd(a));
+  const placed: Box[] = [];
+  const out = new Map<string, CityLabel>();
+  for (const c of order) {
+    const w = labelWidth(c.code);
+    // Centre offsets from the dot: right next to it first, then a step further out (those get a leader line).
+    const near: [number, number][] = [
+      [0, -18], [0, 18], [w / 2 + 9, 0], [-w / 2 - 9, 0],
+      [w / 2 + 3, -15], [-w / 2 - 3, -15], [w / 2 + 3, 15], [-w / 2 - 3, 15],
+    ];
+    const far: [number, number][] = [1.6, 2.4, 3.2].flatMap((k) => near.map(([dx, dy]): [number, number] => [dx === 0 ? 0 : dx + Math.sign(dx) * (k - 1) * (w / 2 + 6), dy * k]));
+    let best: { box: Box; cost: number; leader: boolean } | null = null;
+    for (const [i, [dx, dy]] of [...near, ...far].entries()) {
+      const box = { left: c.x + dx - w / 2, top: c.y + dy - LABEL_H / 2, right: c.x + dx + w / 2, bottom: c.y + dy + LABEL_H / 2 };
+      // Out of the frame is as bad as covering a tag; covering a dot a little less so.
+      const outside = w * LABEL_H - overlap(box, { left: 2, top: 2, right: width - 2, bottom: height - 2 });
+      const cost = outside * 4 + placed.reduce((s, p) => s + overlap(box, p) * 4, 0) + dots.reduce((s, d) => s + overlap(box, d), 0) + i * 0.01;
+      if (!best || cost < best.cost) best = { box, cost, leader: i >= near.length };
+      if (cost < 1) break;
+    }
+    placed.push(best!.box);
+    out.set(c.code, { code: c.code, x: c.x, y: c.y, left: best!.box.left, top: best!.box.top, width: w, leader: best!.leader });
+  }
+  return cities.map((c) => out.get(c.code)!);
+}
+
 /** A real graticule — the reference grid a pilot already reads nav charts in. */
 function Graticule({ bounds }: { bounds: Bounds }) {
   // Every 10° on a regional map, every 30° once it spans an ocean.
@@ -123,6 +185,37 @@ function Graticule({ bounds }: { bounds: Bounds }) {
   );
 }
 
+/** The chart for a line at this width: each trip's points, the frame, and where every city's tag goes. Null when nothing can be mapped. */
+export function routeChart(homeBase: string, line: Pick<Line, "trips">, width: number) {
+  const trips = line.trips
+    .map((trip, i) => ({ trip, i, pts: buildPoints(homeBase, tripStops(trip)) }))
+    .filter((t): t is { trip: Line["trips"][number]; i: number; pts: Point[] } => !!t.pts && t.pts.length > 1);
+  if (trips.length === 0) return null;
+
+  const allPoints = trips.flatMap((t) => t.pts);
+  // A little room on every side (the frame's own padding does most of it), a bit more on top for the labels and the arcs' bow.
+  const extent = {
+    minLat: Math.min(...allPoints.map((p) => p.lat)) - 1,
+    maxLat: Math.max(...allPoints.map((p) => p.lat)) + 2,
+    minLon: Math.min(...allPoints.map((p) => p.lon)) - 2,
+    maxLon: Math.max(...allPoints.map((p) => p.lon)) + 2,
+    width,
+  };
+  const bounds: Bounds = { ...extent, height: frameHeight(extent) };
+  const cities = new Map<string, Point>();
+  for (const p of allPoints) cities.set(p.code, p);
+  const labels = placeLabels(
+    [...cities.values()].map((p) => {
+      const [x, y] = project(p, bounds);
+      return { code: p.code, x, y };
+    }),
+    bounds.width,
+    bounds.height,
+    homeBase,
+  );
+  return { trips, bounds, labels };
+}
+
 interface RouteMapProps {
   homeBase: string;
   line: Line;
@@ -139,11 +232,9 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
   const [focusTrip, setFocusTrip] = useState<number | null>(null);
   const width = useMediaQuery("(min-width: 640px)") ? WIDE_WIDTH : NARROW_WIDTH;
 
-  const trips = line.trips
-    .map((trip, i) => ({ trip, i, pts: buildPoints(homeBase, tripStops(trip)) }))
-    .filter((t): t is { trip: Line["trips"][number]; i: number; pts: Point[] } => !!t.pts && t.pts.length > 1);
+  const chart = routeChart(homeBase, line, width);
 
-  if (trips.length === 0) {
+  if (!chart) {
     return (
       <p className="text-sm leading-relaxed text-ink-muted">
         {coordinatesForAirport(homeBase)
@@ -152,19 +243,7 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
       </p>
     );
   }
-
-  const allPoints = trips.flatMap((t) => t.pts);
-  // A little room on every side (the frame's own padding does most of it), a bit more on top for the labels and the arcs' bow.
-  const extent = {
-    minLat: Math.min(...allPoints.map((p) => p.lat)) - 1,
-    maxLat: Math.max(...allPoints.map((p) => p.lat)) + 2,
-    minLon: Math.min(...allPoints.map((p) => p.lon)) - 2,
-    maxLon: Math.max(...allPoints.map((p) => p.lon)) + 2,
-    width,
-  };
-  const bounds: Bounds = { ...extent, height: frameHeight(extent) };
-  const cities = new Map<string, Point>();
-  for (const p of allPoints) cities.set(p.code, p);
+  const { trips, bounds, labels } = chart;
 
   return (
     <div>
@@ -173,7 +252,7 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
         className="w-full rounded-xl border border-hairline"
         style={{ background: "radial-gradient(ellipse at 50% 35%, var(--color-surface-raised), var(--color-panel))" }}
         role="img"
-        aria-label={`Flight paths for this line, from ${homeBase} to ${[...cities.keys()].filter((c) => c !== homeBase).join(", ")}`}
+        aria-label={`Flight paths for this line, from ${homeBase} to ${labels.map((l) => l.code).filter((c) => c !== homeBase).join(", ")}`}
       >
         <defs>
           <filter id={`glow-${glowId}`} x="-20%" y="-20%" width="140%" height="140%">
@@ -218,10 +297,8 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
           );
         })}
 
-        {[...cities.entries()].map(([code, p]) => {
-          const [x, y] = project(p, bounds);
+        {labels.map(({ code, x, y }) => {
           const isHome = code === homeBase;
-          const w = code.length * 7.4 + 10;
           return (
             <g key={code}>
               <circle cx={x} cy={y} r={isHome ? 9 : 7} fill="var(--color-accent)" opacity={0.18} />
@@ -230,12 +307,21 @@ export function RouteMap({ homeBase, line }: RouteMapProps) {
               ) : (
                 <circle cx={x} cy={y} r={3.6} fill="var(--color-readout)" stroke="var(--color-accent)" strokeWidth={1.5} />
               )}
-              <g transform={`translate(${x - w / 2} ${y - 26})`}>
-                <rect width={w} height={16} rx={4} fill="var(--color-panel)" stroke="var(--color-hairline)" />
-                <text x={w / 2} y={11.5} textAnchor="middle" className="font-mono" fontSize={10.5} fontWeight={isHome ? 700 : 600} fill={isHome ? "var(--color-accent)" : "var(--color-ink)"}>
-                  {code}
-                </text>
-              </g>
+            </g>
+          );
+        })}
+        {/* A tag set out from its dot keeps a thin line back to it. Tags after every dot and line, so nothing is drawn over a city's code. */}
+        {labels.map(({ code, x, y, left, top, width: w, leader }) =>
+          leader ? <line key={code} x1={x} y1={y} x2={Math.min(Math.max(x, left), left + w)} y2={Math.min(Math.max(y, top), top + LABEL_H)} stroke="var(--color-ink-faint)" strokeWidth={1} /> : null,
+        )}
+        {labels.map(({ code, left, top, width: w }) => {
+          const isHome = code === homeBase;
+          return (
+            <g key={code} transform={`translate(${left} ${top})`}>
+              <rect width={w} height={LABEL_H} rx={4} fill="var(--color-panel)" stroke="var(--color-hairline)" />
+              <text x={w / 2} y={11.5} textAnchor="middle" className="font-mono" fontSize={10.5} fontWeight={isHome ? 700 : 600} fill={isHome ? "var(--color-accent)" : "var(--color-ink)"}>
+                {code}
+              </text>
             </g>
           );
         })}

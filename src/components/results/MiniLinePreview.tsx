@@ -46,6 +46,24 @@ const STRIP_CLASS: Record<TimelineSegmentKind, string> = {
   sleep: "bg-sleep",
 };
 
+/** Narrowest day first; each a quarter rem wider. Written out whole so the stylesheet has every one. */
+const CREDIT_FITS = [
+  "@min-[5.25rem]:inline", "@min-[5.5rem]:inline", "@min-[5.75rem]:inline", "@min-[6rem]:inline", "@min-[6.25rem]:inline",
+  "@min-[6.5rem]:inline", "@min-[6.75rem]:inline", "@min-[7rem]:inline", "@min-[7.25rem]:inline", "@min-[7.5rem]:inline",
+];
+
+/**
+ * The narrowest day a trip's credit fits in beside the date and the number. One width for every trip let "28 #2004
+ * 87:26CH" (and "3 #2031 49:58CH") run past the day's edge into the next at 1024 wide: the room it needs is worked out
+ * from its own characters (each about 0.43rem in the 2xs type, the oval's padding and "CH" about 0.9rem).
+ */
+function creditFits(day: DetailedDay): string {
+  const dateRem = (day.label.length + (day.nextMonth ? 3 : 0)) * 0.44 + 0.125;
+  const ovalRem = 0.9 + (`#${day.tripNumber} `.length + hm(Math.round((day.tripCreditHours ?? 0) * 60)).length) * 0.43;
+  const step = Math.ceil((dateRem + ovalRem + 0.1 - 5.25) / 0.25);
+  return CREDIT_FITS[Math.min(CREDIT_FITS.length - 1, Math.max(0, step))];
+}
+
 function cellClass(day: DetailedDay, selected: boolean): string {
   const base =
     "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
@@ -115,13 +133,20 @@ export function chainSentence(c: NonNullable<DetailedDay["chain"]>, mode: TimeMo
 function Report({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   const time = day.chain ? day.chain.reports || day.dutyStart : day.isTripStart ? day.dutyStart : null;
   if (!time) return null;
+  // "Rpt 03:06L · 28h46 turn" is 156px and a desktop's day 147: the end of "turn" was cut off (A300 MEM FO line 2079).
+  // Once the turn shows, "Rpt" steps aside for it — the orange time is the report — until the day has room for all of it.
+  const rpt = !day.chain
+    ? "@min-[4.75rem]:inline"
+    : turnLabel(day.chain.turnMinutes).length <= 4
+      ? "@min-[4.75rem]:@max-[8.5rem]:inline @min-[9.5rem]:inline"
+      : "@min-[4.75rem]:@max-[8.5rem]:inline @min-[10rem]:inline";
   return (
     <>
       <span
         className="whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-report"
         title={`Reports ${time} ${mode === "zulu" ? "Zulu" : "local"}${day.earlyReport ? " — between 2 and 6am local" : ""}`}
       >
-        <span className="hidden @min-[4.75rem]:inline">Rpt </span>
+        <span className={`hidden ${rpt}`}>Rpt </span>
         {/* A phone's day has room for the time but not its "L"; a small phone's, not even the time: cut off, "21:50"
             read "21:5". Left to the day's details, a tap away, rather than shown wrong. */}
         <span className="hidden @min-[2rem]:inline">{time}</span>
@@ -213,7 +238,7 @@ function Cell({
             <span className="hidden whitespace-nowrap rounded bg-calendar-accent px-0.5 font-mono text-2xs font-semibold text-on-calendar @min-[4.75rem]:inline" title={day.tripCreditHours !== null ? `Trip #${day.tripNumber}, ${hm(day.tripCreditHours * 60)} credit hours` : undefined}>
               #{day.tripNumber}
               {day.tripCreditHours !== null && (
-                <span className="hidden @min-[5.25rem]:inline">
+                <span className={`hidden ${creditFits(day)}`}>
                   {" "}
                   <CreditHours hours={day.tripCreditHours} className="font-normal" />
                 </span>

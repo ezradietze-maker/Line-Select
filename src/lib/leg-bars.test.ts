@@ -95,16 +95,40 @@ describe("stagger", () => {
 describe("sideBySide", () => {
   const w = 3 * LABEL_CHAR_PX;
   it("leaves labels with room over their minute, and sets crowded ones next to each other, never on top", () => {
-    const [can, nrt, far] = sideBySide([{ at: 18 * H, text: "CAN" }, { at: 18 * H + 20, text: "NRT" }, { at: 6 * H, text: "MEM" }], 200, 6);
+    const [can, nrt, far] = sideBySide([{ at: 18 * H, text: "CAN" }, { at: 18 * H + 20, text: "NRT" }, { at: 6 * H, text: "MEM" }], 200, 6) as number[];
     expect(far).toBeCloseTo(50);
     expect(can).toBeCloseTo(150);
     expect(nrt - can).toBeCloseTo(w + 3);
   });
 
   it("slides the lot back left rather than run past the day's edge", () => {
-    const [a, b] = sideBySide([{ at: 23.9 * H, text: "CAN" }, { at: 24 * H, text: "NRT" }], 200, 6);
+    const [a, b] = sideBySide([{ at: 23.9 * H, text: "CAN" }, { at: 24 * H, text: "NRT" }], 200, 6) as number[];
     expect(b + w / 2).toBeCloseTo(206);
     expect(b - a).toBeCloseTo(w + 3);
+  });
+
+  it("never pushes a city into the day before when a day has more than fit", () => {
+    // A300 MEM line 2001, Fri Oct 2 (trip 148) at 1024 wide: IND YMX, a layover, YMX YUL ATL MEM on a 90px day. Slid
+    // back left as one, "IND YMX" landed 37px into Thursday, over its "YMX IND".
+    const cities = [
+      { at: 1 * H, text: "IND" }, { at: 2.5 * H, text: "YMX" }, { at: 12.5 * H, text: "YMX" },
+      { at: 14 * H, text: "YUL" }, { at: 16 * H, text: "ATL" }, { at: 18.5 * H, text: "MEM" },
+    ];
+    const centers = sideBySide(cities, 90, 6);
+    const drawn = cities.map((c, i) => ({ ...c, center: centers[i] })).filter((c) => c.center !== null) as { text: string; center: number }[];
+    for (const c of drawn) {
+      expect(c.center - w / 2, `${c.text} inside the day`).toBeGreaterThanOrEqual(-6 - 0.01);
+      expect(c.center + w / 2, `${c.text} inside the day`).toBeLessThanOrEqual(96 + 0.01);
+    }
+    for (const [i, c] of drawn.slice(1).entries()) expect(c.center - drawn[i].center, `${drawn[i].text} clear of ${c.text}`).toBeGreaterThanOrEqual(w);
+    // The two YMX either side of the layover read as one first; the day's first and last cities stay.
+    expect(drawn.map((c) => c.text)).toEqual(expect.arrayContaining(["IND", "MEM"]));
+    expect(drawn.filter((c) => c.text === "YMX")).toHaveLength(1);
+  });
+
+  it("keeps every city when they fit, a city on both sides of a layover included", () => {
+    const centers = sideBySide([{ at: 2 * H, text: "YMX" }, { at: 12 * H, text: "YMX" }], 200, 6);
+    expect(centers.every((c) => c !== null)).toBe(true);
   });
 });
 

@@ -307,17 +307,20 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             </span>
           );
         })}
-        {/* The cities over the flying, side by side on the line next to it — never stacked. */}
+        {/* The cities over the flying, side by side on the line next to it — never stacked; any that don't fit are left off. */}
         {f.cityRows > 0 &&
-          b.cityPoints.map((c, i) => (
-            <span
-              key={`c${i}`}
-              className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${c.deadhead ? "text-deadhead" : "text-ink"}`}
-              style={{ left: cityCenters[i], top: f.citiesTop + (f.cityRows - 1) * size.line, height: size.line }}
-            >
-              {c.text}
-            </span>
-          ))}
+          b.cityPoints.map((c, i) => {
+            const center = cityCenters[i];
+            return center === null ? null : (
+              <span
+                key={`c${i}`}
+                className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${c.deadhead ? "text-deadhead" : "text-ink"}`}
+                style={{ left: center, top: f.citiesTop + (f.cityRows - 1) * size.line, height: size.line }}
+              >
+                {c.text}
+              </span>
+            );
+          })}
       </span>
     );
   };

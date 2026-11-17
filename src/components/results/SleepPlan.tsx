@@ -28,6 +28,13 @@ const hoursOf = (min: number) => {
 };
 
 /**
+ * The narrowest bar a sleep's length fits in, by its length in characters ("8h" to "10h30"): the moon, the gap and
+ * about 0.43rem a character. A short nap's bar cut "1h30" to "1…" or "0h…"; now a bar too narrow for it shows the moon
+ * alone, and its times are in the list under the ribbon. Written out whole so the stylesheet has every one.
+ */
+const HOURS_FIT = ["@min-[1.5rem]:inline", "@min-[2rem]:inline", "@min-[2.5rem]:inline", "@min-[2.875rem]:inline", "@min-[3.375rem]:inline"];
+
+/**
  * One layover's stay, hotel to wake-up: shaded by how easily the body can sleep, the suggested sleeps on top. Its times
  * are the city's own, marked L: under the Zulu toggle they sat unmarked beside Zulu times and read as Zulu.
  */
@@ -47,29 +54,34 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
         {ticks.map((t) => (
           <div key={t.at} className="absolute inset-y-0 w-px bg-ink/15" style={{ left: pct(t.at) }} aria-hidden />
         ))}
-        {plan.blocks.map((b, i) => (
-          <div
-            key={i}
-            title={`${b.title} · ${b.startLocal}–${b.endLocal}\n${b.why}`}
-            className={`absolute flex items-center justify-center gap-1 overflow-hidden rounded ${isNap(b.kind) ? "inset-y-2" : "inset-y-1"} ${blockClass(b.kind)}`}
-            style={{ left: pct(b.start), width: pct(plan.inHotel + (b.end - b.start)) }}
-          >
-            <MoonIcon className="h-2.5 w-2.5 shrink-0" />
-            <span className="truncate font-mono text-2xs font-semibold">{hoursOf(b.end - b.start)}</span>
-          </div>
-        ))}
+        {plan.blocks.map((b, i) => {
+          const hours = hoursOf(b.end - b.start);
+          return (
+            <div
+              key={i}
+              title={`${b.title} · ${b.startLocal}–${b.endLocal}\n${b.why}`}
+              className={`@container absolute flex items-center justify-center gap-1 overflow-hidden rounded ${isNap(b.kind) ? "inset-y-2" : "inset-y-1"} ${blockClass(b.kind)}`}
+              style={{ left: pct(b.start), width: pct(plan.inHotel + (b.end - b.start)) }}
+            >
+              <MoonIcon className="hidden h-2.5 w-2.5 shrink-0 @min-[0.875rem]:block" />
+              <span className={`hidden whitespace-nowrap font-mono text-2xs font-semibold ${HOURS_FIT[Math.min(hours.length, HOURS_FIT.length) - 1]}`}>{hours}</span>
+            </div>
+          );
+        })}
       </div>
       {ticks.map((t) => (
         <span key={t.at} className="absolute -top-4 -translate-x-1/2 font-mono text-2xs text-ink-faint" style={{ left: pct(t.at) }} aria-hidden>
           {t.label}
         </span>
       ))}
-      <div className="mt-1 flex justify-between font-mono text-2xs text-ink-faint">
-        <span className="inline-flex items-center gap-1">
+      {/* Each end whole on its own line when both won't fit: wrapped inside, "13:52" fell under "In the hotel" and its L
+          drifted over beside "Up by". */}
+      <div className="mt-1 flex flex-wrap justify-between gap-x-3 font-mono text-2xs text-ink-faint">
+        <span className="inline-flex items-center gap-1 whitespace-nowrap">
           <BedIcon className="h-3 w-3" /> In the hotel {plan.inHotelLocal}
           <Zone />
         </span>
-        <span className="inline-flex items-center gap-1">
+        <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
           Up by {plan.wakeByLocal}
           <Zone /> <SunriseIcon className="h-3 w-3" />
         </span>
