@@ -112,12 +112,13 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       <div className={`grid ${grid} items-end gap-x-2`} aria-hidden>
         <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
         {/* Every three hours where there's room: on a 320 phone the 19px between them ran "0003" and "2100" together, so
-            there it's every six. */}
+            there it's every six. Narrower still (the phone's text at its largest widens the day column), every twelve, then
+            the day's two ends: "00 06 12 18 00" ran into one another. */}
         <div ref={trackRef} className="@container relative h-3.5">
           {hours.map((h) => (
             <span
               key={h}
-              className={`absolute top-0 font-mono text-[11px] leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"} ${h % 6 ? "hidden @min-[12.5rem]:inline" : ""}`}
+              className={`absolute top-0 font-mono text-[11px] leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"} ${h % 6 ? "hidden @min-[12.5rem]:inline" : h % 12 ? "hidden @min-[90px]:inline" : h % 24 ? "hidden @min-[50px]:inline" : ""}`}
               style={{ left: `${(h / 24) * 100}%` }}
             >
               {String(h % 24).padStart(2, "0")}

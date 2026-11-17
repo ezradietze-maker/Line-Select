@@ -482,8 +482,10 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   const k = layout.textScale;
   // On a phone the ring stops growing at 150% text: at 200% it took the room "LINE 2295" and the numbers needed.
   const ring = Math.round(layout.stacked ? 34 * Math.min(k, 1.5) : 38 * k);
+  // The line's number and its numbers go under the ring where even one pair of their columns won't fit beside it (a
+  // phone with its text at its largest): beside it, TAFB's and Credit's numbers ran off the card's edge, cut.
   const title = (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       {score !== null ? (
         <ScoreRing score={score} size={ring} capped={capped} top={top} />
       ) : (
@@ -493,7 +495,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
           </span>
         )
       )}
-      <div className="min-w-0">
+      <div className="w-min min-w-0 grow">
         <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink">
           LINE {line.lineNumber}
           {placedByYou && (

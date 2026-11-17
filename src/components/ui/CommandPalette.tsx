@@ -266,8 +266,10 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                     ) : (
                       <span className="h-4 w-4 shrink-0" aria-hidden />
                     )}
-                    {/* Lines turn over like rows on a departures board, one row after the next. */}
-                    <span className={`min-w-0 flex-1 truncate ${c.group === "Lines" ? "font-mono font-semibold" : "font-medium"}`}>
+                    {/* Lines turn over like rows on a departures board, one row after the next. A screen's or setting's
+                        name wraps rather than be cut: with the phone's text set larger, "Match the system theme" read
+                        "Match the sys…". */}
+                    <span className={`min-w-0 flex-1 ${c.group === "Lines" ? "truncate font-mono font-semibold" : "break-words font-medium"}`}>
                       {c.group === "Lines" ? <FlipText text={c.label} delay={Math.min(i, 8) * 45} stagger={22} /> : c.label}
                     </span>
                     {c.standing && (

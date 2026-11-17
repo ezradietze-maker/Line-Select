@@ -258,7 +258,7 @@ export function SendToVipsDialog({
                   type="checkbox"
                   checked={anyLines.includes(kind)}
                   onChange={() => toggleAnyLine(kind)}
-                  className="h-4 w-4 accent-brand"
+                  className="h-4 w-4 shrink-0 accent-brand"
                 />
                 {label} <span className="font-mono text-xs text-ink-faint">({ANY_LINE_CODES[kind]})</span>
               </label>
@@ -266,8 +266,9 @@ export function SendToVipsDialog({
           </div>
           {reserveLines.length > 0 && (
             <div className="mt-2">
+              {/* The box keeps its size beside words that wrap: on a phone it was squeezed to 13px. */}
               <label className="flex items-center gap-2">
-                <input type="checkbox" checked={reserveAdded} onChange={(e) => setReserveAdded(e.target.checked)} className="h-4 w-4 accent-brand" data-reserve-lines />
+                <input type="checkbox" checked={reserveAdded} onChange={(e) => setReserveAdded(e.target.checked)} className="h-4 w-4 shrink-0 accent-brand" data-reserve-lines />
                 Name your {reserveLines.length} reserve lines, in your order, before any reserve line
               </label>
               <details className="mt-1 pl-6 text-xs text-ink-muted">
@@ -369,7 +370,7 @@ export function SendToVipsDialog({
             </ul>
             {stopped && (
               <label className="mt-2 flex items-center gap-2 text-xs">
-                <input type="checkbox" checked={sendAnyway} onChange={(e) => setSendAnyway(e.target.checked)} className="h-4 w-4 accent-brand" data-send-anyway />
+                <input type="checkbox" checked={sendAnyway} onChange={(e) => setSendAnyway(e.target.checked)} className="h-4 w-4 shrink-0 accent-brand" data-send-anyway />
                 I know, send it anyway
               </label>
             )}
