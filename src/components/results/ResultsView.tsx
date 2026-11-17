@@ -26,6 +26,8 @@ import { PreferenceMicroPrompt } from "@/components/results/PreferenceMicroPromp
 import { FilterBlameList, ResultsFilterBar } from "@/components/results/ResultsFilterBar";
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Button } from "@/components/ui/Button";
+import { MembershipPreviewNote } from "@/components/membership/MembershipPreviewNote";
+import { inPreview } from "@/lib/membership";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
@@ -289,6 +291,11 @@ interface ResultsViewProps {
   /** A line number to bring into view and light up (from the ⌘K palette) — handed back through `onFocusHandled` once done. */
   focusLine?: string | null;
   onFocusHandled?: () => void;
+  /**
+   * A pilot with no membership sees only this many of their best-ranked lines (by Line Select's ranking, before any
+   * filter or sort), with no bid-order export or Send to VIPS. null for a member: the whole ranking.
+   */
+  previewLimit?: number | null;
 }
 
 export function ResultsView({
@@ -302,6 +309,7 @@ export function ResultsView({
   initialHotelFilter = null,
   focusLine = null,
   onFocusHandled,
+  previewLimit = null,
 }: ResultsViewProps) {
   const [confirmingStartOver, setConfirmingStartOver] = useState(false);
   const [hotelQualityData, setHotelQualityData] = useState<HotelQualityData>(() => settledHotelQualityData(bidPack) ?? {});
@@ -659,11 +667,12 @@ export function ResultsView({
     () =>
       ranked.filter(
         (r) =>
+          inPreview(rankById.get(r.line.id), previewLimit) &&
           lineMatchesFilters(r.line, filters, filterCtx) &&
           matchesLineSearch(r.line, search) &&
           (!hotelFilter || lineHasHotel(r.line, hotelFilter))
       ),
-    [ranked, filters, filterCtx, search, hotelFilter]
+    [ranked, filters, filterCtx, search, hotelFilter, previewLimit, rankById]
   );
   // "Show the N lines you hid" counts only those it would bring into this view (`listedLines`).
   const { lines: listable, hiddenInView: hiddenMatchingCount } = useMemo(
@@ -1603,20 +1612,22 @@ export function ResultsView({
             )}
           </div>
 
-          <div className="animate-rise-in print:hidden" style={{ animationDelay: "120ms" }}>
-            <BidOrderExport
-              entries={bidOrderEntries}
-              shortlistEntries={shortlistEntries}
-              shortlistNotBid={shortlist.notBid}
-              bidPeriodStart={bidPack.bidPeriodStart}
-              bidMonth={bidPack.month}
-              packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
-              leftOut={bidPack.lines.length - exportable.lines.length}
-              leftOutWhy={leftOutPhrase(exportable.hidden, exportable.notBid)}
-              presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
-              topLineNumber={exportable.lines[0]?.line.lineNumber ?? null}
-            />
-          </div>
+          {previewLimit === null && (
+            <div className="animate-rise-in print:hidden" style={{ animationDelay: "120ms" }}>
+              <BidOrderExport
+                entries={bidOrderEntries}
+                shortlistEntries={shortlistEntries}
+                shortlistNotBid={shortlist.notBid}
+                bidPeriodStart={bidPack.bidPeriodStart}
+                bidMonth={bidPack.month}
+                packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
+                leftOut={bidPack.lines.length - exportable.lines.length}
+                leftOutWhy={leftOutPhrase(exportable.hidden, exportable.notBid)}
+                presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
+                topLineNumber={exportable.lines[0]?.line.lineNumber ?? null}
+              />
+            </div>
+          )}
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
             <StripKey view={stripView} />
@@ -1802,6 +1813,8 @@ export function ResultsView({
           </DndContext>
 
           {menu && <LineContextMenu menu={menu} tiers={tiers} listedIds={listedIds} onClose={() => setMenu(null)} />}
+
+          {previewLimit !== null && ranked.length > previewLimit && <MembershipPreviewNote shown={previewLimit} total={ranked.length} />}
 
           {sorted.length > displayed.length && (
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">

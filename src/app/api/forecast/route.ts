@@ -6,6 +6,7 @@ import { FEATURE_COUNT, type LineFeatures } from "@/lib/forecast/features";
 import { forecastWithCore, resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { applyCalibration, resolveForecastPrior, type Calibration, type ForecastPriorModel } from "@/lib/learning/forecast-learning";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { deleteKey, getJson, setJson } from "@/lib/server/kv";
 import { isVerified } from "@/lib/server/verified-pilots";
 import { blobKey, hashUser, loadKnownRankings, removeSubmission, saveSubmission } from "@/lib/server/forecast-store";
@@ -74,6 +75,10 @@ const isFiniteNumber = (v: unknown): v is number => typeof v === "number" && Num
 export async function POST(request: Request) {
   const { ok } = await checkRequestLimit("forecast", request, 20, 60);
   if (!ok) return rateLimitedResponse();
+  // The bid forecast is part of the ranking a membership unlocks. A no-op while `FREE_FOR_ALL` is on.
+  const user = await getCurrentServerUser();
+  const gated = accessRefusal(user);
+  if (gated) return gated;
 
   let body: Body;
   try {
@@ -96,7 +101,6 @@ export async function POST(request: Request) {
   const lineFeatures: LineFeatures = { lineIds, lineNumbers, values: Float64Array.from(features as number[]), lineCount: L };
   const seniority = seniorityNumber as number;
 
-  const user = await getCurrentServerUser();
   const stopped = user && body.share === true ? await sharingStopped(user.id, body.resume === true) : "on";
   const share = body.share === true && stopped === "on";
   const sharing = await loadKnownRankings(packKey, lineNumbers, user?.id ?? null);

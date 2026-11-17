@@ -5,10 +5,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type 
 import { AccountMenu, AccountPlaceholder } from "@/components/nav/AccountMenu";
 import { AppearanceMenu } from "@/components/nav/AppearanceMenu";
 import { COMING_SOON, NAV_ITEMS, disabledReason, homeTarget, navItemName, type NavTarget } from "@/components/nav/nav-items";
-import { ChevronLeftIcon, PlayIcon, SearchIcon } from "@/components/ui/icons";
+import { ChevronDownIcon, ChevronLeftIcon, PlayIcon, SearchIcon } from "@/components/ui/icons";
 import { Wordmark } from "@/components/ui/Logo";
 import { LogoFlight } from "@/components/ui/LogoFlight";
 import { setRailCollapsed, useRailCollapsed } from "@/lib/rail";
+import { STRATEGY_MENU, useStrategiesMenuOpen, useStrategyId, type StrategyMenuId } from "@/lib/strategy-menu";
 import { hasSeenLatest, subscribeWhatsNewSeen } from "@/lib/whats-new";
 import type { UserAccount } from "@/types/auth";
 
@@ -35,6 +36,8 @@ export interface NavProps {
   inboxUnreadCount?: number;
   pack: PackLabel | null;
   onNavigate: (target: NavTarget) => void;
+  /** Shows one strategy on the Strategies page, from wherever the pilot is. */
+  onOpenStrategy: (id: StrategyMenuId) => void;
   onSignIn: () => void;
   onLogout: () => void;
   onOpenHowItWorks: () => void;
@@ -104,6 +107,7 @@ function NavList({
   ready,
   inboxUnreadCount,
   onGo,
+  onOpenStrategy,
 }: {
   active: NavTarget | null;
   hasProfile: boolean;
@@ -111,16 +115,20 @@ function NavList({
   ready: boolean;
   inboxUnreadCount: number;
   onGo: (target: NavTarget) => void;
+  onOpenStrategy: (id: StrategyMenuId) => void;
 }) {
   const itemRefs = useRef<Partial<Record<NavTarget, HTMLButtonElement | null>>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const collapsed = useRailCollapsed();
   const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(null);
+  const [strategiesOpen, setStrategiesOpen] = useStrategiesMenuOpen(active === "strategies");
 
   useLayoutEffect(() => {
     const measure = () => {
       const el = active ? itemRefs.current[active] : null;
-      const next = el ? { top: el.offsetTop, height: el.offsetHeight } : null;
+      // Measured against the list itself, not the row's own parent: Strategies sits in a group of its own (with its list).
+      const list = listRef.current;
+      const next = el && list ? { top: Math.round(el.getBoundingClientRect().top - list.getBoundingClientRect().top), height: el.offsetHeight } : null;
       setIndicator((now) => (now?.top === next?.top && now?.height === next?.height ? now : next));
     };
     measure();
@@ -148,7 +156,8 @@ function NavList({
           {NAV_ITEMS.filter((item) => item.section === section).map((item) => {
             const reason = disabledReason(item.target, hasProfile, hasBidPack, ready);
             const isActive = active === item.target;
-            return (
+            const isStrategies = item.target === "strategies";
+            const row = (
               <button
                 key={item.target}
                 ref={(el) => {
@@ -159,8 +168,11 @@ function NavList({
                 title={reason}
                 aria-label={reason ? `${navItemName(item)} — ${reason}` : navItemName(item)}
                 aria-current={isActive ? "page" : undefined}
-                onClick={() => onGo(item.target)}
-                className={`${ROW} z-10 mb-0.5 disabled:cursor-not-allowed disabled:opacity-40 ${
+                onClick={() => {
+                  if (isStrategies && !strategiesOpen) setStrategiesOpen(true);
+                  onGo(item.target);
+                }}
+                className={`${ROW} z-10 mb-0.5 ${isStrategies ? "pr-9 rail-collapsed:pr-0" : ""} disabled:cursor-not-allowed disabled:opacity-40 ${
                   isActive ? "font-semibold text-on-wash" : "font-medium text-ink-muted hover:bg-ink/[0.06] hover:text-ink"
                 }`}
               >
@@ -171,12 +183,107 @@ function NavList({
                     {COMING_SOON}
                   </span>
                 )}
-                {!reason && <RailTip>{navItemName(item)}</RailTip>}
+                {/* The strategies' own pop-out names the row in a folded rail, so it has no tip of its own. */}
+                {!reason && !isStrategies && <RailTip>{navItemName(item)}</RailTip>}
               </button>
+            );
+            if (!isStrategies) return row;
+            return (
+              <StrategiesGroup
+                key={item.target}
+                row={row}
+                disabled={!!reason}
+                open={strategiesOpen}
+                onToggle={() => setStrategiesOpen(!strategiesOpen)}
+                current={active === "strategies"}
+                onOpenStrategy={onOpenStrategy}
+              />
             );
           })}
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Strategies, unfolded: its row, an arrow that folds the list without leaving the page, and every strategy beneath it,
+ * the one on screen marked. Folded down to icons, the list pops out beside the rail on hover or focus instead.
+ */
+function StrategiesGroup({
+  row,
+  disabled,
+  open,
+  onToggle,
+  current,
+  onOpenStrategy,
+}: {
+  row: ReactNode;
+  disabled: boolean;
+  open: boolean;
+  onToggle: () => void;
+  /** On the Strategies page: the strategy the address shows is marked as the one on screen. */
+  current: boolean;
+  onOpenStrategy: (id: StrategyMenuId) => void;
+}) {
+  const shown = useStrategyId();
+  const items = (inFlyout: boolean) => (
+    <ul className={inFlyout ? "space-y-0.5" : "mb-1 ml-[22px] space-y-0.5 border-l border-sidebar-border pl-2"}>
+      {STRATEGY_MENU.map((s) => {
+        const isShown = current && shown === s.id;
+        return (
+          <li key={s.id}>
+            <button
+              type="button"
+              title={s.name}
+              aria-label={s.name}
+              aria-current={isShown ? "true" : undefined}
+              onClick={() => onOpenStrategy(s.id)}
+              className={`block w-full truncate rounded-md px-2.5 py-[5px] text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] ${
+                isShown ? "bg-ink/[0.07] font-semibold text-ink" : "text-ink-muted hover:bg-ink/[0.06] hover:text-ink"
+              }`}
+            >
+              {s.label}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+  // The pop-out sits at the row's top, beside the rail (`fixed`, as the tips are, so the rail's scroll can't cut it off).
+  const placeFlyout = (e: SyntheticEvent<HTMLDivElement>) => {
+    e.currentTarget.style.setProperty("--flyout-y", `${e.currentTarget.getBoundingClientRect().top}px`);
+  };
+  return (
+    <div className="group/strat relative" onPointerEnter={placeFlyout} onFocus={placeFlyout}>
+      {row}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls="sidebar-strategies"
+          aria-label={open ? "Hide the strategies list" : "Show every strategy"}
+          className="absolute right-1 top-[5px] z-20 flex h-7 w-7 items-center justify-center rounded-md text-ink-faint transition-colors hover:bg-ink/[0.06] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] rail-collapsed:hidden"
+        >
+          <ChevronDownIcon className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        </button>
+      )}
+      {!disabled && open && (
+        <div id="sidebar-strategies" className="relative z-10 rail-collapsed:hidden">
+          {items(false)}
+        </div>
+      )}
+      {!disabled && (
+        <div
+          role="group"
+          aria-label="Strategies"
+          className="fixed left-[var(--shell-left)] top-[var(--flyout-y)] z-40 hidden w-60 rounded-md border border-hairline bg-surface-raised p-1.5 shadow-elevated rail-collapsed:group-hover/strat:block rail-collapsed:group-focus-within/strat:block"
+        >
+          <p className="px-2.5 pb-1 pt-0.5 text-2xs font-medium text-ink-faint">Strategies</p>
+          {items(true)}
+        </div>
+      )}
     </div>
   );
 }
@@ -247,6 +354,7 @@ export function LeftNav({
   inboxUnreadCount = 0,
   pack,
   onNavigate,
+  onOpenStrategy,
   onSignIn,
   onLogout,
   onOpenHowItWorks,
@@ -316,7 +424,7 @@ export function LeftNav({
           Expand and the account were below the screen's edge. Its tips and menus are `fixed`, so that doesn't cut them
           off where they stand out past its edge. */}
       <nav aria-label="Destinations" className="min-h-36 flex-1 overflow-y-auto px-3 pb-2 pt-3 rail-collapsed:min-h-fit rail-collapsed:overflow-visible">
-        <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} ready={ready} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} />
+        <NavList active={active} hasProfile={hasProfile} hasBidPack={hasBidPack} ready={ready} inboxUnreadCount={inboxUnreadCount} onGo={onNavigate} onOpenStrategy={onOpenStrategy} />
       </nav>
 
       <div className="space-y-0.5 border-t border-sidebar-border/70 px-3 py-2">

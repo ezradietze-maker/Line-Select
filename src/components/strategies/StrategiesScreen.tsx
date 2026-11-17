@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
@@ -22,6 +22,7 @@ import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
+import { openStrategy, STRATEGY_MENU, useStrategyId, type StrategyMenuId } from "@/lib/strategy-menu";
 import { keepFocusIn } from "@/lib/focus-keeper";
 import type { AwardSummaryResponse } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
@@ -334,8 +335,21 @@ function StrategyResults({
   }, [bidPack, seniority, profile, ranked, awardSummary]);
   const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
-  // What the dropdown is showing: "vacation" for the interactive slide tool, or a strategy's id.
-  const [selected, setSelected] = useState<string>("vacation");
+  // What's showing: "vacation" for the interactive slide tool, or a strategy's id. It's the page's address
+  // (`/strategies#leftovers`), so the sidebar's list, a link, Back and a reload all show the same one.
+  const selected = useStrategyId();
+  const shownRef = useRef<HTMLDivElement>(null);
+  const firstShown = useRef(true);
+  // A strategy picked from the sidebar (or the phone's picker) is brought into view: the page's header sits above it,
+  // and picking from a list that's off to the side gave no sign anything had changed. Arriving with one in the
+  // address scrolls to it too; arriving with none leaves the page at the top.
+  useEffect(() => {
+    const first = firstShown.current;
+    firstShown.current = false;
+    if (first && !window.location.hash) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    shownRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, [selected]);
 
   function handleReaction(strategyId: StrategyId, reaction: "used" | "dismissed") {
     // The buttons stay pressed: tapping the one already chosen again isn't a second vote, and used to nudge the
@@ -410,11 +424,11 @@ function StrategyResults({
         </Notice>
       )}
 
-      {/* Pick one strategy — or the vacation slide tool — and see just that one below. */}
-      <div className="mt-8 max-w-md">
+      {/* The sidebar lists every strategy; a phone has no sidebar, so it picks here. */}
+      <div className="mt-8 max-w-md md:hidden">
         <label className="block">
           <span className="text-xs font-medium text-ink-muted">Pick a strategy to see</span>
-          <select className={`${FIELD} mt-1 w-full`} value={selected} onChange={(e) => setSelected(e.target.value)}>
+          <select className={`${FIELD} mt-1 w-full`} value={selected} onChange={(e) => openStrategy(e.target.value as StrategyMenuId)}>
             <optgroup label="Tools">
               <option value="vacation">Vacation slide — test it on each line</option>
             </optgroup>
@@ -432,10 +446,16 @@ function StrategyResults({
                 </optgroup>
               );
             })}
+            {/* Ones that don't apply this month can still be in the address (from the sidebar or a link): listed, so the
+                picker never shows a different strategy from the one on screen. */}
+            {STRATEGY_MENU.some((m) => m.id === selected && selected !== "vacation" && !strategies.some((st) => st.id === selected)) && (
+              <option value={selected}>{STRATEGY_MENU.find((m) => m.id === selected)?.name}</option>
+            )}
           </select>
         </label>
       </div>
 
+      <div ref={shownRef} className="scroll-mt-6 md:pt-6" />
       {/* Kept while another strategy is shown: unmounted, the vacations typed in and the slides found were gone on
           coming back to it. */}
       <div hidden={selected !== "vacation"}>
@@ -444,7 +464,15 @@ function StrategyResults({
       {selected === "vacation" ? null : (
         (() => {
           const st = strategies.find((s) => s.id === selected);
-          if (!st) return <p className="mt-6 text-sm text-ink-muted">That strategy isn&rsquo;t in this month&rsquo;s pack &mdash; pick another above.</p>;
+          if (!st) {
+            const name = STRATEGY_MENU.find((m) => m.id === selected)?.name ?? "That strategy";
+            return (
+              <section className="mt-6 rounded-md border border-border p-4">
+                <p className="font-medium text-ink">{name}</p>
+                <p className="mt-1 text-sm text-ink-muted">Doesn&rsquo;t apply to this month&rsquo;s pack at your number. Pick another strategy.</p>
+              </section>
+            );
+          }
           const g = groups.find((gr) => gr.fit === st.fit);
           return (
             <section className="mt-6">
