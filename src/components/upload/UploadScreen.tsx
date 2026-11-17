@@ -278,7 +278,8 @@ function AlreadyUploaded({
       </Heading>
 
       <div className="panel-glass mt-6 overflow-hidden">
-        <div className="flex items-start justify-between gap-4 border-b border-hairline p-6">
+        {/* Wraps: at 320px the pack's name and "Ready" don't fit on one row, and the panel cut the chip off. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline p-6">
           <div>
             <div className="whitespace-nowrap font-display text-2xl font-semibold tracking-wide text-ink sm:text-4xl">
               {bidPack.base} <span className="text-ink-faint">&middot;</span> {bidPack.aircraft}{" "}

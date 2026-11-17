@@ -10,6 +10,7 @@ import { FIELD } from "@/components/ui/field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { eventInstant } from "@/lib/bid-calendar";
+import { isSamplePack } from "@/lib/fake-trade-offers";
 import { formatHoursValue as hm } from "@/lib/interview-config";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { buildViewAdd, pairingDate, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
@@ -216,7 +217,16 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
       </Notice>
       {/* Printed with the list it built, as Open Time's board is: the line and hours it's for, not the pasted text or the button. */}
       <section aria-label="View/Add list" className="panel-glass mt-6 p-4 sm:p-5">
-        {!hasOpen && bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack was saved before we kept its open trips. Upload it again to see them, or paste VIPS&rsquo;s list below.</p>}
+        {/* The sample was never uploaded: "upload it again" would send a pilot looking for a PDF there isn't. */}
+        {!hasOpen && bidPack.bidPeriodStart && (
+          <p className="mt-2 text-xs text-ink">
+            {isSamplePack(bidPack) ? (
+              <>The sample pack has no open trips of its own. Paste VIPS&rsquo;s list below to try it.</>
+            ) : (
+              <>This pack was saved before we kept its open trips. Upload it again to see them, or paste VIPS&rsquo;s list below.</>
+            )}
+          </p>
+        )}
         {!bidPack.bidPeriodStart && <p className="mt-2 text-xs text-ink">This pack&rsquo;s trips aren&rsquo;t on dates, so we can&rsquo;t check them against your line.</p>}
 
         <div className="mt-3 grid gap-2 sm:grid-cols-3">

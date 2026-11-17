@@ -45,7 +45,8 @@ const GRADE_STYLE: Record<number, string> = {
   [-1]: "border-warn bg-warn-soft text-warn",
   0: "border-border-strong bg-surface-raised text-ink",
   1: "border-good/60 bg-good-soft text-good",
-  2: "border-good bg-good text-on-brand",
+  // Canvas ink, as on the done checks: by day the sign's yellow on this green was 4.2:1, under 4.5 for small text.
+  2: "border-good bg-good text-canvas",
 };
 
 const hrs = (h: number) => `${Math.round(h)}h`;

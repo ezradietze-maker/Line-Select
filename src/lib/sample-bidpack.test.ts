@@ -44,6 +44,15 @@ describe("the sample bid pack", () => {
     expect(days[7].label).toEqual({ number: "501", creditHours: 7.5 });
   });
 
+  it("prints each line's block hours, as a line in a real pack does, rather than leaving its strip's Block blank", () => {
+    for (const line of pack.lines) {
+      const legs = line.trips.flatMap((t) => t.schedule.flatMap((d) => d.legs)).filter((l) => !l.isDeadhead);
+      expect(line.totalBlockHours).toBe(legs.reduce((s, l) => s + (l.blockHours ?? 0), 0));
+    }
+    // Line 9004: trip 501 (3:30 + 3:30) and trip 502 (9:00 + 9:00).
+    expect(pack.lines.find((l) => l.lineNumber === "9004")!.totalBlockHours).toBe(25);
+  });
+
   it("can be matched against an open-time list by trip number and date", () => {
     const universe = pack.lines.flatMap((l) => l.trips);
     const c = pack.lines.find((l) => l.lineNumber === "9005")!.trips[1];
