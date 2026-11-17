@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fourWeekFactor, lineLengthDays } from "@/lib/metrics/line-length";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
@@ -10,7 +10,7 @@ const ctx = { bidPeriodStart: START, bidPeriodDays: 28, base: SAMPLE_BID_PACK.ba
 /** A real sample line with its trips pinned to start days, as a parsed pack's grid would. */
 function placed(number: string, starts: number[], id = number): Line {
   const l = SAMPLE_BID_PACK.lines.find((x) => x.lineNumber === number)!;
-  return { ...l, id, lineNumber: id, trips: l.trips.map((t, i) => ({ ...t, startDayIndex: starts[i] })) };
+  return { ...sampleLineOn(l, starts), id, lineNumber: id };
 }
 const lastTrip = (l: Line) => l.trips[l.trips.length - 1];
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { chainSentence } from "@/components/results/MiniLinePreview";
 import { buildDetailedMonth } from "@/lib/month-detail";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 
 const START = "2026-09-28";
 const line = SAMPLE_BID_PACK.lines.find((l) => l.lineNumber === "9006")!;
-const placed = (starts: number[]) => ({ ...line, trips: line.trips.map((t, i) => ({ ...t, startDayIndex: starts[i] })) });
+const placed = (starts: number[]) => sampleLineOn(line, starts);
 
 describe("why two trips are one departure", () => {
   it("says the hours at home the trips were joined by", () => {

@@ -94,6 +94,23 @@ export function runOfDay(trip: Trip): { run: Trip; day: RunDay; index: number } 
   return runOf.get(trip) ?? null;
 }
 
+/**
+ * A trip's length in days, for labels and calendars: its `days`, except for a day of a run (`dayTripsOf`), which is
+ * one day for the scores. A run of an overnight trip is a day at a time too, and each day flies out one day and home
+ * the next: MD11 MEM trip 30, out 16:05 and home 11:03 the next morning, read "1-day trip", where the same trip flown
+ * alone is a 2-day trip. Counted as the pairing pages count days, by the dates at base its flights leave on: a day trip
+ * landing just after midnight is still one day.
+ */
+export function tripDaysShown(trip: Trip): number {
+  if (!runOf.has(trip)) return trip.days;
+  const legs = trip.schedule.flatMap((d) => d.legs);
+  const zone = legs.length ? timezoneForAirport(legs[0].depAirport) : null;
+  const anchor = Date.parse(trip.zuluAnchor);
+  if (!zone || !Number.isFinite(anchor)) return trip.days;
+  const date = (minutes: number) => DateTime.fromMillis(anchor + minutes * 60_000, { zone }).startOf("day");
+  return Math.max(1, Math.round(date(legs[legs.length - 1].startMinutes).diff(date(legs[0].startMinutes), "days").days) + 1);
+}
+
 const byDay = new WeakMap<object, object>();
 
 /**

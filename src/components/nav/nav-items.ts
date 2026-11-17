@@ -40,6 +40,8 @@ export interface NavItem {
   /** "bid" is this month's own work; "flying" the pilot's own kit beyond one bid; "crew" what's shared with other pilots. */
   section: "bid" | "flying" | "crew";
   icon: ComponentType<{ className?: string }>;
+  /** Not finished yet: still reachable, and tagged "Coming soon" wherever the menu shows it. */
+  comingSoon?: boolean;
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -47,8 +49,8 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "preferences", label: "Preferences", tabLabel: "Preferences", section: "bid", icon: SlidersIcon },
   { target: "results", label: "My Rankings", tabLabel: "Rankings", section: "bid", icon: TrophyIcon },
   { target: "strategies", label: "Strategies", tabLabel: "Strategies", section: "bid", icon: TargetIcon },
-  { target: "view-add", label: "View/Add", tabLabel: "View/Add", section: "bid", icon: ListIcon },
-  { target: "open-time", label: "Open Time", tabLabel: "Open Time", section: "bid", icon: ClockIcon },
+  { target: "view-add", label: "View/Add", tabLabel: "View/Add", section: "bid", icon: ListIcon, comingSoon: true },
+  { target: "open-time", label: "Open Time", tabLabel: "Open Time", section: "bid", icon: ClockIcon, comingSoon: true },
   { target: "cities", label: "Cities", tabLabel: "Cities", section: "flying", icon: GlobeIcon },
   { target: "logbook", label: "Logbook", tabLabel: "Logbook", section: "flying", icon: BookIcon },
   { target: "tools", label: "Tools", tabLabel: "Tools", section: "flying", icon: ToolboxIcon },
@@ -58,6 +60,14 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "inbox", label: "Inbox", tabLabel: "Inbox", section: "crew", icon: MailIcon },
   { target: "hotel-ratings", label: "Hotel Ratings", tabLabel: "Hotels", section: "crew", icon: BuildingIcon },
 ];
+
+/** The words for an unfinished destination, on its tag and wherever the menu names it in full. */
+export const COMING_SOON = "Coming soon";
+
+/** An item's full name, with "Coming soon" for one that isn't finished: for tooltips and screen readers. */
+export function navItemName(item: Pick<NavItem, "label" | "comingSoon">): string {
+  return item.comingSoon ? `${item.label} (${COMING_SOON.toLowerCase()})` : item.label;
+}
 
 /**
  * Why a destination can't be opened yet, or undefined when it can. Nothing is ruled out before the pilot's saved state

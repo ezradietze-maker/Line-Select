@@ -182,12 +182,13 @@ export function AppearanceMenu() {
         // A small panel of two sets of choices, not a menu: it held radio groups, which a menu can't, so a screen reader
         // announced choices it then wouldn't let the arrows reach. On the icon rail it stands out past the rail's edge, so
         // it's `fixed` under the button: the rail scrolls on a short window, and would cut off a panel inside it. Never
-        // wider than the screen: with a phone's text at its largest, 13rem ran its left side off the edge.
+        // wider than the screen: with a phone's text at its largest, 13rem ran its left side off the edge. Nor taller than
+        // the room above the phone's tab bar: there it scrolls, or the calendar colors sat out of reach behind the bar.
         <div
           id={panelId}
           role="dialog"
           aria-labelledby={`${panelId}-title`}
-          className="absolute right-0 top-full z-40 mt-2 w-52 max-w-[calc(100vw-2rem)] rail-collapsed:fixed rail-collapsed:right-auto rail-collapsed:left-[var(--pop-x)] rail-collapsed:top-[var(--pop-y)] animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg"
+          className="absolute right-0 top-full z-40 mt-2 w-52 max-w-[calc(100vw-2rem)] rail-collapsed:fixed rail-collapsed:right-auto rail-collapsed:left-[var(--pop-x)] rail-collapsed:top-[var(--pop-y)] max-md:max-h-[calc(100dvh-var(--pop-y)-5rem-env(safe-area-inset-bottom))] max-md:overflow-y-auto animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg"
         >
           <div className="border-b border-border px-4 py-3">
             <div id={`${panelId}-title`} className="text-sm font-medium text-ink">
@@ -196,10 +197,12 @@ export function AppearanceMenu() {
             <div className="text-xs text-ink-faint">Saved to this device only.</div>
           </div>
 
-          <div className="space-y-4 px-4 py-3.5">
+          <div className="@container space-y-4 px-4 py-3.5">
             <div>
               <div className="mb-2 text-2xs font-semibold text-ink-faint">Mode</div>
-              <div role="radiogroup" aria-label="Color theme" className="grid grid-cols-4 gap-1">
+              {/* Two across where the panel is held to the screen's width (a phone with its text at its largest): four,
+                  "System" ran into "Dark". */}
+              <div role="radiogroup" aria-label="Color theme" className="grid grid-cols-4 gap-1 @max-[10.5rem]:grid-cols-2">
                 {THEME_OPTIONS.map((opt, i) => {
                   const on = mode === opt.mode;
                   return (

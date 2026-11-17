@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildDetailedMonth, dayRoute, monthDepartureOptions, toStripSegment } from "@/lib/month-detail";
 import { groupDepartures } from "@/lib/metrics/departures";
 import type { TimelineSegment } from "@/lib/trip-timeline";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 import { lineStandbyDays } from "@/lib/standby";
 import { buildSortContext, LINE_SORTS_BY_ID, sortValues } from "@/lib/line-sorts";
 import { measure, prepareMetrics } from "@/lib/metrics/compute";
@@ -17,8 +17,7 @@ const line = (number: string) => SAMPLE_BID_PACK.lines.find((l) => l.lineNumber 
 
 /** A real sample line with its trips pinned to real start days, as a parsed pack's grid would. */
 function placed(number: string, starts: number[]): Line {
-  const l = line(number);
-  return { ...l, trips: l.trips.map((t, i) => ({ ...t, startDayIndex: starts[i] })) };
+  return sampleLineOn(line(number), starts);
 }
 
 describe("buildDetailedMonth", () => {

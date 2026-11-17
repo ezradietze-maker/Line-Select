@@ -221,9 +221,9 @@ export function BidPackHeader({ columns, layout, label = "Line · score", sticky
 /**
  * One day: the trip's shading and rail, its words in the calendar's colors, and on a trip's first day its number and
  * credit — running on over the trip's next days (`labelRoom` columns, up to the next trip's own label), as the pack's
- * "6027" runs on under a trip's days; with room for only one day, just the number.
+ * "6027" runs on under a trip's days; with room for only one day, or not enough for both (`creditFits`), just the number.
  */
-function DayCell({ col, day, font, labelRoom }: { col: PackColumn; day: PackDay; font: number; labelRoom: number }) {
+function DayCell({ col, day, font, labelRoom, credit }: { col: PackColumn; day: PackDay; font: number; labelRoom: number; credit: boolean }) {
   const trip = day.trip;
   return (
     <div className={`relative ${columnClass(col)}`} style={{ height: (PACK_TOKENS_PER_DAY + 1) * ROW_PX + 6 }}>
@@ -248,11 +248,20 @@ function DayCell({ col, day, font, labelRoom }: { col: PackColumn; day: PackDay;
           title={`Trip ${day.label.number ?? ""} · ${formatHoursValue(day.label.creditHours)} credit`}
         >
           <span className="font-semibold">{day.label.number ?? "—"}</span>
-          {labelRoom > 1 && <span className="text-ink-muted"> {formatHoursValue(day.label.creditHours)}</span>}
+          {credit && <span className="text-ink-muted"> {formatHoursValue(day.label.creditHours)}</span>}
         </span>
       )}
     </div>
   );
+}
+
+/**
+ * Whether a trip's label has room for its credit after its number. `dayPx` is its first day's width inside the week's
+ * line, which the label's room is counted in (`labelRoom` days of it, less 2px either side), and half a pixel's grace
+ * for the estimate: a two-day trip with another the day after it read "134 10:1", its credit cut at the label's edge.
+ */
+export function creditFits(number: string, creditHours: number, labelRoom: number, dayPx: number, font: number): boolean {
+  return (number.length + 1 + formatHoursValue(creditHours).length) * font * MONO_ADVANCE <= labelRoom * dayPx - 3.5;
 }
 
 function Days({ columns, days, layout }: { columns: PackColumn[]; days: PackDay[]; layout: StripLayout }) {
@@ -262,11 +271,16 @@ function Days({ columns, days, layout }: { columns: PackColumn[]; days: PackDay[
     while (i + n < columns.length && !days[i + n]?.label) n++;
     return n;
   };
+  const colPx = layout.mode === "fit" ? layout.daysPx / Math.max(columns.length, 1) : SCROLL_COL;
   return (
     <div className="grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }}>
-      {columns.map((c, i) => (
-        <DayCell key={i} col={c} day={days[i] ?? { trip: null, label: null, tokens: [] }} font={layout.font} labelRoom={days[i]?.label ? room(i) : 1} />
-      ))}
+      {columns.map((c, i) => {
+        const label = days[i]?.label;
+        const labelRoom = label ? room(i) : 1;
+        // A week's first day has its line inside it, a pixel off the room.
+        const credit = !!label && labelRoom > 1 && creditFits(label.number ?? "—", label.creditHours, labelRoom, colPx - (c.groupStart ? 1 : 0), layout.font);
+        return <DayCell key={i} col={c} day={days[i] ?? { trip: null, label: null, tokens: [] }} font={layout.font} labelRoom={labelRoom} credit={credit} />;
+      })}
     </div>
   );
 }
@@ -468,8 +482,10 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   const k = layout.textScale;
   // On a phone the ring stops growing at 150% text: at 200% it took the room "LINE 2295" and the numbers needed.
   const ring = Math.round(layout.stacked ? 34 * Math.min(k, 1.5) : 38 * k);
+  // The line's number and its numbers go under the ring where even one pair of their columns won't fit beside it (a
+  // phone with its text at its largest): beside it, TAFB's and Credit's numbers ran off the card's edge, cut.
   const title = (
-    <div className="flex min-w-0 items-center gap-2">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       {score !== null ? (
         <ScoreRing score={score} size={ring} capped={capped} top={top} />
       ) : (
@@ -479,7 +495,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
           </span>
         )
       )}
-      <div className="min-w-0">
+      <div className="w-min min-w-0 grow">
         <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink">
           LINE {line.lineNumber}
           {placedByYou && (

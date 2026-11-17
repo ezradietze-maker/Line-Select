@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { bidMonthEnd, bidMonthName, lineCarryOver, monthLine, nextMonthName, splitTrip, uncutTrip } from "@/lib/bid-month";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 import type { Line, Trip } from "@/types/bidpack";
 
 // The October bid month: four weeks from Monday September 28, Memphis time.
@@ -9,7 +9,7 @@ const ctx = { bidPeriodStart: "2026-09-28", bidPeriodDays: 28, base: SAMPLE_BID_
 /** Sample line 9006 — trip 502 (two duties, 2 days) and 503 (MEM–HNL, then HNL–MEM the next afternoon) — on these days. */
 function placed(starts: number[], extra: Partial<Line> = {}): Line {
   const l = SAMPLE_BID_PACK.lines.find((x) => x.lineNumber === "9006")!;
-  return { ...l, totalDutyPeriods: 4, ...extra, trips: l.trips.map((t, i) => ({ ...t, startDayIndex: starts[i] })) };
+  return { ...sampleLineOn(l, starts), totalDutyPeriods: 4, ...extra };
 }
 
 describe("the bid month", () => {
@@ -37,7 +37,7 @@ describe("the bid month", () => {
     expect(cut.carriesIntoNextMonth).toBe(true);
     expect(cut.schedule).toHaveLength(1);
     expect(cut.creditHours).toBe(18 - 4); // the pack's C/O is what the trip carries
-    expect(cut.tafbHours).toBeCloseTo(44 - carry.tafbHours, 6);
+    expect(cut.tafbHours).toBeCloseTo(44.5 - carry.tafbHours, 6);
     expect(uncutTrip(cut)).toBe(line.trips[1]);
     // The pack's own counts, less what's carried; credit, block and TAFB are already the month's as printed.
     expect(month.totalLandings).toBe(line.totalLandings - 1);

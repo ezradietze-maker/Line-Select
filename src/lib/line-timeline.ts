@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { lineByDay } from "@/lib/trip-anchor";
+import { lineByDay, tripDaysShown } from "@/lib/trip-anchor";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
@@ -98,7 +98,7 @@ export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStar
         out.stays.push({ start, end: fromAnchor(trip.zuluAnchor, duty.layover.endMinutes), city: duty.layover.city, hours: duty.layover.hours });
       }
     });
-    if (Number.isFinite(tripStart)) out.trips.push({ index, number: trip.pairingNumber, creditHours: trip.creditHours, days: trip.days, start: tripStart, end: tripEnd });
+    if (Number.isFinite(tripStart)) out.trips.push({ index, number: trip.pairingNumber, creditHours: trip.creditHours, days: tripDaysShown(trip), start: tripStart, end: tripEnd });
   });
   out.trips.sort((a, b) => a.start - b.start);
 

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { baseDayStartMinutes, dayIndices, zoneOf, type Span } from "@/lib/phase-in";
 import { dayTripsOf, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { formatHoursValue } from "@/lib/interview-config";
+import { useMeasuredWidth } from "@/components/results/LegBars";
 import { removedNames, type LineSlides, type SlideOption } from "@/lib/vacation-slide";
 import type { BidPack, Trip } from "@/types/bidpack";
 
@@ -21,6 +22,10 @@ const HOUR = 3_600_000;
  * last days, often where the vacation itself was, sat past the right edge behind a scroll with no bar to show it.
  */
 const COL = 18;
+/**
+ * A day's column where the month scrolls anyway (a phone): room for a one-day trip's "300", which 18px cut to "30".
+ */
+const SCROLL_COL = 26;
 const WEEKDAY = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -56,6 +61,8 @@ function gridColumn(days: number[]): string | null {
 export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlides; pack: BidPack; value: number; byModel: boolean }) {
   const zone = zoneOf(pack);
   const dayCount = pack.bidPeriodDays;
+  const [scrollerRef, scrollerWidth] = useMeasuredWidth<HTMLDivElement>(1024);
+  const col = scrollerWidth >= dayCount * (COL + 1) - 1 ? COL : SCROLL_COL;
 
   // Every day of the bid month, labelled on the base's calendar.
   const months = useMemo(() => {
@@ -128,8 +135,8 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
       </div>
 
       {/* The month, with the vacation footprint over it. */}
-      <div className="mt-3 overflow-x-auto pb-1" aria-hidden>
-        <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${COL}px, 1fr))`, gridTemplateRows: "14px auto auto 34px", minWidth: dayCount * COL }}>
+      <div ref={scrollerRef} className="mt-3 overflow-x-auto pb-1" aria-hidden>
+        <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${col}px, 1fr))`, gridTemplateRows: "14px auto auto 34px", minWidth: dayCount * col }}>
           {/* Vacation band */}
           {vacCol && (
             <div className="flex items-center justify-center self-stretch rounded-full bg-accent" style={{ gridColumn: vacCol, gridRow: 1 }} title="Your vacation">
