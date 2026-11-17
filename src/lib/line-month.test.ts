@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLineMonthCalendar, weekdayFlyingPattern } from "@/lib/line-month";
-import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
+import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 import type { Line } from "@/types/bidpack";
 
 const START = "2026-09-28"; // a Monday
@@ -8,8 +8,7 @@ const line = (number: string) => SAMPLE_BID_PACK.lines.find((l) => l.lineNumber 
 
 /** A real sample line with its trip pinned to a real start day, as a parsed pack's grid would. */
 function placed(number: string, starts: number[]): Line {
-  const l = line(number);
-  return { ...l, trips: l.trips.map((t, i) => ({ ...t, startDayIndex: starts[i] })) };
+  return sampleLineOn(line(number), starts);
 }
 
 function withGrid(number: string, starts: number[], off: number[]): Line {
