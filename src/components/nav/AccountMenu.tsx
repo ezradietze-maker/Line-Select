@@ -81,7 +81,13 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
       <button
         ref={buttonRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          // Where the icon rail's menu stands: measured, as the rail may be scrolled (see the menu below).
+          const r = e.currentTarget.getBoundingClientRect();
+          ref.current?.style.setProperty("--pop-x", `${r.left}px`);
+          ref.current?.style.setProperty("--pop-y", `${window.innerHeight - r.top}px`);
+          setOpen((o) => !o);
+        }}
         aria-expanded={open}
         aria-haspopup="menu"
         title={user.displayName}
@@ -105,7 +111,9 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
       </button>
 
       {open && (
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg">
+        // On the icon rail it stands out past the rail's edge, so it's `fixed` over the button: the rail scrolls on a
+        // short window, and would cut off a menu inside it.
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] rail-collapsed:fixed rail-collapsed:bottom-[var(--pop-y)] rail-collapsed:left-[var(--pop-x)] rail-collapsed:w-56 animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg">
           {/* Who's signed in sits above the menu, not in it: a menu holds only its items. */}
           <div className="border-b border-border px-4 py-3">
             {/* A long name or address ends in "…", with the whole of it on hover. */}
