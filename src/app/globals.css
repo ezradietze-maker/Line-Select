@@ -101,6 +101,14 @@
      sit at a hub (a day room). */
   --color-gt: #0e7490;
   --color-rest: #8f5400;
+  /* The Heat Map's thermal scale, cold (worse for the pilot) to hot (better): near-black, blue, purple, red, orange, yellow, white hot (lib/heat-scale.ts). */
+  --heat-0: #15123a;
+  --heat-1: #2b3fb8;
+  --heat-2: #7b2fb3;
+  --heat-3: #c42a5c;
+  --heat-4: #eb5a1e;
+  --heat-5: #f5ad1c;
+  --heat-6: #ffef9e;
   /* Trips flown back to back without getting home between: one departure, boxed together in the trip list. */
   --color-chain: #4338ca;
 
@@ -215,6 +223,14 @@
     --color-report: #ff9a52;
     --color-gt: #46d4f0;
     --color-rest: #ffc247;
+    /* The Heat Map's scale, its cold end lifted off the dark card. */
+    --heat-0: #2e2c78;
+    --heat-1: #3a56e0;
+    --heat-2: #9244d0;
+    --heat-3: #de3a70;
+    --heat-4: #ff6a2a;
+    --heat-5: #ffbb33;
+    --heat-6: #fff4c9;
     --color-chain: #b3bdff;
 
     --color-focus-ring: #5b9bff;
@@ -287,6 +303,14 @@
   --color-report: #ff9a52;
   --color-gt: #46d4f0;
   --color-rest: #ffc247;
+  /* The Heat Map's scale, its cold end lifted off the dark card. */
+  --heat-0: #2e2c78;
+  --heat-1: #3a56e0;
+  --heat-2: #9244d0;
+  --heat-3: #de3a70;
+  --heat-4: #ff6a2a;
+  --heat-5: #ffbb33;
+  --heat-6: #fff4c9;
   --color-chain: #b3bdff;
 
   --color-focus-ring: #5b9bff;
@@ -370,6 +394,14 @@
   --color-report: #ff8a2a;
   --color-gt: #e89a7a;
   --color-rest: #ffb35c;
+  /* Red light only: the Heat Map runs dim red (cold) to bright red (hot). */
+  --heat-0: #5c1616;
+  --heat-1: #761a1a;
+  --heat-2: #921e1e;
+  --heat-3: #ac2424;
+  --heat-4: #c82828;
+  --heat-5: #ef4040;
+  --heat-6: #ff7a6a;
   --color-chain: #ff9e7a;
 
   --color-focus-ring: #ff4d4d;
@@ -1334,6 +1366,13 @@ html.theme-sweep::view-transition-new(root) {
     --color-report: #a33409 !important;
     --color-gt: #0e7490 !important;
     --color-rest: #8f5400 !important;
+    --heat-0: #15123a !important;
+    --heat-1: #2b3fb8 !important;
+    --heat-2: #7b2fb3 !important;
+    --heat-3: #c42a5c !important;
+    --heat-4: #eb5a1e !important;
+    --heat-5: #f5ad1c !important;
+    --heat-6: #ffef9e !important;
     --color-chain: #4338ca !important;
     --color-focus-ring: #1f5fe0 !important;
     --color-sign: #ffcc00 !important;

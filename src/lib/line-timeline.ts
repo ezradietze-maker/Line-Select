@@ -55,19 +55,31 @@ export interface LineTimeline {
 
 const EMPTY: LineTimeline = { trips: [], duties: [], legs: [], stays: [], offRuns: [] };
 
-/** The line's timeline, `days` days long from the bid period's first day. Empty without the pack's real dates. */
-export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">, days: number): LineTimeline {
-  if (!pack.bidPeriodStart || line.estimated) return EMPTY;
+/** Where an instant falls on the month's timeline: `at` a Zulu time, or `fromAnchor` some minutes into a trip. */
+export interface BaseClock {
+  at: (iso: string) => number;
+  fromAnchor: (anchor: string, minutes: number) => number;
+}
+
+/** The bid month's clock at base, minutes from its first midnight; null without the pack's real dates. */
+export function baseClock(pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">): BaseClock | null {
+  if (!pack.bidPeriodStart) return null;
   const zone = timezoneForAirport(pack.base) ?? "UTC";
   const first = DateTime.fromISO(pack.bidPeriodStart, { zone });
   const origin = first.toMillis();
-  if (!Number.isFinite(origin)) return EMPTY;
+  if (!Number.isFinite(origin)) return null;
   // Minutes on the base's clock, not minutes elapsed: the strip gives every day 1,440, so after a clock change
   // (October's bid period runs into November's) elapsed time would put everything an hour off its day.
   const clockChanges = first.offset !== first.plus({ days: pack.bidPeriodDays + 7 }).offset;
   const minutesAt = (ms: number) => (ms - origin) / 60_000 + (clockChanges ? DateTime.fromMillis(ms, { zone }).offset - first.offset : 0);
-  const at = (iso: string) => minutesAt(Date.parse(iso));
-  const fromAnchor = (anchor: string, minutes: number) => minutesAt(Date.parse(anchor) + minutes * 60_000);
+  return { at: (iso) => minutesAt(Date.parse(iso)), fromAnchor: (anchor, minutes) => minutesAt(Date.parse(anchor) + minutes * 60_000) };
+}
+
+/** The line's timeline, `days` days long from the bid period's first day. Empty without the pack's real dates. */
+export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStart" | "bidPeriodDays" | "base">, days: number): LineTimeline {
+  const clock = line.estimated ? null : baseClock(pack);
+  if (!clock) return EMPTY;
+  const { at, fromAnchor } = clock;
 
   const out: LineTimeline = { trips: [], duties: [], legs: [], stays: [], offRuns: [] };
   // A run of day trips a day at a time, as the pack prints it: each day its own card, number and credit.

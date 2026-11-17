@@ -10,6 +10,8 @@ import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { TripScorePanel } from "@/components/results/TripScorePanel";
 import { RestPlan } from "@/components/results/SleepPlan";
 import { TripPicture, tripPictureDays } from "@/components/results/TripPicture";
+import { HeatKey, HeatShareLine } from "@/components/results/HeatReasons";
+import type { TripHeat } from "@/lib/line-heat";
 import { tripCarryOver, type LineCarryOver, type TripCarryOver } from "@/lib/bid-month";
 import { TripDayDetail } from "@/components/results/TripDayDetail";
 import { CreditHours } from "@/components/results/TripMarks";
@@ -340,6 +342,8 @@ interface TripListProps {
   base?: string;
   /** Each trip's own score for this pilot, by `tripKey` (see `lib/scoring-v2/trip-score.ts`); absent before an interview. */
   tripScores?: Map<string, TripScore> | null;
+  /** The Heat Map, trip by trip (`tripHeatsOf`, by place in `trips`): each trip's days in their heat colours and its share hot, mild and cold. */
+  heat?: Map<number, TripHeat> | null;
   /** What the line carries into the next bid month (`lineCarryOver`) — shown on the trip that carries it. Needs `bidPeriodDays` and `base`. */
   carryOver?: LineCarryOver | null;
   bidPeriodDays?: number;
@@ -350,7 +354,7 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays, heat = null }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   // The same Local/Zulu choice as the month calendar's, shared page-wide: switching either switches both.
@@ -425,8 +429,10 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
-                  <ColorKey variant="trip" className="mb-2" />
+                  {heat?.get(tripIndex) && <HeatShareLine share={heat.get(tripIndex)!.share} label="Trip" className="mb-2 max-w-72" />}
+                  {heat ? <HeatKey className="mb-2" /> : <ColorKey variant="trip" className="mb-2" />}
                   <TripPicture
+                    heat={heat?.get(tripIndex) ?? null}
                     carryOver={carries[tripIndex] && carryOver ? { days: carries[tripIndex]!.days, month: carryOver.month } : null}
                     trip={trip}
                     mode={mode}

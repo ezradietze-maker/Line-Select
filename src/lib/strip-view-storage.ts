@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-/** How the results list draws each line before it's opened: the bid pack's own strip, or the newer timeline. */
-export type StripViewMode = "timeline" | "pack";
+/** How the results list draws each line before it's opened: the bid pack's own strip, the newer timeline, or the Heat Map (`lib/line-heat.ts`). */
+export type StripViewMode = "timeline" | "pack" | "heat";
 
 const KEY = "line-select:strip-view:v1";
 /** Told to the page when the pilot switches, so every list on it switches together. */
@@ -11,9 +11,9 @@ const CHANGED = "line-select:strip-view-changed";
 const DEFAULT_VIEW: StripViewMode = "timeline";
 
 /**
- * The strip a pack can draw. The timeline puts every duty at its real time from the bid period's first day, so a pack
- * that prints no bid period dates (the sample is one) has nothing to put on it: it shows the Bid pack row instead,
- * rather than every line blank.
+ * The strip a pack can draw. The timeline (and the Heat Map drawn on it) puts every duty at its real time from the bid
+ * period's first day, so a pack that prints no bid period dates (the sample is one) has nothing to put on it: it shows
+ * the Bid pack row instead, rather than every line blank.
  */
 export function stripViewFor(view: StripViewMode, pack: { bidPeriodStart: string | null }): StripViewMode {
   return pack.bidPeriodStart ? view : "pack";
@@ -23,7 +23,7 @@ export function loadStripView(): StripViewMode {
   if (typeof window === "undefined") return DEFAULT_VIEW;
   try {
     const raw = window.localStorage.getItem(KEY);
-    return raw === "pack" || raw === "timeline" ? raw : DEFAULT_VIEW;
+    return raw === "pack" || raw === "timeline" || raw === "heat" ? raw : DEFAULT_VIEW;
   } catch {
     return DEFAULT_VIEW;
   }

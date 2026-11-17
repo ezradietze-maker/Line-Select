@@ -214,7 +214,7 @@ function hotelScore(l: LayoverFact, p: MetricParams): number | null {
  * A layover's grade: its season's when it falls in one the pilot graded (the weather is the weather, whatever the
  * hotel), else its hotel's when that has one, else its city's.
  */
-function layoverScore(f: TripFacts, l: LayoverFact, p: MetricParams): number {
+export function layoverScore(f: TripFacts, l: LayoverFact, p: MetricParams): number {
   if (l.city === p.base) return 0;
   const usual = hotelScore(l, p) ?? p.cityScores?.[l.city] ?? 0;
   const month = p.citySeasons?.[l.city] ? monthAt(p, f.trip, l.start, l.city) : null;

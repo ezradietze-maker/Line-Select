@@ -6,14 +6,17 @@ import { ChevronDownIcon } from "@/components/ui/icons";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
 import { PACK_TOKENS_PER_DAY } from "@/lib/bidpack-row";
+import { HEAT_GRADIENT, heatColor } from "@/lib/heat-scale";
 import { formatHoursValue } from "@/lib/interview-config";
+import { heatPieceText, sharePercents, type HeatPiece, type LineHeat } from "@/lib/line-heat";
+import { HeatShareLine } from "@/components/results/HeatReasons";
 import { laneLabels, routesOf } from "@/lib/line-route";
 import type { LineTimeline, TimelineLeg } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import type { Line } from "@/types/bidpack";
 
 /**
- * The results list's first look at a line, one of two ways (the pilot's toggle):
+ * The results list's first look at a line, one of three ways (the pilot's toggle):
  *
  * - "pack": the bid pack's own line strip, upgraded — its numbers on the left as the pack prints them (CR., TAFB, C/O,
  *   DP'S, BLK., landings, days off) with the line's score, and the month a column a day across the right, every
@@ -23,8 +26,11 @@ import type { Line } from "@/types/bidpack";
  *   each trip one card from report to release with its number and credit, its flights and layovers inside as one route
  *   — every flight number over its own leg, every city under its own layover — the pack's "---" on each day off, and
  *   the pack's eight numbers in words.
+ * - "heat": the Timeline, its route a band of colour — each duty period and layover as hot (good for this pilot) or as
+ *   cold (bad) as it is for them (`lib/line-heat.ts`), the pack's words kept around it — and how much of the line's
+ *   time on trips runs hot, mild and cold.
  *
- * Tapping either opens everything else about the line under it.
+ * Tapping any of them opens everything else about the line under it.
  */
 
 /** The grip's column, the numbers' block and the chevron's column, in px — the date header lines up on the same. */
@@ -127,7 +133,17 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
   );
   return (
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
-      {view === "pack" ? (
+      {view === "heat" ? (
+        <>
+          <span className="inline-flex items-center gap-1.5">
+            Cold
+            <span aria-hidden className="inline-block h-2.5 w-24 rounded-[2px] border border-border-strong/60" style={{ background: HEAT_GRADIENT }} />
+            Hot
+          </span>
+          <span>each duty period and layover, colder the worse it is for you, hotter the better</span>
+          {item(word("---", "text-ink-faint"), "day off")}
+        </>
+      ) : view === "pack" ? (
         <>
           {item(word("1875", "text-leg"), "flight, on the day it leaves")}
           {item(word("D/H", "text-deadhead"), "deadhead")}
@@ -157,12 +173,12 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
           {item(word("---", "text-ink-faint"), "day off")}
         </>
       )}
-      <span>{hint}</span>
+      <span>{view === "heat" ? `Point at a piece for why. ${hint}` : hint}</span>
     </div>
   );
 }
 
-/** The pilot's switch between the two strips. */
+/** The pilot's switch between the strips. */
 export function StripViewToggle({ view, onChange }: { view: StripViewMode; onChange: (view: StripViewMode) => void }) {
   const group = useId();
   const option = (value: StripViewMode, label: string) => (
@@ -181,6 +197,7 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
     <div role="radiogroup" aria-label="How lines are shown" className="inline-flex shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
       {option("timeline", "Timeline")}
       {option("pack", "Bid pack")}
+      {option("heat", "Heat Map")}
     </div>
   );
 }
@@ -323,7 +340,7 @@ function NumberColumns({ rows, className, label, value, cells = "" }: { rows: [s
 }
 
 /** Which strip, and what it draws. */
-export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline };
+export type StripView = { kind: "pack"; days: PackDay[] } | { kind: "timeline"; timeline: LineTimeline } | { kind: "heat"; timeline: LineTimeline; heat: LineHeat };
 
 /** The same eight numbers the pack prints left of a line, in words a pilot reads at a glance. */
 function SpelledNumbers({ line }: { line: Line }) {
@@ -340,6 +357,8 @@ function SpelledNumbers({ line }: { line: Line }) {
 const DAY_MIN = 24 * 60;
 /** The Timeline strip's rows, px from its top: the trips' numbers, their cards, the route, its flight-number lanes over it and city lanes under it. */
 const RT = { height: 71, header: 9, card: 11, route: 46, flightLanes: [41, 31, 21], cityLanes: [57, 66] };
+/** The Heat Map's: the same, with a band of heat in place of the route line (`band`: its top and height). */
+const HT = { height: 76, header: 9, card: 11, route: 45, band: [39, 12] as const, flightLanes: [36, 27, 19], cityLanes: [61, 70] };
 const LEG_COLOR: Record<TimelineLeg["kind"], string> = {
   flight: "var(--color-leg)",
   deadhead: "var(--color-deadhead)",
@@ -355,7 +374,8 @@ const MONO_ADVANCE = 0.616;
  * layover a green stretch as long as it lasts with its city under it, each wait at an airport between legs a thin line.
  * The pack's "---" on each day off. Words sit in lanes and never touch (`laneLabels`).
  */
-function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
+function RouteDays({ columns, timeline, layout, heat }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout; heat?: LineHeat }) {
+  const G = heat ? HT : RT;
   const width = layout.daysPx;
   const total = columns.length * DAY_MIN;
   const x = (m: number) => (Math.min(Math.max(m, 0), total) / total) * width;
@@ -367,9 +387,9 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
 
   const cards = routes.map((r) => ({ left: x(r.trip.start), right: Math.max(x(r.trip.end), x(r.trip.start) + 6), trip: r.trip }));
   const flights = routes.flatMap((r) => r.legs.map((l) => ({ ...l, at: (x(l.start) + x(l.end)) / 2, width: l.label.length * charPx })));
-  const flightSpots = laneLabels(flights, RT.flightLanes.length, width);
+  const flightSpots = laneLabels(flights, G.flightLanes.length, width);
   const stays = routes.flatMap((r) => r.stays.map((s) => ({ ...s, at: (x(s.start) + x(s.end)) / 2, width: s.city.length * charPx })));
-  const citySpots = laneLabels(stays, RT.cityLanes.length, width);
+  const citySpots = laneLabels(stays, G.cityLanes.length, width);
   // Each trip's number and its credit from its card's left edge: a crowded one moves along rather than covering the one
   // before. The credit only where it has room before the next card, as the pack strip says just the number of a day
   // trip with another the next day: on a phone, a run of day trips' "31 6:24"s pushed the next trip's number days off
@@ -387,33 +407,37 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
   const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
 
   return (
-    <div className="relative" style={{ height: RT.height, width: layout.mode === "fit" ? undefined : width }}>
+    <div className="relative" style={{ height: G.height, width: layout.mode === "fit" ? undefined : width }}>
       {/* The days behind: the pack's week lines, weekends shaded, next month faint. */}
       <div className="absolute inset-0 grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
         {columns.map((c, i) => (
           <div key={i} className={columnClass(c)} />
         ))}
       </div>
-      <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={RT.height} aria-hidden>
+      <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={G.height} aria-hidden>
         {offDays.map((d) => {
           const cx = (d + 0.5) * colPx;
           if (cards.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
           return (
-            <text key={`o${d}`} x={cx} y={RT.route + 3} textAnchor="middle" fontSize={font} fill="var(--color-ink-faint)">
+            <text key={`o${d}`} x={cx} y={G.route + 3} textAnchor="middle" fontSize={font} fill="var(--color-ink-faint)">
               ---
             </text>
           );
         })}
         {cards.map((c, i) => (
-          <rect key={`c${i}`} x={c.left} y={RT.card} width={c.right - c.left} height={RT.height - RT.card - 1} rx={5} fill="var(--color-surface-raised)" stroke="var(--color-border-strong)">
+          <rect key={`c${i}`} x={c.left} y={G.card} width={c.right - c.left} height={G.height - G.card - 1} rx={5} fill="var(--color-surface-raised)" stroke="var(--color-border-strong)">
             <title>{`Trip ${c.trip.number ?? ""} · ${formatHoursValue(c.trip.creditHours)} credit · ${c.trip.days} days`}</title>
           </rect>
         ))}
         {routes.flatMap((r, i) =>
-          r.waits.map((w, k) => <line key={`w${i}-${k}`} x1={x(w.start)} x2={x(w.end)} y1={RT.route} y2={RT.route} stroke="var(--color-ink-faint)" strokeWidth={1} />)
+          r.waits.map((w, k) => <line key={`w${i}-${k}`} x1={x(w.start)} x2={x(w.end)} y1={G.route} y2={G.route} stroke="var(--color-ink-faint)" strokeWidth={1} />)
         )}
+        {heat ? (
+          <HeatBand pieces={heat.pieces} x={x} />
+        ) : (
+          <>
         {stays.map((s, i) => (
-          <line key={`s${i}`} x1={x(s.start) + 1} x2={Math.max(x(s.start) + 2, x(s.end) - 1)} y1={RT.route} y2={RT.route} stroke="var(--color-layover)" strokeWidth={4} strokeLinecap="round" opacity={0.85}>
+          <line key={`s${i}`} x1={x(s.start) + 1} x2={Math.max(x(s.start) + 2, x(s.end) - 1)} y1={G.route} y2={G.route} stroke="var(--color-layover)" strokeWidth={4} strokeLinecap="round" opacity={0.85}>
             <title>{`Layover in ${s.city}, ${Math.round(s.hours)}h`}</title>
           </line>
         ))}
@@ -424,24 +448,27 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
           return (
             <g key={`l${i}`} stroke={color}>
               <title>{`${l.label} ${l.from}–${l.to}`}</title>
-              <line x1={a} x2={b} y1={RT.route} y2={RT.route} strokeWidth={2} strokeDasharray={l.kind === "deadhead" ? "3 2" : undefined} />
-              <line x1={a} x2={a} y1={RT.route - 3} y2={RT.route + 3} strokeWidth={1.5} />
-              <line x1={b} x2={b} y1={RT.route - 3} y2={RT.route + 3} strokeWidth={1.5} />
+              <line x1={a} x2={b} y1={G.route} y2={G.route} strokeWidth={2} strokeDasharray={l.kind === "deadhead" ? "3 2" : undefined} />
+              <line x1={a} x2={a} y1={G.route - 3} y2={G.route + 3} strokeWidth={1.5} />
+              <line x1={b} x2={b} y1={G.route - 3} y2={G.route + 3} strokeWidth={1.5} />
             </g>
           );
         })}
+          </>
+        )}
+        {/* On the Heat Map the words are plain ink: the colour belongs to the heat. */}
         {flights.map((l, i) => (
-          <text key={`f${i}`} x={flightSpots[i].x} y={RT.flightLanes[flightSpots[i].lane]} fontSize={font} fontWeight={500} fill={LEG_COLOR[l.kind]}>
+          <text key={`f${i}`} x={flightSpots[i].x} y={G.flightLanes[flightSpots[i].lane]} fontSize={font} fontWeight={500} fill={heat ? (l.kind === "flight" ? "var(--color-ink)" : "var(--color-ink-muted)") : LEG_COLOR[l.kind]}>
             {l.label}
           </text>
         ))}
         {stays.map((s, i) => (
-          <text key={`t${i}`} x={citySpots[i].x} y={RT.cityLanes[citySpots[i].lane]} fontSize={font} fontWeight={600} fill="var(--color-layover)">
+          <text key={`t${i}`} x={citySpots[i].x} y={G.cityLanes[citySpots[i].lane]} fontSize={font} fontWeight={600} fill={heat ? "var(--color-ink)" : "var(--color-layover)"}>
             {s.city}
           </text>
         ))}
         {headers.map((h, i) => (
-          <text key={`h${i}`} x={h.left} y={RT.header} fontSize={headerFont}>
+          <text key={`h${i}`} x={h.left} y={G.header} fontSize={headerFont}>
             <tspan fontWeight={600} fill="var(--color-ink)">
               {h.number}
             </tspan>
@@ -450,6 +477,27 @@ function RouteDays({ columns, timeline, layout }: { columns: PackColumn[]; timel
         ))}
       </svg>
     </div>
+  );
+}
+
+/**
+ * The Heat Map's band: each duty period and layover a block of its heat colour, as long as it lasts, a hairline of the
+ * card between them so two the same colour still read as two. Pointing at one says why.
+ */
+function HeatBand({ pieces, x }: { pieces: HeatPiece[]; x: (m: number) => number }) {
+  const [top, height] = HT.band;
+  return (
+    <g>
+      {pieces.map((p, i) => {
+        const a = x(p.start);
+        const w = Math.max(1.5, x(p.end) - a);
+        return (
+          <rect key={i} x={a} y={top} width={w} height={height} fill={heatColor(p.heat)} stroke="var(--color-surface-raised)" strokeWidth={0.75} rx={1.5}>
+            <title>{heatPieceText(p)}</title>
+          </rect>
+        );
+      })}
+    </g>
   );
 }
 
@@ -478,7 +526,10 @@ interface BidPackStripProps {
 }
 
 export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false }: BidPackStripProps) {
-  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""} — ${open ? "hide" : "show"} everything about it`;
+  const heatSaid = view.kind === "heat" ? sharePercents(view.heat.share) : null;
+  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""}${
+    heatSaid && heatSaid.hot + heatSaid.mild + heatSaid.cold ? `, trips ${heatSaid.hot}% hot, ${heatSaid.mild}% mild, ${heatSaid.cold}% cold` : ""
+  } — ${open ? "hide" : "show"} everything about it`;
   const k = layout.textScale;
   // On a phone the ring stops growing at 150% text: at 200% it took the room "LINE 2295" and the numbers needed.
   const ring = Math.round(layout.stacked ? 34 * Math.min(k, 1.5) : 38 * k);
@@ -509,10 +560,15 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         </div>
         {view.kind === "pack" ? <Numbers line={line} /> : <SpelledNumbers line={line} />}
       </div>
+      {view.kind === "heat" && <HeatShareLine share={view.heat.share} label="Trips" className="mt-1 basis-full" />}
     </div>
   );
   const drawn =
-    view.kind === "pack" ? <Days columns={columns} days={view.days} layout={layout} /> : <RouteDays columns={columns} timeline={view.timeline} layout={layout} />;
+    view.kind === "pack" ? (
+      <Days columns={columns} days={view.days} layout={layout} />
+    ) : (
+      <RouteDays columns={columns} timeline={view.timeline} layout={layout} heat={view.kind === "heat" ? view.heat : undefined} />
+    );
   const chevron = <ChevronDownIcon className={`h-4 w-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />;
 
   if (layout.stacked || layout.mode === "scroll") {

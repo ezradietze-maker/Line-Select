@@ -21,6 +21,7 @@ import { BidPackStrip, type StripLayout } from "@/components/results/BidPackStri
 import { ChevronDownIcon, GripIcon, StarIcon } from "@/components/ui/icons";
 import { Tabs } from "@/components/ui/Tabs";
 import { buildPackRow, type PackColumn } from "@/lib/bidpack-row";
+import { lineHeat, tripHeatsOf, type HeatModel, type TripHeat } from "@/lib/line-heat";
 import { buildLineTimeline } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
@@ -126,8 +127,10 @@ interface LineCardProps {
   /** The pack's day columns and how the list lays its strips out — the same for every line, so they line up. */
   packColumns: PackColumn[];
   stripLayout: StripLayout;
-  /** Which strip the list draws: the pack's own, or the Timeline. */
+  /** Which strip the list draws: the pack's own, the Timeline, or the Heat Map. */
   stripView: StripViewMode;
+  /** The pilot's heat reading on this pack (`heatModelOf`), while the Heat Map is showing. */
+  heatModel?: HeatModel | null;
   /** Whether everything about the line is showing under its strip. */
   open: boolean;
   /** The pilot swapped this line into its place (see `BidPackStrip`'s tag). */
@@ -151,6 +154,7 @@ export const LineCard = memo(function LineCard({
   packColumns,
   stripLayout,
   stripView,
+  heatModel = null,
   open,
   placedByYou = false,
   actions,
@@ -176,13 +180,15 @@ export const LineCard = memo(function LineCard({
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: line.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: line.id });
 
-  const view = useMemo(
-    () =>
-      stripView === "pack"
-        ? ({ kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const)
-        : ({ kind: "timeline", timeline: buildLineTimeline(line, { bidPeriodStart, bidPeriodDays, base: homeBase }, packColumns.length) } as const),
-    [stripView, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length]
-  );
+  const view = useMemo(() => {
+    if (stripView === "pack") return { kind: "pack", days: buildPackRow(line, bidPeriodStart, bidPeriodDays, packColumns.length) } as const;
+    const pack = { bidPeriodStart, bidPeriodDays, base: homeBase };
+    const timeline = buildLineTimeline(line, pack, packColumns.length);
+    // The Heat Map once the pilot's reading is ready; the Timeline under it until then.
+    return stripView === "heat" && heatModel ? ({ kind: "heat", timeline, heat: lineHeat(line, pack, heatModel) } as const) : ({ kind: "timeline", timeline } as const);
+  }, [stripView, heatModel, line, bidPeriodStart, bidPeriodDays, homeBase, packColumns.length]);
+  // On the Heat Map, what opens under the strip is coloured the same way, trip by trip.
+  const tripHeats = useMemo(() => (view.kind === "heat" ? tripHeatsOf(view.heat) : null), [view]);
   const grip = draggable ? (
     <button
       ref={setDragRef}
@@ -261,6 +267,7 @@ export const LineCard = memo(function LineCard({
               setActiveTab={setActiveTab}
               showEveryDimension={showEveryDimension}
               setShowEveryDimension={setShowEveryDimension}
+              heat={tripHeats}
             />
           </motion.div>
         )}
@@ -283,6 +290,7 @@ function LineDetails({
   setActiveTab,
   showEveryDimension,
   setShowEveryDimension,
+  heat,
 }: {
   line: Line;
   details: LineCardDetails;
@@ -296,6 +304,8 @@ function LineDetails({
   setActiveTab: Dispatch<SetStateAction<DetailTab>>;
   showEveryDimension: boolean;
   setShowEveryDimension: Dispatch<SetStateAction<boolean>>;
+  /** The Heat Map trip by trip, while it's showing. */
+  heat: Map<number, TripHeat> | null;
 }) {
   const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra } = details;
   const reduceMotion = useReducedMotion();
@@ -527,6 +537,7 @@ function LineDetails({
                 bidPeriodDays={bidPeriodDays}
                 cityPreferences={marks}
                 departureOptions={departureOptions}
+                heat={heat}
               />
             )}
           </div>
@@ -567,7 +578,7 @@ function LineDetails({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} />
+                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} heat={heat} />
                 ))}
 
               {activeTab === "breakdown" && (

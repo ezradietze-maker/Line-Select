@@ -4,6 +4,8 @@ import { useInView } from "motion/react";
 import { memo, useMemo, useState } from "react";
 import { BedIcon } from "@/components/ui/icons";
 import { CalendarDayBars } from "@/components/results/CalendarDayBars";
+import { HeatKey, heatOfTrips, heatPiecesOn, HeatReasons, type HeatOf } from "@/components/results/HeatReasons";
+import type { TripHeat } from "@/lib/line-heat";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { CreditHours, Zone } from "@/components/results/TripMarks";
 import { ColorKey } from "@/components/results/ColorKey";
@@ -197,6 +199,7 @@ function Cell({
   stayLabeled,
   cityPreferences,
   mode,
+  heatOf,
 }: {
   day: DetailedDay;
   selected: boolean;
@@ -209,6 +212,7 @@ function Cell({
   stayLabeled: (s: TimelineSegment) => boolean;
   cityPreferences?: Record<string, CityMark>;
   mode: TimeMode;
+  heatOf?: HeatOf;
 }) {
   const isOff = day.kind === "off";
   const standby = day.flights.find((f) => f.kind === "standby");
@@ -261,6 +265,7 @@ function Cell({
           top={report}
           bleed={CELL_BLEED}
           zulu={mode === "zulu"}
+          heatOf={heatOf}
         />
       ) : (
         !isOff && <span className="flex h-[11px] items-center overflow-hidden">{report}</span>
@@ -435,7 +440,9 @@ function SpillList({ spill, offDay, mode }: { spill: NonNullable<DetailedDay["sp
   );
 }
 
-function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
+function DayDetail({ day, mode, heatOf }: { day: DetailedDay; mode: TimeMode; heatOf?: HeatOf }) {
+  // The Heat Map's reasons for each duty period and layover drawn on the day, first: what a tap is for there.
+  const heatPieces = heatPiecesOn([...(day.spill?.segments ?? []), ...(day.kind === "off" ? [] : day.segments)], heatOf);
   return (
     <div className="mt-2 rounded-lg border border-hairline bg-canvas/70 p-3 text-xs leading-relaxed text-ink-muted" aria-live="polite">
       <div className="flex items-center gap-1.5 font-medium text-ink">
@@ -448,6 +455,7 @@ function DayDetail({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
           </span>
         )}
       </div>
+      <HeatReasons pieces={heatPieces} className="mt-1.5 border-b border-hairline pb-2" />
       {day.kind === "off" ? (
         <>
           <p className="mt-1">
@@ -655,6 +663,8 @@ interface MiniLinePreviewProps {
   departureOptions?: MonthDepartureOptions;
   /** Just the month (the interview's line cards): its four or five weeks, no carry-over days, no summary or legend under it. */
   compact?: boolean;
+  /** The Heat Map, trip by trip (`tripHeatsOf`): the days' duty periods and layovers in their heat colours. */
+  heat?: Map<number, TripHeat> | null;
 }
 
 export const MiniLinePreview = memo(function MiniLinePreview({
@@ -666,6 +676,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   departureOptions,
   compact = false,
   homeBaseOffsetMinutes = null,
+  heat = null,
 }: MiniLinePreviewProps) {
   const [chosenMode, setMode] = useTimeMode();
   // The interview's small line cards stay on the base's calendar.
@@ -694,6 +705,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
 
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
+  const heatOfDay = (day: DetailedDay) => heatOfTrips(heat, day.tripIndex, day.spill ? { trip: day.spill.tripIndex, segments: day.spill.segments } : null);
 
   return (
     <div>
@@ -705,7 +717,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
           <TimeModeToggle mode={mode} onChange={setMode} />
         </div>
       )}
-      {!compact && <ColorKey variant="calendar" className="mb-1.5" />}
+      {!compact && (heat ? <HeatKey className="mb-1.5" /> : <ColorKey variant="calendar" className="mb-1.5" />)}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
         {month.weekdayHeaders && (
@@ -728,13 +740,14 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               stayLabeled={stayLabeled}
               cityPreferences={cityPreferences}
               mode={mode}
+              heatOf={heatOfDay(day)}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
           ))}
         </div>
       </div>
 
-      {selectedDay ? <DayDetail day={selectedDay} mode={mode} /> : <p className="mt-1.5 text-2xs text-ink-faint print:hidden">Tap a day for everything on it.</p>}
+      {selectedDay ? <DayDetail day={selectedDay} mode={mode} heatOf={heatOfDay(selectedDay)} /> : <p className="mt-1.5 text-2xs text-ink-faint print:hidden">Tap a day for everything on it.</p>}
 
       {!compact && <Summary s={month.summary} line={line} bodyClock={bodyClock} />}
 
