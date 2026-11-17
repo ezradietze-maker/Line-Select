@@ -1389,6 +1389,41 @@ html.theme-sweep::view-transition-new(root) {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* An opened line runs over several sheets: kept whole, it was moved past the sheet it starts on and left that one
+     blank under the page's title. Its strip is still kept whole. */
+  [id^="line-"]:has(button[aria-expanded="true"]) {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+  [id^="line-"] > .panel-glass > :first-child {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  /* A dialog open when the page is printed is what's printed, whole and on its own: drawn over the page, it came out
+     on every sheet, cut off at the height the screen gave it, over the lines under it. */
+  body:has(> [data-modal]) > :not([data-modal]) {
+    display: none !important;
+  }
+  [data-modal] {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: none !important;
+  }
+  [data-modal] [role="dialog"] {
+    max-width: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    /* Its calendars as drawn, as a line's are: without, Compare's months printed as loose city names. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  [data-modal] [role="dialog"] > div {
+    max-height: none !important;
+    overflow: visible !important;
+  }
   /* A line's strip and its key printed as drawn: browsers leave backgrounds off the sheet unless asked, and the top
      line's score — sign yellow on its black panel — printed yellow on white, the trip days lost their wash, and a
      held-down score its red bar. */
