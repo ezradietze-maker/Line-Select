@@ -199,9 +199,10 @@ export function PhoneNav({
             role="dialog"
             aria-modal="true"
             aria-label="More"
-            // No taller than the screen, and scrolls: on a phone held sideways its top half (View/Add to Pay check) was
-            // above the screen's edge, out of reach.
-            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 max-h-full overflow-y-auto overscroll-contain rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
+            // Shorter than the screen, and scrolls: on a phone held sideways its top half (View/Add to Pay check) was
+            // above the screen's edge, out of reach. The strip left above it is the shade, a tap there closes the sheet:
+            // as tall as the screen, it covered the shade and the More tab, and nothing on it closed it.
+            className="sidebar-scheme animate-sheet-up absolute inset-x-0 bottom-0 max-h-[calc(100%-3rem)] overflow-y-auto overscroll-contain rounded-t-[10px] border-t border-sidebar-border bg-sidebar px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-2 shadow-elevated-lg"
           >
             <div aria-hidden className="mx-auto mb-3 h-1 w-10 rounded-full bg-sidebar-border" />
             <div className="mb-2 px-1 text-2xs font-medium text-ink-faint">More</div>

@@ -159,7 +159,13 @@ export function AppearanceMenu() {
         ref={buttonRef}
         id={`${panelId}-button`}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={(e) => {
+          // Where the icon rail's panel stands: measured, as the rail may be scrolled (see the panel below).
+          const r = e.currentTarget.getBoundingClientRect();
+          ref.current?.style.setProperty("--pop-x", `${r.left}px`);
+          ref.current?.style.setProperty("--pop-y", `${r.bottom}px`);
+          setOpen((o) => !o);
+        }}
         aria-expanded={open}
         aria-haspopup="dialog"
         aria-controls={open ? panelId : undefined}
@@ -174,12 +180,13 @@ export function AppearanceMenu() {
 
       {open && (
         // A small panel of two sets of choices, not a menu: it held radio groups, which a menu can't, so a screen reader
-        // announced choices it then wouldn't let the arrows reach.
+        // announced choices it then wouldn't let the arrows reach. On the icon rail it stands out past the rail's edge, so
+        // it's `fixed` under the button: the rail scrolls on a short window, and would cut off a panel inside it.
         <div
           id={panelId}
           role="dialog"
           aria-labelledby={`${panelId}-title`}
-          className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:left-0 rail-collapsed:right-auto animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg"
+          className="absolute right-0 top-full z-40 mt-2 w-52 rail-collapsed:fixed rail-collapsed:right-auto rail-collapsed:left-[var(--pop-x)] rail-collapsed:top-[var(--pop-y)] animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg"
         >
           <div className="border-b border-border px-4 py-3">
             <div id={`${panelId}-title`} className="text-sm font-medium text-ink">
