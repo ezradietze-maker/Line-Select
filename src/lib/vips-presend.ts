@@ -7,6 +7,7 @@ import type { RankedReserveLine } from "@/lib/reserve-rank";
 import type { LineScore } from "@/lib/scoring";
 import { computeStanding, type Band } from "@/lib/strategy-engine";
 import { ANY_LINE_CODES, type AnyLineKind, type VipsBidAnswers, type VipsBidDraft } from "@/lib/vips-bid";
+import { sameAircraft, seatWords, type VipsHeader } from "@/lib/vips-header";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -53,6 +54,8 @@ export interface PresendInput {
   /** The answers so far, and what the rankings were scored with when the pilot has a carry-in. */
   answers?: VipsBidDraft;
   carryInElections?: PhaseInElections | null;
+  /** What the pilot copied from the top of VIPS's bid page, when they did (`parseVipsHeader`). */
+  vipsHeader?: VipsHeader | null;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -286,6 +289,58 @@ function seniorityMismatchCheck({ bidPack, seniority }: PresendInput): PresendCh
   };
 }
 
+// ---------------------------------------------------------------- against what VIPS says
+
+/**
+ * The pilot's copy of VIPS's own header, against the pack the order came from. A different domicile, fleet or seat means
+ * these line numbers belong to another bid, so it stops; pay purposes and a changed place on the list are said as notes;
+ * a list shorter than the pilots bidding ahead of the pilot is said with the numbers.
+ */
+export function vipsHeaderChecks({ bidPack, vipsHeader: h, lineNumbers, anyLines, seniority }: PresendInput): PresendCheck[] {
+  if (!h) return [];
+  const out: PresendCheck[] = [];
+  const differs: string[] = [];
+  if (h.base && h.base !== bidPack.base) differs.push(`domicile ${h.base}`);
+  if (h.aircraft && !sameAircraft(h.aircraft, bidPack.aircraft)) differs.push(`fleet ${h.aircraft}`);
+  if (h.seat && h.seat !== bidPack.seat) differs.push(seatWords(h.seat));
+  if (differs.length) {
+    out.push({
+      id: "vips-other-bid",
+      level: "stop",
+      message: `VIPS says you're bidding ${differs.join(", ")}, but this order is from the ${bidPack.base} ${bidPack.aircraft} ${seatWords(bidPack.seat)} pack. Its line numbers belong to a different bid: load the right pack first.`,
+    });
+  }
+  if (h.purpose === "pay") {
+    out.push({
+      id: "vips-pay",
+      level: "info",
+      message: "VIPS says you're bidding for pay purposes, so you're pay-only this month and your bid seniority may differ from the pack's list (CBA 25.C.7).",
+    });
+  }
+  if (h.position) {
+    const { number, of } = h.position;
+    // The pack's place for the pilot: an exact one, not a band ("upper third") or a number between two on the list.
+    const own = bidPack.seniorityList?.length && seniority && seniority.source !== "band" && seniority.source !== "between" ? seniority : null;
+    if (own && own.rank !== number) {
+      out.push({
+        id: "vips-place",
+        level: "info",
+        message: `VIPS has you ${number} of ${of}; the pack's list had you ${own.rank} of ${own.totalPilots}. VIPS's number is today's, so your odds here use it.`,
+      });
+    }
+    const ahead = number - 1;
+    if (lineNumbers.length < ahead) {
+      const covered = anyLines.length > 0;
+      out.push({
+        id: "vips-short-list",
+        level: covered ? "info" : "warn",
+        message: `${plural(ahead, "pilot")} ${ahead === 1 ? "bids" : "bid"} before you, and you list ${plural(lineNumbers.length, "line")}. ${covered ? "Your catch-all covers you if they're all taken." : "Add more lines, or end with a catch-all."}`,
+      });
+    }
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------- order sanity
 
 function orderChecks({ lineScores, leftOut }: PresendInput): PresendCheck[] {
@@ -335,6 +390,7 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
   const checks = [
     ...timingChecks(input),
     seniorityMismatchCheck(input),
+    ...vipsHeaderChecks(input),
     runOutCheck(input),
     catchAllCheck(input),
     answersDifferCheck(input),
@@ -355,7 +411,8 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
 export function fullBidOrder(lineNumbers: string[], anyLines: AnyLineKind[], reserveLines: string[]): string[] {
   const named = (kinds: AnyLineKind[]) => kinds.filter((k) => anyLines.includes(k)).map((k) => ANY_LINE_CODES[k]);
   const seen = new Set<string>();
-  return [...lineNumbers, ...named(["regular", "secondary"]), ...reserveLines, ...named(["reserve"])].filter((n) => {
+  // A highest-paid ending is a regular line too, so it goes with "any regular line", before it.
+  return [...lineNumbers, ...named(["highestPaid", "highestPaidNoCarryOver", "regular", "secondary"]), ...reserveLines, ...named(["reserve"])].filter((n) => {
     const key = n.trim();
     if (seen.has(key)) return false;
     seen.add(key);
