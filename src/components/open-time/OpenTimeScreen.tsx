@@ -27,7 +27,7 @@ import { tripKey } from "@/lib/view-add";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
-import { dayTripsOf } from "@/lib/trip-anchor";
+import { dayTripsOf, tripDaysShown } from "@/lib/trip-anchor";
 
 /** Each up to four questions to the flight server: enough to decide on, and a list of hundreds shouldn't run up the boards. */
 const COMMUTE_TRIPS = 30;
@@ -60,7 +60,7 @@ const tripLabel = (t: Trip) => `Trip ${t.pairingNumber ?? "?"}`;
 function tripFacts(t: OpenTrip): string {
   const date = t.date ? DateTime.fromISO(t.date, { zone: "utc" }).toFormat("LLL d") : "No date";
   const cities = t.trip.layoverCities.length ? t.trip.layoverCities.join(" ") : "no layover";
-  return `${date} · ${plural(t.trip.days, "day")} · ${hm(t.trip.creditHours)} CH · ${cities}`;
+  return `${date} · ${plural(tripDaysShown(t.trip), "day")} · ${hm(t.trip.creditHours)} CH · ${cities}`;
 }
 
 function capitalised(text: string): string {
