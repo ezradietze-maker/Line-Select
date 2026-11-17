@@ -14,7 +14,7 @@ import type { UserAccount } from "@/types/auth";
  */
 
 /** Master switch. true = the whole app is free for everyone (today). false = enforce the Free/Pro model below. */
-export const FREE_FOR_ALL = true;
+export const FREE_FOR_ALL = false;
 
 /** How many of their best-ranked lines a pilot with no membership sees on Results; the rest need a membership. */
 export const FREE_PREVIEW_LINES = 10;
@@ -34,7 +34,7 @@ export const FREE_MEMBER_CAP = 15;
  * Accounts created before this are grandfathered: full access, no slot used. Set it to the go-live moment when you
  * flip `FREE_FOR_ALL` to false, so every existing pilot keeps access and only genuinely new sign-ups face the cap.
  */
-export const MEMBERSHIP_CUTOVER = "2026-12-01T00:00:00Z";
+export const MEMBERSHIP_CUTOVER = "2026-11-18T00:00:00Z";
 
 export type MembershipTier = "grandfathered" | "pro" | "free" | "locked";
 

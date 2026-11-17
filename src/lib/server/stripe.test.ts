@@ -16,9 +16,9 @@ describe("planForStatus", () => {
 });
 
 describe("hasProAccess", () => {
-  it("gives every signed-in or signed-out pilot access while free equals pro", () => {
-    expect(hasProAccess(null)).toBe(true);
-    expect(hasProAccess({ plan: "free" })).toBe(true);
+  it("is true only for a pro plan, now that memberships are enforced", () => {
+    expect(hasProAccess(null)).toBe(false);
+    expect(hasProAccess({ plan: "free" })).toBe(false);
     expect(hasProAccess({ plan: "pro" })).toBe(true);
   });
 });

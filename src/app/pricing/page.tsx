@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useAppState } from "@/lib/app-state";
 import { MEMBERSHIP_PRICE } from "@/lib/billing";
-import { isSamplePack } from "@/lib/fake-trade-offers";
+import { FREE_MEMBER_CAP, FREE_PREVIEW_LINES } from "@/lib/membership";
 
-const FREE_FEATURES = [
+/** What a membership (free spot or Pro, the same app) unlocks. */
+const MEMBER_FEATURES = [
   "The full adaptive preference interview",
   "Every line in your bid pack scored against your own Satisfaction Index, with a detailed month calendar for each",
   "A bid forecast: your chance at every line, from where your seniority number puts you in bid order",
@@ -28,22 +29,24 @@ export default function PricingPage() {
         title="Pricing"
         description={
           <>
-            Line Select is free today. Everything below is a working feature, not a trial. (With the sample pack, the Trade
-            Board shows clearly marked example offers.)
+            One membership, two ways in: one of the first {FREE_MEMBER_CAP} free spots, or Pro at {MEMBERSHIP_PRICE} with
+            your first month free. Both unlock everything below. Without one you can still take the interview and see your
+            top {FREE_PREVIEW_LINES} lines.
           </>
         }
       />
 
-      {/* The plan you're on: lit in amber, not the grey of something switched off. */}
+      {/* Pro, the paid way in, lit in amber. */}
       <div className="panel-glass relative mt-6 overflow-hidden p-5 sm:p-6">
         <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
         <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-ink">Free</h2>
-          <span className="font-mono text-lg font-semibold text-accent">$0</span>
+          <h2 className="text-lg font-semibold text-ink">Pro</h2>
+          {/* As the Membership page and Stripe's checkout have it (`MembershipScreen`, `TRIAL_DAYS`). */}
+          <span className="font-mono text-lg font-semibold text-accent">{MEMBERSHIP_PRICE}</span>
         </div>
         <ul className="mt-4 space-y-2">
           {/* Each one ticked off in turn, the way the bid checklist ticks. */}
-          {FREE_FEATURES.map((f, i) => (
+          {MEMBER_FEATURES.map((f, i) => (
             <li key={f} className="flex gap-2.5 text-sm text-ink">
               <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-good" fill="none" stroke="currentColor" strokeWidth={3} aria-hidden>
                 <path className="tick-draw" style={{ animationDelay: `${200 + i * 110}ms` }} strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -52,37 +55,29 @@ export default function PricingPage() {
             </li>
           ))}
         </ul>
+        <p className="mt-4 text-sm text-ink-muted">Your first month is free. Cancel any time from Membership, in your account menu.</p>
         <div className="mt-5">
-          {/* The page's words are in the server's HTML; what to offer waits for the pilot's pack and account, or a
-              signed-in pilot was offered the sample for a moment. */}
+          {/* The page's words are in the server's HTML; what to offer waits for the pilot's account. */}
           {!ready ? (
             <div aria-hidden data-pricing-placeholder className="skeleton-pulse h-[42px] w-52 rounded-md bg-border" />
-          ) : bidPack && !user && isSamplePack(bidPack) ? (
-            // An account doesn't keep the sample pack, so there's no progress on it to save: signing in leads to
-            // uploading their own.
-            <>
-              <Button onClick={() => router.push("/auth")}>Sign in</Button>
-              <p className="mt-2 text-xs leading-relaxed text-ink-faint">The sample pack stays on this device. Once you&rsquo;re signed in, you&rsquo;ll upload your own bid pack.</p>
-            </>
+          ) : user ? (
+            <Button onClick={() => router.push("/membership")}>See membership options</Button>
           ) : bidPack ? (
-            <Button onClick={() => router.push(user ? "/results" : "/auth")}>
-              {user ? "Go to your rankings" : "Sign in to save your progress"}
-            </Button>
+            <Button onClick={() => router.push("/auth")}>Sign in to start your membership</Button>
           ) : (
             <Button onClick={handleTrySample}>Try it with sample data</Button>
           )}
         </div>
       </div>
 
-      <div className="mt-4 rounded-xl border border-border-strong border-dashed bg-canvas p-5 sm:p-6">
+      <div className="mt-4 rounded-xl border border-border-strong bg-canvas p-5 sm:p-6">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold text-ink-faint">Pro</h2>
-          {/* As the Membership page and Stripe's checkout have it (`MembershipScreen`, `TRIAL_DAYS`). */}
-          <span className="text-sm font-medium text-ink-faint">{MEMBERSHIP_PRICE} &middot; first month free</span>
+          <h2 className="text-lg font-semibold text-ink">Free membership</h2>
+          <span className="font-mono text-lg font-semibold text-ink-muted">$0</span>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-ink-faint">
-          Nothing is held back for Pro yet: everything above is free for every pilot. A membership (Membership, in your
-          account menu) starts with a free month the first time.
+        <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+          The first {FREE_MEMBER_CAP} pilots to claim a spot get the same membership as Pro, free. Claim one on the Membership
+          page once your email is confirmed; when they&rsquo;re gone, they&rsquo;re gone.
         </p>
       </div>
 
@@ -91,7 +86,7 @@ export default function PricingPage() {
         <Link href="/how-it-works" className="underline decoration-dotted underline-offset-4 hover:text-ink-muted">
           See how this works
         </Link>
-        , or upload a real bid pack to see the whole product before deciding anything.
+        , or upload your own bid pack and see your top lines before deciding anything.
       </p>
     </div>
   );

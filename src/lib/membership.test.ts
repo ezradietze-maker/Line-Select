@@ -44,11 +44,12 @@ describe("isMember (the enforced check, ignoring the master switch)", () => {
 });
 
 describe("hasAccess", () => {
-  it("while FREE_FOR_ALL is on, everyone has access — even a locked pilot", () => {
-    // Guards the dormant state: shipping this model changes nothing until the switch is flipped.
-    expect(FREE_FOR_ALL).toBe(true);
-    expect(hasAccess(user({ createdAt: AFTER, plan: "free", freeMemberAt: null }))).toBe(true);
-    expect(hasAccess(null)).toBe(true);
+  it("is enforced: a locked pilot or a guest has no access, a member does", () => {
+    // Memberships are live: the master switch is off.
+    expect(FREE_FOR_ALL).toBe(false);
+    expect(hasAccess(user({ createdAt: AFTER, plan: "free", freeMemberAt: null }))).toBe(false);
+    expect(hasAccess(null)).toBe(false);
+    expect(hasAccess(user({ createdAt: AFTER, plan: "pro", freeMemberAt: null }))).toBe(true);
   });
 });
 

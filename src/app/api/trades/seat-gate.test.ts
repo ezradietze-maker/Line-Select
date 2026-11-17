@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
+// These tests are about the route itself, for a pilot with a membership (the gate has its own test).
+vi.mock("@/lib/membership", async (real) => ({ ...(await real<typeof import("@/lib/membership")>()), hasAccess: () => true }));
+
 /**
  * A pilot who flies MD11 FO, with that pack on their account and nothing else, trying every way onto the B777 CAP
  * board: posting to it, answering an offer on it, and saving a holding that names it so that reading it opens up.

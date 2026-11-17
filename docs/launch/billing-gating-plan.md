@@ -1,7 +1,7 @@
 # Billing gating — what a membership unlocks
 
-**Status: decided (17 Nov 2026), dormant.** Nothing is enforced while `FREE_FOR_ALL = true` in
-[`src/lib/membership.ts`](../../src/lib/membership.ts). This replaces the earlier per-feature proposal
+**Status: live** once the go-live change (`FREE_FOR_ALL = false` in
+[`src/lib/membership.ts`](../../src/lib/membership.ts)) is deployed. To pause enforcement, set it back to `true`. This replaces the earlier per-feature proposal
 (`PRO_FEATURES` / `proFeatureRefusal` in `gating.ts`, now unused).
 
 ## The model
