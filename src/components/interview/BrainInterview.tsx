@@ -1527,7 +1527,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       if (!question) return <TryAgain onClick={() => void askNext(exchanges, threads, choices, turn, sweepDone)} />;
       const q = question;
       // What it took from their last answer, said the way a colleague would before asking the next thing.
-      const ack = q.ack ? <p className="animate-fade-in mb-4 text-[15px] leading-relaxed text-ink-muted">{q.ack}</p> : null;
+      const ack = q.ack ? <p className="animate-fade-in mb-4 text-[0.9375rem] leading-relaxed text-ink-muted">{q.ack}</p> : null;
       if (q.tripScreen) {
         const ts = q.tripScreen;
         return (

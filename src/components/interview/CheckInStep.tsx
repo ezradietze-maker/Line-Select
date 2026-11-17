@@ -47,7 +47,7 @@ export function CheckInStep({ model, periodLabel, eyebrow, onContinue, onStartOv
       <QuestionPrompt eyebrow={eyebrow} title={title} help="Everything you told us last time carries over. Tell us what's new and we'll ask a few questions about this month's pack." />
       <RevealControls title={title} className="mt-6">
         <div className="rounded-xl border border-hairline bg-canvas/60 px-4 py-3">
-          <p className="text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
+          <p className="text-[0.9375rem] leading-relaxed text-ink">{model.synopsis}</p>
           <ol className="mt-3 space-y-1 text-sm text-ink-muted">
             {top.map((c, i) => (
               <li key={c.id} className="flex justify-between gap-3">

@@ -178,8 +178,10 @@ function CityCard({ facts: f, base, mark, now, sky, onOpen }: { facts: CityFacts
       </div>
       {/* A card narrower than its words ever are at the usual text size (Safari's bigger text on a laptop): the hours
           from base go under the city and wrap. Kept on one line, "+13h from Memphis" ran out of the card, the page
-          scrolled sideways and the city's name was cut to nothing. */}
-      <div className="mt-0.5 flex items-baseline justify-between gap-2 text-sm @max-[12rem]:flex-wrap">
+          scrolled sideways and the city's name was cut to nothing. On a phone with its text set larger the card was wide
+          enough to keep them on one line, and "Dallas–Fort Worth" was cut to "Dallas–Fort…": they wrap wherever the two
+          don't fit. */}
+      <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-2 text-sm">
         <span className="truncate text-ink-muted">{cityName(f.code)}</span>
         <span className="shrink-0 text-xs text-ink-faint @max-[12rem]:shrink">{namedDomicile(offsetWords(offset), base)}</span>
       </div>

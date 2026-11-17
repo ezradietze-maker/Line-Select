@@ -541,7 +541,8 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
       {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
       {bodyClock && (
-        <div className="min-w-0">
+        // A container, so the badge can put its score under its name in a cell this narrow (see `BodyClockBadge`).
+        <div className="@container min-w-0">
           <dt className="sr-only">Body clock</dt>
           <dd>
             <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />
@@ -705,8 +706,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       )}
       {!compact && <ColorKey variant="calendar" className="mb-1.5" />}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
+        {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-2xs font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}

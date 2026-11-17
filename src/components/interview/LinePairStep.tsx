@@ -31,14 +31,16 @@ interface LinePairStepProps {
 function Differences({ pair }: { pair: LinePairCandidate }) {
   const rows = pair.differences ?? [];
   if (!rows.length) return null;
-  const cell = (on: boolean) => `px-3 py-2 text-right font-mono text-xs tabular-nums ${on ? "font-semibold text-accent" : "text-ink-muted"}`;
+  const cell = (on: boolean) => `px-3 py-2 text-right font-mono text-xs tabular-nums @max-[17rem]:wrap-anywhere ${on ? "font-semibold text-accent" : "text-ink-muted"}`;
   return (
-    <div className="mb-4 overflow-hidden rounded-xl border border-hairline">
-      <table className="w-full text-left">
+    // Narrower than its words (a phone with its text set larger), each row's name goes over its two numbers: three
+    // columns across, the second line's numbers were cut off at the box's edge.
+    <div className="@container mb-4 overflow-hidden rounded-xl border border-hairline">
+      <table className="w-full text-left @max-[17rem]:block">
         <caption className="sr-only">How Line {pair.a} and Line {pair.b} differ on what you&rsquo;ve told us</caption>
-        <thead>
-          <tr className="border-b border-hairline bg-canvas/60">
-            <th scope="col" className="px-3 py-2 text-2xs font-normal text-ink-faint">
+        <thead className="@max-[17rem]:block">
+          <tr className="border-b border-hairline bg-canvas/60 @max-[17rem]:grid @max-[17rem]:grid-cols-2">
+            <th scope="col" className="px-3 py-2 text-2xs font-normal text-ink-faint @max-[17rem]:col-span-2 @max-[17rem]:pb-0">
               Where they differ
             </th>
             <th scope="col" className="px-3 py-2 text-right text-2xs font-normal text-ink-faint">
@@ -49,10 +51,10 @@ function Differences({ pair }: { pair: LinePairCandidate }) {
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="@max-[17rem]:block">
           {rows.map((d) => (
-            <tr key={d.label} className="border-b border-hairline last:border-0">
-              <th scope="row" className="px-3 py-2 text-sm font-normal text-ink">
+            <tr key={d.label} className="border-b border-hairline last:border-0 @max-[17rem]:grid @max-[17rem]:grid-cols-2">
+              <th scope="row" className="px-3 py-2 text-sm font-normal text-ink @max-[17rem]:col-span-2 @max-[17rem]:pb-0">
                 {d.plain ? d.plain.charAt(0).toUpperCase() + d.plain.slice(1) : d.label}
               </th>
               {/* A feature said plainly ("less night flying") is ticked on the line that has it, not measured. */}
