@@ -277,7 +277,7 @@ export function ResultsFilterBar({
           )}
 
           <FilterRow label="Takeoffs">
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-muted">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-muted">
               <label className="flex items-center gap-1.5">
                 None before
                 <TimeInput value={filters.noTakeoffBefore} onChange={(noTakeoffBefore) => onChange({ ...filters, noTakeoffBefore })} />
@@ -413,7 +413,7 @@ export function ResultsFilterBar({
   );
 }
 
-const FIELD = "rounded-md border border-field-edge bg-surface px-2 py-1.5 text-[13px] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none";
+const FIELD = "rounded-md border border-field-edge bg-surface px-2 py-1.5 text-[0.8125rem] text-ink placeholder:text-ink-faint focus:border-brand focus:outline-none";
 
 /** "At least N" chips, offered only when the pack has values that split it. */
 function StepRow({ label, steps, value, suffix = "+", onChange }: { label: string; steps: number[]; value: number; suffix?: string; onChange: (n: number) => void }) {
@@ -438,7 +438,7 @@ function StepRow({ label, steps, value, suffix = "+", onChange }: { label: strin
 function HoursRange({ label, min, max, onChange }: { label: string; min: number; max: number; onChange: (min: number, max: number) => void }) {
   const read = (v: string) => Math.max(0, Number(v) || 0);
   return (
-    <div className="flex items-center gap-1.5 text-[13px] text-ink-muted">
+    <div className="flex items-center gap-1.5 text-[0.8125rem] text-ink-muted">
       <input type="number" inputMode="decimal" min={0} value={min || ""} onChange={(e) => onChange(read(e.target.value), max)} placeholder="Min" aria-label={`Fewest ${label} hours`} className={`${FIELD} w-20`} />
       to
       <input type="number" inputMode="decimal" min={0} value={max || ""} onChange={(e) => onChange(min, read(e.target.value))} placeholder="Max" aria-label={`Most ${label} hours`} className={`${FIELD} w-20`} />
@@ -477,7 +477,7 @@ function CommuteRow({ on, onToggle, commute }: { on: boolean; onToggle: () => vo
         {on && (
           <>
             <p className="text-xs text-ink-muted">Real flights in on each report day and home on each release day, by the dates your pack prints.</p>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-muted">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-muted">
               <label className="flex items-center gap-1.5">
                 Home airport
                 <input
@@ -570,7 +570,7 @@ export function FilterBlameList({ lines, filters, ctx, onChange }: { lines: Line
 function FilterRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
-      <span className="mt-1.5 shrink-0 text-[13px] font-medium text-ink-muted sm:w-24">{label}</span>
+      <span className="mt-1.5 shrink-0 text-[0.8125rem] font-medium text-ink-muted sm:w-24">{label}</span>
       {children}
     </div>
   );
@@ -582,7 +582,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 rounded-[3px] border px-3 py-1.5 text-[13px] font-medium transition-colors ${
+      className={`shrink-0 rounded-[3px] border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
         active
           ? "border-brand bg-brand-soft text-brand"
           : "border-border-strong text-ink-muted hover:border-brand hover:text-brand"

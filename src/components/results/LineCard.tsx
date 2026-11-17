@@ -411,20 +411,30 @@ function LineDetails({
                   </span>
                 )}
                 {" · "}
-                <span className="whitespace-nowrap">
-                  {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
-                </span>
-                {carryOver && (
-                  <span className="whitespace-nowrap text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
-                    {" · "}
-                    {carryOver.creditHours > 0 && (
-                      <>
-                        <CreditHours hours={carryOver.creditHours} /> C/O ·{" "}
-                      </>
-                    )}
-                    {carryOver.days} day{carryOver.days === 1 ? "" : "s"} into {carryOver.month.slice(0, 3)}
+                {/* The landings and what carries into the next month go to the next line together, as one, while they fit
+                    on one; wider than the card (the phone's text set larger), they wrap between their pieces. Kept on one
+                    line regardless, "8:23 C/O · 2 days into Nov" ran off the card. */}
+                <span className="inline-block max-w-full">
+                  <span className="whitespace-nowrap">
+                    {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
                   </span>
-                )}
+                  {carryOver && (
+                    <span className="text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
+                      {" · "}
+                      {carryOver.creditHours > 0 && (
+                        <>
+                          <span className="whitespace-nowrap">
+                            <CreditHours hours={carryOver.creditHours} /> C/O
+                          </span>
+                          {" · "}
+                        </>
+                      )}
+                      <span className="whitespace-nowrap">
+                        {carryOver.days} day{carryOver.days === 1 ? "" : "s"} into {carryOver.month.slice(0, 3)}
+                      </span>
+                    </span>
+                  )}
+                </span>
               </div>
             </div>
             <div className="-my-1.5 -mr-1.5 flex shrink-0 items-center gap-0.5 print:hidden">
@@ -462,8 +472,10 @@ function LineDetails({
 
           {!lineScore.estimated && <TripNumberStrip trips={lineByDay(month).trips} departures={departureGroups} carryOver={carryOver} />}
 
-          {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. */}
-          <div className="mt-3 grid gap-4">
+          {/* The month calendar takes the card's full width: each day lists its flights, and they need the room to read. One
+              column as wide as the card, never wider: sized to its widest words, with the text set larger it ran past the
+              card's edge and cut off the calendar's Sunday, Trip details and the key. */}
+          <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-4">
             <div>
               {chips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -724,7 +736,7 @@ const CHIP_TONE: Record<LineFactChip["tone"], string> = {
 
 function FactChip({ chip }: { chip: LineFactChip }) {
   return (
-    <li className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-3 py-1 text-[13px] ${CHIP_TONE[chip.tone]}`}>
+    <li className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-3 py-1 text-[0.8125rem] ${CHIP_TONE[chip.tone]}`}>
       <span className="font-semibold">{chip.main}</span>
       {chip.note && <span className="font-normal opacity-90">{chip.note}</span>}
     </li>

@@ -7,9 +7,11 @@ import type { ReactNode } from "react";
 export function NotamStrip({ headline, children, className = "" }: { headline: ReactNode; children: ReactNode; className?: string }) {
   return (
     <details className={`group rounded-[4px] border border-warn/35 bg-warn-soft/40 text-sm ${className}`}>
-      <summary className="flex cursor-pointer list-none items-center gap-3 rounded-[4px] px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] [&::-webkit-details-marker]:hidden">
+      {/* "Read more" goes under the headline when the three don't fit on one row: with the phone's text set larger the
+          headline was squeezed to a word a line and ran into it. */}
+      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-[4px] px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] [&::-webkit-details-marker]:hidden">
         <span className="shrink-0 rounded-[2px] bg-sign px-1.5 py-px font-display text-2xs font-bold text-on-sign">Notam</span>
-        <span className="min-w-0 flex-1 font-medium text-warn">{headline}</span>
+        <span className="min-w-[min(100%,8rem)] flex-1 font-medium text-warn">{headline}</span>
         <span className="shrink-0 text-xs text-ink-muted underline decoration-dotted underline-offset-4">
           <span className="group-open:hidden">Read more</span>
           <span className="hidden group-open:inline">Less</span>

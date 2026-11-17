@@ -67,7 +67,7 @@ export function ThinkingPanel({ lastExchange, briefing }: { lastExchange?: LastE
         >
           <p className="mb-1.5 max-w-[85%] truncate text-right text-xs text-ink-faint">{lastExchange.question}</p>
           {/* Wraps anywhere: a long unbroken answer (a link, a run of airport codes) ran past the panel and was cut off on a phone. */}
-          <div className="max-w-[85%] rounded-[4px] border border-border border-r-[3px] border-r-accent bg-panel px-4 py-2.5 text-[15px] leading-relaxed text-ink wrap-anywhere">
+          <div className="max-w-[85%] rounded-[4px] border border-border border-r-[3px] border-r-accent bg-panel px-4 py-2.5 text-[0.9375rem] leading-relaxed text-ink wrap-anywhere">
             {lastExchange.answer}
             {lastExchange.elaboration && <span className="mt-1 block text-sm italic text-ink-muted">&ldquo;{lastExchange.elaboration}&rdquo;</span>}
           </div>

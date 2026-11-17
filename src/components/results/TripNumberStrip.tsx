@@ -19,7 +19,9 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
   const carries = trip.carriesIntoNextMonth && carryOver && (!of || of.index === dayTripsOf(of.run).length - 1) ? carryOver : null;
   return (
     <span
-      className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
+      // Its standby and C/O go under it whole when the chip runs out of room (the phone's text set larger): squeezed,
+      // they broke up into "· · 8:23CH" over "1 ldg C/O".
+      className="inline-flex flex-wrap items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
       title={`Trip ${trip.pairingNumber} — ${hm(trip.creditHours * 60)} credit hours, ${trip.landings} landing${trip.landings === 1 ? "" : "s"}${standby > 0 ? `, ${standby} standby day${standby === 1 ? "" : "s"}` : ""}${carries ? ` in this bid month; it carries ${carries.days} day${carries.days === 1 ? "" : "s"}${carries.creditHours > 0 ? ` and ${hm(carries.creditHours * 60)} credit hours` : ""} into ${carries.month}` : ""}`}
     >
       <span className="font-semibold">{trip.pairingNumber}</span>
@@ -27,12 +29,12 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
         &middot; <CreditHours hours={trip.creditHours} /> &middot; {trip.landings} ldg{trip.landings === 1 ? "" : "s"}
       </span>
       {standby > 0 && (
-        <span className="text-warn" title="Days on standby at a layover hotel — paid, not flying">
+        <span className="whitespace-nowrap text-warn" title="Days on standby at a layover hotel — paid, not flying">
           &middot; {standby} standby
         </span>
       )}
       {carries && (
-        <span className="text-carry">
+        <span className="whitespace-nowrap text-carry">
           &middot; {carries.creditHours > 0 ? <><CreditHours hours={carries.creditHours} /> C/O</> : `${carries.days}d into ${carries.month.slice(0, 3)}`}
         </span>
       )}

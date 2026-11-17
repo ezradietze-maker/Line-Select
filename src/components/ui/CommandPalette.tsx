@@ -228,7 +228,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
             data-no-ring
             aria-controls="palette-results"
             aria-activedescendant={results[active] ? `palette-${results[active].id}` : undefined}
-            className="h-12 w-full bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
+            className="h-12 w-full bg-transparent text-[0.9375rem] text-ink placeholder:text-ink-faint focus:outline-none"
           />
           <kbd className="hidden shrink-0 rounded border border-hairline px-1.5 py-0.5 font-mono text-2xs text-ink-faint sm:block">esc</kbd>
         </div>

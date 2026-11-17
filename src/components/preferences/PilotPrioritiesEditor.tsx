@@ -190,7 +190,7 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
     <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
       <section className="panel-glass mt-6 p-5 sm:p-6">
         <SectionHeading>Your priorities</SectionHeading>
-        <p className="mt-2 rounded-[4px] border border-border bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
+        <p className="mt-2 rounded-[4px] border border-border bg-canvas/60 px-4 py-3 text-[0.9375rem] leading-relaxed text-ink">{model.synopsis}</p>
         <p className="mt-3 text-sm text-ink-muted">
           These rank every line, in this order. Change how much one counts, or take it off &mdash; your rankings update right away.
           Dragging lines on your rankings tunes these too.

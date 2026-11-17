@@ -77,7 +77,9 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   }, [trip, bidPeriodStart]);
   if (days.length === 0) return null;
   const base = trip.schedule[0]?.legs[0]?.depAirport;
-  const hours = compact ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
+  // Every 3 hours where there's room for them; every 6 where the day is narrow (the phone's text set larger widens the
+  // date column beside it), or "00 03 06" ran into each other.
+  const hours = compact || width < 136 ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
   // The day column holds "Rpt 20:00L" and "Wed 28 NOV" whole, compact or not: narrower, they ran into the bars beside them.
   const grid = "grid-cols-[4.25rem_minmax(0,1fr)]";
   const allOpen = open.size === days.length;
@@ -92,8 +94,10 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   return (
     <div className="min-w-0">
       {dayDetail && (
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <span className="text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+          {/* The words wrap beside the button while their longest fits; then the button goes under them. Kept beside
+              them regardless, with the phone's text at its largest "Open every day" ran off the screen. */}
+          <span className="grow basis-0 text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
           <button
             type="button"
             onClick={() => setOpen(allOpen ? new Set() : new Set(days.map((d) => d.dayNumber)))}
@@ -111,7 +115,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           {hours.map((h) => (
             <span
               key={h}
-              className={`absolute top-0 font-mono text-2xs leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
+              className={`absolute top-0 font-mono text-[11px] leading-none text-ink-faint ${h === 0 ? "" : h === 24 ? "-translate-x-full" : "-translate-x-1/2"}`}
               style={{ left: `${(h / 24) * 100}%` }}
             >
               {String(h % 24).padStart(2, "0")}

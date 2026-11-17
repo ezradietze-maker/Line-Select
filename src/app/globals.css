@@ -485,8 +485,9 @@
 
   /* The type scale, smallest first: 2xs 11 · xs 12 · 13 · sm 14 · 15 · base 16 · lg 18 · xl 20 · 2xl 24 · 3xl 30 ·
      4xl 36 · 5xl 48. Nothing on the site is set below 11px: 9px capitals measured about 8 arcminutes, under what a
-     20/40 reader can see (Legge & Bigelow 2011). 13 and 15 have no names of their own and stay as text-[13px] and
-     text-[15px]. */
+     20/40 reader can see (Legge & Bigelow 2011). 13 and 15 have no names of their own and are set as text-[0.8125rem] and
+     text-[0.9375rem]: in px they stayed put when a pilot set the phone's text larger, and words, answers and filters
+     read smaller than everything around them. */
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1rem;
 

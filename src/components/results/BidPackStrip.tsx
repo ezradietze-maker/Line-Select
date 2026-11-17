@@ -280,15 +280,30 @@ function Numbers({ line }: { line: Line }) {
     ["C/O", formatHoursValue(line.carryOverBlockHours ?? 0), "OFF", String(line.daysOff)],
   ];
   return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] gap-x-1.5 font-mono text-2xs leading-[0.6875rem]">
-      {rows.map(([a, av, b, bv], i) => (
+    <NumberColumns rows={rows} className="gap-x-1.5 font-mono text-2xs leading-[0.6875rem]" label="text-ink-faint" value="text-right tabular-nums text-ink" />
+  );
+}
+
+/**
+ * The numbers' two pairs of columns, side by side where there's room, the second under the first where there isn't: on
+ * a phone with its text set larger (130–150%), TAFB, Duties, Landings and Days off ran off the card's edge, under the
+ * chevron, and their numbers were cut. Each pair is its own grid, so side by side they read as the one table they were.
+ */
+function NumberColumns({ rows, className, label, value, cells = "" }: { rows: [string, string, string, string][]; className: string; label: string; value: string; cells?: string }) {
+  const pair = (side: 0 | 1) => (
+    <div className={`grid grid-cols-[auto_auto] whitespace-nowrap ${className} ${cells}`}>
+      {rows.map((r, i) => (
         <div key={i} className="contents">
-          <span className="text-ink-faint">{a}</span>
-          <span className="text-right tabular-nums text-ink">{av}</span>
-          <span className="pl-1 text-ink-faint">{b}</span>
-          <span className="text-right tabular-nums text-ink">{bv}</span>
+          <span className={`${side ? "pl-1 " : ""}${label}`}>{r[side * 2]}</span>
+          <span className={value}>{r[side * 2 + 1]}</span>
         </div>
       ))}
+    </div>
+  );
+  return (
+    <div className={`flex flex-wrap ${className}`}>
+      {pair(0)}
+      {pair(1)}
     </div>
   );
 }
@@ -305,18 +320,7 @@ function SpelledNumbers({ line }: { line: Line }) {
     ["C/O cr", hm(line.carryOverCreditHours ?? 0), "Landings", String(line.totalLandings)],
     ["C/O blk", hm(line.carryOverBlockHours ?? 0), "Days off", String(line.daysOff)],
   ];
-  return (
-    <div className="grid grid-cols-[auto_auto_auto_auto] items-baseline gap-x-[5px] text-2xs leading-[0.75rem]">
-      {rows.map(([a, av, b, bv], i) => (
-        <div key={i} className="contents">
-          <span className="text-ink-muted">{a}</span>
-          <span className="text-right font-mono tabular-nums text-ink">{av}</span>
-          <span className="pl-1 text-ink-muted">{b}</span>
-          <span className="text-right font-mono tabular-nums text-ink">{bv}</span>
-        </div>
-      ))}
-    </div>
-  );
+  return <NumberColumns rows={rows} className="gap-x-[5px] text-2xs leading-[0.75rem]" cells="items-baseline" label="text-ink-muted" value="text-right font-mono tabular-nums text-ink" />;
 }
 
 const DAY_MIN = 24 * 60;
@@ -462,7 +466,8 @@ interface BidPackStripProps {
 export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false }: BidPackStripProps) {
   const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""} — ${open ? "hide" : "show"} everything about it`;
   const k = layout.textScale;
-  const ring = Math.round((layout.stacked ? 34 : 38) * k);
+  // On a phone the ring stops growing at 150% text: at 200% it took the room "LINE 2295" and the numbers needed.
+  const ring = Math.round(layout.stacked ? 34 * Math.min(k, 1.5) : 38 * k);
   const title = (
     <div className="flex min-w-0 items-center gap-2">
       {score !== null ? (

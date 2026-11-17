@@ -76,7 +76,7 @@ export function FreeTextAnswerBox({ placeholder, onSubmit, onSkip, submitLabel =
           placeholder={placeholder ?? "In your own words…"}
           disabled={busy}
           aria-label="Your answer"
-          className="block w-full resize-none bg-transparent px-4 py-3.5 pr-14 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
+          className="block w-full resize-none bg-transparent px-4 py-3.5 pr-14 text-[0.9375rem] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-60"
         />
         {dictation.supported && (
           <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />

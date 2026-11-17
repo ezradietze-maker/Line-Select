@@ -41,7 +41,7 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
       {/* Wraps anywhere: the pilot's own words quoted back, with a long unbroken run in them (a link, airport codes run
           together), ran off a phone's screen and widened the page to the side. */}
       <RevealControls title={title} className="mt-6 wrap-anywhere">
-        <p className="rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-[15px] leading-relaxed text-ink">{model.synopsis}</p>
+        <p className="rounded-xl border border-hairline bg-canvas/60 px-4 py-3 text-[0.9375rem] leading-relaxed text-ink">{model.synopsis}</p>
         <ol className="mt-5 space-y-3">
           {items.map((c, i) => (
             <li key={c.id} className="rounded-xl border border-border bg-surface p-4">

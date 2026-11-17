@@ -82,7 +82,7 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
             disabled={busy}
             aria-label="Your bidding process, in your own words"
             placeholder="First thing I look at is how many days off a line has, and how they fall… (or tap the mic and just say it)"
-            className="block w-full resize-none bg-transparent px-4 py-4 pr-14 text-[15px] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-70"
+            className="block w-full resize-none bg-transparent px-4 py-4 pr-14 text-[0.9375rem] leading-relaxed text-ink placeholder:text-ink-faint focus:outline-none disabled:opacity-70"
           />
           {dictation.supported && (
             <MicButton listening={dictation.listening} onClick={dictation.toggle} className="absolute right-3 top-3" />

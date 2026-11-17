@@ -21,11 +21,16 @@ function Line({ tone }: { tone: string }) {
   return <span aria-hidden className={`inline-block h-[3px] w-5 shrink-0 rounded-full ${tone}`} />;
 }
 
+/**
+ * Each item on one line where it fits, and its words wrapped beside the swatch where it doesn't: kept whole, with the
+ * phone's text set larger "Date line westbound (+h: clock jumps ahead)" was wider than the card, and the whole card's
+ * contents ran past its edge with it.
+ */
 function Item({ swatch, label }: { swatch: ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+    <span className="inline-flex max-w-full items-center gap-1.5">
       {swatch}
-      {label}
+      <span className="min-w-0">{label}</span>
     </span>
   );
 }
