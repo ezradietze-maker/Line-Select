@@ -141,21 +141,41 @@ export function stagger<P extends { at: number; text: string }>(points: P[], min
  * Labels side by side on one line, never stacked: each centered over its minute when there's room, else pushed along
  * just clear of the one before — a short leg's two cities read "CAN NRT" — and the lot slid back left when that runs
  * past the day's edge (`bleed` px into the gap beyond it). Returns each label's center in px, in the order given.
+ *
+ * A day with more cities than its width holds (six on a 90px day) was slid back left as one, and its first cities
+ * landed on the day before's last ones. Now the same city either side of a layover is written once, between its two
+ * ends, and if that's still too many, the most crowded city between the day's first and last is left off (null), until
+ * the rest fit. The words are always in the day's detail.
  */
-export function sideBySide(labels: { at: number; text: string }[], widthPx: number, bleed: number, gapPx = 3): number[] {
-  const order = labels.map((_, i) => i).sort((a, b) => labels[a].at - labels[b].at);
+export function sideBySide(labels: { at: number; text: string }[], widthPx: number, bleed: number, gapPx = 3): (number | null)[] {
+  let order = labels.map((_, i) => i).sort((a, b) => labels[a].at - labels[b].at);
+  const at = labels.map((l) => l.at);
   const half = (i: number) => (labels[i].text.length * LABEL_CHAR_PX) / 2;
-  const centers: number[] = new Array(labels.length);
+  const fits = () => order.reduce((s, i) => s + half(i) * 2, 0) + gapPx * (order.length - 1) <= widthPx + 2 * bleed;
+  for (let k = 1; k < order.length && !fits(); k++) {
+    const [p, q] = [order[k - 1], order[k]];
+    if (labels[p].text !== labels[q].text) continue;
+    at[p] = (at[p] + at[q]) / 2;
+    order = order.filter((i) => i !== q);
+    k--;
+  }
+  while (order.length > 2 && !fits()) {
+    // The city with the least room around it, between the day's first and last.
+    let drop = 1;
+    for (let k = 2; k < order.length - 1; k++) if (at[order[k + 1]] - at[order[k - 1]] < at[order[drop + 1]] - at[order[drop - 1]]) drop = k;
+    order = order.filter((_, k) => k !== drop);
+  }
+  const centers: (number | null)[] = new Array(labels.length).fill(null);
   let right = -Infinity;
   for (const i of order) {
-    const wanted = Math.min(Math.max((labels[i].at / DAY) * widthPx, half(i) - bleed), widthPx + bleed - half(i));
+    const wanted = Math.min(Math.max((at[i] / DAY) * widthPx, half(i) - bleed), widthPx + bleed - half(i));
     centers[i] = Math.max(wanted, right + gapPx + half(i));
-    right = centers[i] + half(i);
+    right = centers[i]! + half(i);
   }
   let limit = widthPx + bleed;
   for (const i of [...order].reverse()) {
-    centers[i] = Math.min(centers[i], limit - half(i));
-    limit = centers[i] - half(i) - gapPx;
+    centers[i] = Math.min(centers[i]!, limit - half(i));
+    limit = centers[i]! - half(i) - gapPx;
   }
   return centers;
 }
