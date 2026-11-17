@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
+import { BidWeek } from "@/components/results/BidWeek";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
 import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
@@ -400,6 +401,8 @@ function StrategyResults({
       >
         <StandingPanel standing={standing} />
       </PageHeader>
+
+      <BidWeek pack={bidPack} className="panel-glass mt-4 px-4 py-3" />
 
       <p className="mt-3 text-sm text-ink-muted">
         Wondering what a rule says? <Link href="/contract" className="text-accent underline-offset-2 hover:underline">Ask the contract</Link>.

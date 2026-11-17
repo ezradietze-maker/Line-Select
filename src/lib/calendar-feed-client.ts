@@ -23,7 +23,7 @@ import type { PreferenceProfile } from "@/types/preferences";
 export interface FeedStatusView {
   on: boolean;
   createdAt?: string;
-  options?: { homeDays: boolean };
+  options?: { homeDays: boolean; alarms?: boolean };
   month?: string | null;
   lineNumber?: string | null;
   lineSource?: LineSource | null;
@@ -49,12 +49,13 @@ async function statusFrom(res: Response): Promise<FeedStatusView> {
 }
 
 export const fetchFeedStatus = async () => statusFrom(await apiFetch(PATH));
-export const makeFeedLink = async (homeDays?: boolean) => {
+export const makeFeedLink = async (options: { homeDays?: boolean; alarms?: boolean } = {}) => {
   // A new link the pilot asked for: a Start over's turning off still owed here mustn't take it away later.
   if (feedOffOwed() === shownAccount()) oweFeedOff(null);
-  return statusFrom(await send("POST", homeDays === undefined ? {} : { homeDays }));
+  return statusFrom(await send("POST", options));
 };
 export const setFeedHomeDays = async (homeDays: boolean) => statusFrom(await send("PATCH", { homeDays }));
+export const setFeedAlarms = async (alarms: boolean) => statusFrom(await send("PATCH", { alarms }));
 export const turnOffFeed = async () => statusFrom(await send("DELETE"));
 
 /**

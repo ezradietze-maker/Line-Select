@@ -26,7 +26,9 @@ export type TimelineKind =
   | "sww-open"
   | "sww-close"
   | "secondary-lines"
-  | "open-time";
+  | "open-time"
+  | "awards"
+  | "captain-awards";
 
 export interface TimelineEvent {
   /** The bid it belongs to ("DEC26"), which is the month after the one it falls in. */
@@ -61,6 +63,9 @@ const LABELS: Record<TimelineKind, string> = {
   "sww-close": "SWW closes",
   "secondary-lines": "secondary lines released",
   "open-time": "open time released",
+  awards: "awards posted",
+  // A First Officer's own timeline: the Captains' awards are out, and with them which lines the check airmen hold.
+  "captain-awards": "Captain awards posted",
 };
 
 function event(bidMonth: string, seat: Seat, kind: TimelineKind, at: string, source: TimelineSource, basis: string): TimelineEvent {
@@ -183,6 +188,32 @@ function countedTimeline(pack: TimelinePack, close: string, closeSource: Timelin
 }
 
 /**
+ * When awards post, counted from this bid's close (25.C.11): by 1700 CT on the close date (CBA 2015, both seats;
+ * CBA 2026 for Captains), and 1200 CT for First Officers from the JAN27 bid. A First Officer also gets the Captains'
+ * awards: on the Captains' close date, which the cover prints ("OCT26 Cap Bid Closes") or which is counted back from
+ * theirs (25.C.4: 24 hours before under 2015, two days under 2026).
+ */
+function awardEvents(pack: TimelinePack, events: TimelineEvent[]): TimelineEvent[] {
+  const close = events.find((e) => e.bidMonth === pack.month && e.kind === "bid-close");
+  if (!close) return [];
+  const rules = timelineRules(pack.month);
+  const ownDay = DateTime.fromISO(close.at, { zone: "utc" }).setZone(CENTRAL);
+  const at = (day: DateTime, time: string) => {
+    const [hour, minute] = time.split(":").map(Number);
+    return iso(day.set({ hour, minute, second: 0, millisecond: 0 }));
+  };
+  const own = pack.seat === "FO" && rules === "2026" ? "12:00" : "17:00";
+  const out = [event(pack.month, pack.seat, "awards", at(ownDay, own), "contract", `CBA ${rules} 25.C.11: by ${own.replace(":", "")} CT on the day the bid closes.`)];
+  if (pack.seat === "FO") {
+    const printed = (pack.bidCalendar ?? []).find((ev) => /\bCap(?:tain)?\b.*\bBid\s+Closes\b/i.test(ev.text) && (ev.text.match(/^([A-Z]{3}\d{2})\b/i)?.[1].toUpperCase() ?? pack.month) === pack.month);
+    const capDay = printed ? DateTime.fromISO(printed.date, { zone: CENTRAL }) : ownDay.minus({ days: rules === "2026" ? 2 : 1 });
+    out.push(event(pack.month, pack.seat, "captain-awards", at(capDay, "17:00"), printed ? "pack" : "contract",
+      printed ? "CBA 25.C.11: by 1700 CT on the Captains' close date your pack's cover prints." : `CBA ${rules} 25.C.11: by 1700 CT on the Captains' close date, counted from yours (25.C.4).`));
+  }
+  return out;
+}
+
+/**
  * The timeline this pack's cover and the pilot's own close give. A close the pilot typed replaces the printed one, as
  * it does on the countdown (`effectiveBidClose`): they may know of a change the pack doesn't show.
  */
@@ -199,5 +230,5 @@ export function bidTimeline(pack: TimelinePack, pilotClose: string | null = null
     const basis = pilotClose ? pilotEvent!.basis : "CBA 2026 25.C.4, counted from the bid opening your pack prints.";
     events = [...printed, ...countedTimeline(pack, close, pilotClose ? "pilot" : "contract", basis)];
   }
-  return events.sort((a, b) => a.at.localeCompare(b.at));
+  return [...events, ...awardEvents(pack, events)].sort((a, b) => a.at.localeCompare(b.at));
 }

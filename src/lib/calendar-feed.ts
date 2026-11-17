@@ -24,6 +24,8 @@ export interface FeedTrip {
   end: number;
   summary: string;
   description: string;
+  /** Each layover's hotel pickup, as an instant (epoch ms) and as the pack prints it, for its alarm. Absent on a month built before pickups were kept. */
+  pickups?: { at: number; label: string }[];
 }
 
 /** A run of days off: `start` to `end` (exclusive), "YYYY-MM-DD". */
@@ -49,9 +51,25 @@ export interface FeedMonth {
 export interface FeedOptions {
   /** Days off as all-day "Home" events. */
   homeDays: boolean;
+  /** Reminders on the bid dates and before each report and hotel pickup. Off until the pilot turns them on; a link made before they existed has none. */
+  alarms?: boolean;
 }
 
-export const DEFAULT_FEED_OPTIONS: FeedOptions = { homeDays: false };
+export const DEFAULT_FEED_OPTIONS: FeedOptions = { homeDays: false, alarms: false };
+
+/** Minutes before each bid date its reminders go off, when alarms are on. Dates not listed get none. */
+export const TIMELINE_ALARMS: Partial<Record<TimelineEvent["kind"], number[]>> = {
+  "bid-close": [24 * 60, 60],
+  awards: [0],
+  "captain-awards": [0],
+  "view-add-open": [0],
+  "view-add-close": [60],
+  "secondary-lines": [0],
+  "open-time": [0],
+};
+/** Minutes before a trip's report, and before each hotel pickup, that its reminder goes off. */
+export const REPORT_ALARM_MINUTES = 120;
+export const PICKUP_ALARM_MINUTES = 60;
 
 /** Asked of the calendar app in the feed itself, but only a request: Apple Calendar on the Mac offers its own Auto-refresh choice, starting on "Every week", and Google sets its own pace. */
 export const REFRESH_HOURS = 6;
@@ -125,6 +143,16 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
   const cities = trip.layoverCities.length > 0 ? [...new Set(trip.layoverCities)].join(", ") : "no layovers";
   const date = DateTime.fromMillis(start, { zone }).toFormat("yyyyLLdd");
   let layover = 0;
+  // A pickup is printed as "the real start of the next duty" (`TripDutyPeriod.layover.pickupTimeLocal`), so its instant
+  // is the next duty's start, counted from the trip's report like every other time on it.
+  const pickups = trip.schedule.flatMap((d, i) => {
+    const next = trip.schedule[i + 1];
+    if (!d.layover || !next) return [];
+    const at = start + next.startMinutes * 60_000;
+    const printed = clock(d.layover.pickupTimeLocal);
+    const local = DateTime.fromMillis(at, { zone: timezoneForAirport(d.layover.city) ?? zone }).toFormat("HH:mm");
+    return [{ at, label: `Hotel pickup in ${d.layover.city} at ${printed ?? local} local` }];
+  });
   const description = [
     source === "awarded" ? `Line ${line.lineNumber}: your award.` : `Line ${line.lineNumber}: your #1 in Line Select right now. Not an award.`,
     `Report: ${local(start)} ${pack.base} time`,
@@ -144,6 +172,7 @@ function feedTrip(pack: Pick<BidPack, "month" | "base" | "bidPeriodStart">, line
     end,
     summary: `${name}: ${cities}${source === "top" ? " (your #1)" : ""}`,
     description,
+    ...(pickups.length ? { pickups } : {}),
   };
 }
 
@@ -203,9 +232,27 @@ const dateValue = (iso: string) => iso.replace(/-/g, "");
 /** An event's id with only id characters: a pack's pairing number with a line break in it wrote a line of its own. */
 const safeUid = (uid: string) => uid.replace(/[^A-Za-z0-9._@-]/g, "-");
 
-function vevent(uid: string, stamp: number, props: string[]): string[] {
-  return ["BEGIN:VEVENT", `UID:${safeUid(uid)}`, `DTSTAMP:${icsUtc(stamp)}`, `LAST-MODIFIED:${icsUtc(stamp)}`, ...props, "END:VEVENT"];
+function vevent(uid: string, stamp: number, props: string[], alarms: string[] = []): string[] {
+  return ["BEGIN:VEVENT", `UID:${safeUid(uid)}`, `DTSTAMP:${icsUtc(stamp)}`, `LAST-MODIFIED:${icsUtc(stamp)}`, ...props, ...alarms, "END:VEVENT"];
 }
+
+/** An RFC 5545 duration before the start, in its tidiest form: "-P1D", "-PT2H", "-PT1H30M", or "PT0S" for at the start. */
+function durationBefore(minutes: number): string {
+  if (minutes <= 0) return "PT0S";
+  const days = Math.floor(minutes / 1440);
+  const hours = Math.floor((minutes % 1440) / 60);
+  const mins = minutes % 60;
+  const time = `${hours ? `${hours}H` : ""}${mins ? `${mins}M` : ""}`;
+  return `-P${days ? `${days}D` : ""}${time ? `T${time}` : ""}`;
+}
+
+/** A reminder (RFC 5545 3.6.6): `minutesBefore` the event's start, or at a fixed instant. */
+function valarm(text: string, when: { minutesBefore: number } | { at: number }): string[] {
+  const trigger = "at" in when ? `TRIGGER;VALUE=DATE-TIME:${icsUtc(when.at)}` : `TRIGGER:${durationBefore(when.minutesBefore)}`;
+  return ["BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${escapeIcsText(text)}`, trigger, "END:VALARM"];
+}
+
+const before = (minutes: number) => (minutes >= 60 * 24 ? `in ${minutes / (60 * 24)} day${minutes === 60 * 24 ? "" : "s"}` : minutes >= 60 ? `in ${minutes / 60} hour${minutes === 60 ? "" : "s"}` : minutes > 0 ? `in ${minutes} minutes` : "now");
 
 /**
  * The feed as RFC 5545 text. Times are UTC, so a phone in any time zone shows the right moment; the base's local times
@@ -229,7 +276,7 @@ export function renderFeed(months: FeedMonth[], options: FeedOptions, now = Date
         `SUMMARY:${escapeIcsText(timelineSummary(e))}`,
         `DESCRIPTION:${escapeIcsText(e.basis)}`,
         "TRANSP:TRANSPARENT",
-      ]));
+      ], options.alarms ? (TIMELINE_ALARMS[e.kind] ?? []).flatMap((m) => valarm(`${timelineSummary(e)}: ${before(m)}`, { minutesBefore: m })) : []));
     }
     for (const t of m.trips) {
       add(t.uid, vevent(t.uid, m.builtAt, [
@@ -237,7 +284,10 @@ export function renderFeed(months: FeedMonth[], options: FeedOptions, now = Date
         `DTEND:${icsUtc(t.end)}`,
         `SUMMARY:${escapeIcsText(t.summary)}`,
         `DESCRIPTION:${escapeIcsText(t.description)}`,
-      ]));
+      ], options.alarms ? [
+        ...valarm(`${t.summary}: report ${before(REPORT_ALARM_MINUTES)}`, { minutesBefore: REPORT_ALARM_MINUTES }),
+        ...(t.pickups ?? []).flatMap((p) => valarm(`${p.label}, ${before(PICKUP_ALARM_MINUTES)}`, { at: p.at - PICKUP_ALARM_MINUTES * 60_000 })),
+      ] : []));
     }
     if (options.homeDays) {
       for (const h of m.homeDays) {

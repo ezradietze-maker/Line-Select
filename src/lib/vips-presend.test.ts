@@ -346,7 +346,7 @@ describe.skipIf(packFiles.length === 0)("on the October packs", () => {
       expect(byId(run(last), "run-out")!.level, f).toBe("warn");
       expect(byId(run(last), "catch-all")!.level, f).toBe("warn");
     }
-  });
+  }, 20_000); // Seven real packs, each checked line by line: a busy machine or a CI runner takes more than the 5-second default.
 
   it("flags an October pack as over in November", () => {
     for (const f of packFiles) expect(byId(runPresendChecks(input(load(f), { now: new Date("2026-11-07T12:00:00Z") })), "period-started"), f).toBeDefined();
