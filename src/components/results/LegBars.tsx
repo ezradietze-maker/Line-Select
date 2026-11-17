@@ -20,7 +20,11 @@ export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React
   return [ref, width];
 }
 
-/** A trip's day row: wide enough for each leg's times over its ends. */
+/**
+ * A trip's day row: wide enough for each leg's times over its ends. Its words are set in px (11px, the size
+ * `LABEL_CHAR_PX` is measured at) like these rows: in rem, at 200% text the times ran over each other and the layover's
+ * words were cut in half.
+ */
 const SIZE = { track: 18, tick: 12, bar: 4, duty: 16, lane: 4, line: 12, labelPx: 40 };
 /** How wide the hotel van is drawn at each end of a layover — a mark, not to scale: the pack doesn't print the ride's length. */
 const GT_PX = 12;
@@ -67,7 +71,7 @@ function Labels({ labels, top, tone, width }: { labels: BarLabel[]; top: (row: 0
         return (
           <span
             key={i}
-            className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs leading-none ${l.deadhead ? "font-semibold text-deadhead" : tone}`}
+            className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${l.deadhead ? "font-semibold text-deadhead" : tone}`}
             style={{ left: x, top: top(l.row), height: SIZE.line }}
           >
             {l.text}
@@ -219,7 +223,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
       {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} />}
       <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} />
       {middle.map((m, i) => (
-        <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
+        <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
           {m.text}
         </span>
       ))}
@@ -239,7 +243,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
               {gtOut !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
               {s.labeled && words.stays[i] && (
                 <span
-                  className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-2xs font-semibold leading-none text-layover"
+                  className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-layover"
                   style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: wordsTop, height: SIZE.line }}
                 >
                   {formatStay ? (
@@ -264,7 +268,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
             <span key={`r${i}`}>
               <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
               {label && (
-                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-2xs font-semibold leading-none text-rest" style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
+                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-rest" style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
                   {label.text}
                 </span>
               )}
