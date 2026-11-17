@@ -13,16 +13,16 @@ Whole-app membership, not per-feature paywalls (`src/lib/membership.ts`):
 | Grandfathered | Account made before `MEMBERSHIP_CUTOVER` | Everything |
 | Free | One of the first `FREE_MEMBER_CAP` (15) new pilots to claim a spot (confirmed email) | Everything |
 | Pro | Active or trialing subscription, $20/mo, first month free | Everything |
-| Locked | Everyone else | Sign in, upload, the interview, Ask the Contract teaser, membership pages |
+| Locked | Everyone else | Sign in, upload, the interview, their **top 10 ranked lines**, Ask the Contract teaser, membership pages |
 
 ## What's behind the wall
 
-A locked pilot with a pack in sees `MembershipLocked` in place of each of these, and the server answers `402`
+A locked pilot with a pack in sees their top 10 lines on Results, and `MembershipLocked` in place of each tool, and the server answers `402`
 (`accessRefusal` in `src/lib/server/gating.ts`) on the routes behind them:
 
 | Feature | Page wall | Server gate |
 | --- | --- | --- |
-| Ranked lines (Results), Send to VIPS | `/results` | — (ranking runs in the browser) |
+| Ranked lines past the top 10 (`FREE_PREVIEW_LINES`), bid-order export, Send to VIPS | `/results` shows the top 10 and a membership note | — (ranking runs in the browser) |
 | Bid forecast | via Results / Strategies | `POST /api/forecast` |
 | Award history, who held what | via Results / Strategies / Logbook | `GET /api/award-history`, `GET /api/award-history/held-by` |
 | Strategies | `/strategies` | — |
@@ -39,7 +39,7 @@ and portal, contract section lookup, and **Ask the Contract as a teaser** (its o
 40/day signed in). Reporting your own award and deleting your data (award history, forecast sharing) also stay open.
 
 The page walls are a screen, not security: ranking runs in the browser, so a technical user could get past the
-Results wall. Accepted for launch.
+Results preview. Accepted for launch.
 
 ## Turning it on
 

@@ -16,6 +16,17 @@ import type { UserAccount } from "@/types/auth";
 /** Master switch. true = the whole app is free for everyone (today). false = enforce the Free/Pro model below. */
 export const FREE_FOR_ALL = true;
 
+/** How many of their best-ranked lines a pilot with no membership sees on Results; the rest need a membership. */
+export const FREE_PREVIEW_LINES = 10;
+
+/**
+ * Whether a line at this place in the pilot's ranking (1 = best) is shown under a preview of `limit` lines. null is a
+ * member's whole ranking; a line with no place is never in a preview.
+ */
+export function inPreview(rank: number | undefined, limit: number | null): boolean {
+  return limit === null || (rank !== undefined && rank <= limit);
+}
+
 /** How many new pilots may claim the free tier before it shuts off and new pilots must subscribe to Pro. */
 export const FREE_MEMBER_CAP = 15;
 
