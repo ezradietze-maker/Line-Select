@@ -1829,9 +1829,10 @@ export function ResultsView({
         <div
           role="status"
           data-bottom-bar
-          className="animate-toast-in fixed bottom-[calc(var(--shell-bottom)+1rem)] left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 whitespace-nowrap rounded-[4px] border border-accent/40 bg-surface/95 py-2 pl-4 pr-2 text-sm text-ink shadow-elevated-lg backdrop-blur md:left-[calc(50%+var(--shell-left)/2)] print:hidden"
+          className="animate-toast-in fixed bottom-[calc(var(--shell-bottom)+1rem)] left-1/2 z-30 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-[4px] border border-accent/40 bg-surface/95 py-2 pl-4 pr-2 text-sm text-ink shadow-elevated-lg backdrop-blur md:left-[calc(50%+var(--shell-left)/2)] print:hidden"
         >
-          <span>
+          {/* As wide as its words on one line, as far as the screen allows: on a 320 phone they wrap, and Cancel stays in the bar. */}
+          <span className="min-w-0">
             <span className="font-semibold">Line {compareLineScores[0].line.lineNumber}</span>
             <span className="text-ink-muted">
               {" "}
@@ -1842,7 +1843,7 @@ export function ResultsView({
           <button
             type="button"
             onClick={() => setCompareIds([])}
-            className="rounded-[3px] px-3 py-1 text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink"
+            className="shrink-0 whitespace-nowrap rounded-[3px] px-3 py-1 text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink"
           >
             Cancel
           </button>
