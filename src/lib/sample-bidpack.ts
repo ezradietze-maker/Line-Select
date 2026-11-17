@@ -268,6 +268,8 @@ function sumTrips(trips: Trip[]) {
   return {
     totalCreditHours: trips.reduce((s, t) => s + t.creditHours, 0),
     totalTafbHours: trips.reduce((s, t) => s + t.tafbHours, 0),
+    // Operated block, as a pack's line prints BLK. (deadheads left out); without it the strip's Block reads "—".
+    totalBlockHours: trips.reduce((s, t) => s + t.schedule.flatMap((d) => d.legs).reduce((b, l) => b + (l.isDeadhead ? 0 : (l.blockHours ?? 0)), 0), 0),
     totalLandings: trips.reduce((s, t) => s + t.landings, 0),
     totalDepartures: trips.reduce((s, t) => s + t.departures, 0),
   };
