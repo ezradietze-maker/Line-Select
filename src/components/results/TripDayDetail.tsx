@@ -33,10 +33,13 @@ export function telHref(number: string): string {
   return `tel:${(m?.[1] ?? number).replace(/[^\d+]/g, "")}${ext ? `,${ext}` : ""}`;
 }
 
-/** A phone number as a link to call it. */
+/**
+ * A phone number as a link to call it. Kept whole on its line where it fits, broken at its dashes where it doesn't: kept
+ * on one line regardless, with the phone's text at its largest the hotel's number ran past the card's edge, cut off.
+ */
 function Phone({ number }: { number: string }) {
   return (
-    <a href={telHref(number)} className="whitespace-nowrap font-mono text-ink underline decoration-dotted underline-offset-2 hover:text-brand" onClick={(e) => e.stopPropagation()}>
+    <a href={telHref(number)} className="inline-block max-w-full font-mono text-ink underline decoration-dotted underline-offset-2 hover:text-brand" onClick={(e) => e.stopPropagation()}>
       ☎ {number}
     </a>
   );
