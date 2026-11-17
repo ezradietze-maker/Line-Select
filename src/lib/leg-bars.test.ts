@@ -32,7 +32,7 @@ function stay(city: string, start: number, end: number, extra: Partial<TimelineS
 describe("dayBars", () => {
   it("draws each leg where it flies, with the times it prints", () => {
     const bars = dayBars([leg("MEM", "SEA", 3 * H, 7.5 * H, { startClock: "03:00", endClock: "05:35" })], 60);
-    expect(bars.legs).toEqual([{ start: 180, end: 450, from: "MEM", runsIn: false, runsOn: false, to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35", flightNumber: "1", cab: false, dateLine: null }]);
+    expect(bars.legs.map((l) => ({ ...l, seg: undefined }))).toEqual([{ seg: undefined,  start: 180, end: 450, from: "MEM", runsIn: false, runsOn: false, to: "SEA", deadhead: false, depClock: "03:00", arrClock: "05:35", flightNumber: "1", cab: false, dateLine: null }]);
     expect(bars.cities.map((c) => c.text)).toEqual(["MEM", "SEA"]);
     expect(bars.times.map((t) => t.text)).toEqual(["03:00", "05:35"]);
   });
@@ -60,13 +60,13 @@ describe("dayBars", () => {
   it("marks deadheads, and spans the duty from report to the last landing", () => {
     const bars = dayBars([piece("ground", 6.5 * H, 7.5 * H), leg("MEM", "PHX", 7.5 * H, 9 * H, { kind: "deadhead" }), piece("connection", 9 * H, 10 * H), leg("PHX", "SEA", 10 * H, 12 * H), stay("SEA", 12 * H, 24 * H)], 60);
     expect(bars.legs.map((l) => l.deadhead)).toEqual([true, false]);
-    expect(bars.duty).toEqual([{ start: 6.5 * H, end: 12 * H }]);
+    expect(bars.duty.map(({ start, end }) => ({ start, end }))).toEqual([{ start: 6.5 * H, end: 12 * H }]);
     expect(bars.stays).toMatchObject([{ city: "SEA", start: 12 * H, end: 24 * H, labeled: true }]);
   });
 
   it("keeps two duties on one day apart", () => {
     const bars = dayBars([leg("MEM", "IAH", 1 * H, 2 * H), stay("IAH", 2 * H, 20 * H), piece("ground", 20 * H, 21 * H), leg("IAH", "MEM", 21 * H, 22 * H)], 60);
-    expect(bars.duty).toEqual([
+    expect(bars.duty.map(({ start, end }) => ({ start, end }))).toEqual([
       { start: 1 * H, end: 2 * H },
       { start: 20 * H, end: 22 * H },
     ]);

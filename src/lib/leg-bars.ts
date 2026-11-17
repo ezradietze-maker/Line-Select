@@ -37,6 +37,8 @@ export interface BarLeg {
   dateLine: DateLineDirection | null;
   /** Drawn back from its takeoff to its landing — east across the date line on the month calendar (`end` < `start`). */
   back?: DateLineBack;
+  /** The timeline piece it was drawn from: which trip and duty period it flies in, for the Heat Map. */
+  seg?: TimelineSegment;
   /** Across the date line: how far the local clock jumps, in minutes — negative eastbound, positive westbound. */
   clockJump?: number;
   /** West across the date line, local layout: the stretch (minutes of the day) that's the clock's jump, drawn as a squiggle. */
@@ -48,6 +50,8 @@ export interface BarLeg {
 export interface BarSpan {
   start: number;
   end: number;
+  /** The timeline piece it was drawn from (a duty band's first): which trip and duty period it is, for the Heat Map. */
+  seg?: TimelineSegment;
 }
 
 /** A piece of a hotel stay on this day. */
@@ -111,7 +115,7 @@ function dutySpans(segs: TimelineSegment[]): BarSpan[] {
   for (const s of segs.filter((x) => DUTY_KINDS.has(x.kind) && !x.dateLineBack).sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay)) {
     const last = spans.at(-1);
     if (last && s.startMinuteOfDay <= last.end + DUTY_JOIN_MINUTES) last.end = Math.max(last.end, endOf(s));
-    else spans.push({ start: s.startMinuteOfDay, end: endOf(s) });
+    else spans.push({ start: s.startMinuteOfDay, end: endOf(s), seg: s });
   }
   return spans;
 }
@@ -218,6 +222,7 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
       depClock: s.continuesFromPreviousDay || s.dateLineBack || s.dateLineLeg === "after" ? null : (s.startClock ?? s.leg!.depClock),
       arrClock: s.continuesToNextDay || s.dateLineBack || s.dateLineLeg === "before" ? null : (s.endClock ?? s.leg!.arrClock),
       flightNumber: s.leg!.flightNumber,
+      seg: s,
       cab: s.leg!.equipment === "CAB",
       dateLine: dateLineCrossing(s.leg!.dep, s.leg!.arr),
     }));
@@ -239,7 +244,7 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
   return {
     legs,
     duty: dutySpans(ordered),
-    standby: ordered.filter((s) => s.kind === "standby").map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), place: s.startAirport ?? s.inlineStart ?? "" })),
+    standby: ordered.filter((s) => s.kind === "standby").map((s) => ({ start: s.startMinuteOfDay, end: endOf(s), place: s.startAirport ?? s.inlineStart ?? "", seg: s })),
     stays: ordered
       .filter((s) => s.kind === "layover" && s.stay)
       .map((s) => ({
@@ -251,6 +256,7 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
         labeled: stayLabeled(s),
         runsIn: s.continuesFromPreviousDay,
         runsOn: s.continuesToNextDay,
+        seg: s,
       })),
     rests: ordered
       .filter((s) => s.kind === "connection" && s.stay)

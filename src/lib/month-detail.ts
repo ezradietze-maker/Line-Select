@@ -163,7 +163,7 @@ export interface DetailedDay {
   /** A full day free in a layover city, as pilots count one (`fullDaysOf` in metrics/trip-facts.ts); `barely` when the morning after starts before 6. */
   fullDay?: { city: string; barely: boolean };
   /** A trip's tail on a day the grid gives to something else — usually a landing just after midnight on a day the bid pack counts as off. */
-  spill: { tripNumber: string | null; segments: TimelineSegment[]; landsAt: string | null } | null;
+  spill: { tripIndex: number; tripNumber: string | null; segments: TimelineSegment[]; landsAt: string | null } | null;
   title: string;
 }
 
@@ -433,6 +433,7 @@ export function buildDetailedMonth(
 
     const spill = day.spill
       ? {
+          tripIndex: day.spill.tripIndex,
           tripNumber: shown.trips[day.spill.tripIndex]?.pairingNumber ?? null,
           segments: day.spill.segments,
           // Its last landing, on that airport's clock.

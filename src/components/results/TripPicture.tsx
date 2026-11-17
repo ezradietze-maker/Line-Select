@@ -3,6 +3,8 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { largestShape, LegBars, rowShape, useMeasuredWidth } from "@/components/results/LegBars";
 import { Zone } from "@/components/results/TripMarks";
+import { heatOfTrips, heatPiecesOn, HeatReasons } from "@/components/results/HeatReasons";
+import type { TripHeat } from "@/lib/line-heat";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { fullDayDates } from "@/lib/full-days";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
@@ -37,6 +39,8 @@ interface TripPictureProps {
   dayDetail?: (day: TimelineDay) => ReactNode;
   /** For a trip running past its bid month's end: its last `days` are the next bid month's (`month`, "November"). */
   carryOver?: { days: number; month: string } | null;
+  /** The Heat Map for this trip (`tripHeatsOf`): its duty periods and layovers in their heat colours, and why on a tap. */
+  heat?: TripHeat | null;
 }
 
 /** The days the rows show: the base's calendar on the local clock, Zulu days on Zulu. */
@@ -64,7 +68,8 @@ export function dutyStartOf(day: TimelineDay, trip: Trip): { kind: "report" | "p
   return { kind: reportsFromHome(trip, first.dutyIndex ?? 0) ? "report" : "pickup", clock: first.startClock };
 }
 
-export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferences, compact = false, dayDetail, carryOver = null }: TripPictureProps) {
+export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferences, compact = false, dayDetail, carryOver = null, heat = null }: TripPictureProps) {
+  const heatOf = useMemo(() => (heat ? heatOfTrips(new Map([[0, heat]]), 0) : undefined), [heat]);
   const days = useMemo(() => tripPictureDays(trip, mode), [trip, mode]);
   const labeled = useMemo(() => labeledStayPieces(days.map((d) => d.segments)), [days]);
   const [trackRef, width] = useMeasuredWidth<HTMLDivElement>(compact ? 240 : 520);
@@ -164,6 +169,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                 shape={shape}
                 stayLabeled={(s) => labeled.has(s)}
                 cityPreferences={cityPreferences}
+                heatOf={heatOf}
                 formatStay={({ city, hours: h, hotel }, mark) => (
                   <>
                     <span className="font-normal">L/O </span>
@@ -196,7 +202,12 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
               ) : (
                 <div className={`grid ${grid} items-center gap-x-2 py-1`}>{row}</div>
               )}
-              {dayDetail && isOpen && <div className="pb-2 pt-0.5">{dayDetail(day)}</div>}
+              {dayDetail && isOpen && (
+                <div className="pb-2 pt-0.5">
+                  <HeatReasons pieces={heatPiecesOn(day.segments, heatOf)} className="mb-2 text-xs text-ink-muted" />
+                  {dayDetail(day)}
+                </div>
+              )}
             </li>
           );
         })}

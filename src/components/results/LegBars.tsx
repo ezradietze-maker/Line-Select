@@ -5,6 +5,9 @@ import { dayBars, LABEL_CHAR_PX, layoverHours, stayLabelLeft, type BarLabel, typ
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { widthWatcher } from "@/lib/width-watcher";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
+import type { HeatOf } from "@/components/results/HeatReasons";
+import { HEAT_EDGE, heatColor, heatWash } from "@/lib/heat-scale";
+import { heatPieceText } from "@/lib/line-heat";
 import type { CityMark } from "@/types/preferences";
 
 const DAY = 24 * 60;
@@ -62,7 +65,7 @@ export function largestShape(shapes: RowShape[]): RowShape {
 }
 
 /** Labels centered on their tick, nudged in at the day's edges so they stay inside it. */
-function Labels({ labels, top, tone, width }: { labels: BarLabel[]; top: (row: 0 | 1) => number; tone: string; width: number }) {
+function Labels({ labels, top, tone, width, deadheadTone = "font-semibold text-deadhead" }: { labels: BarLabel[]; top: (row: 0 | 1) => number; tone: string; width: number; deadheadTone?: string }) {
   return (
     <>
       {labels.map((l, i) => {
@@ -71,7 +74,7 @@ function Labels({ labels, top, tone, width }: { labels: BarLabel[]; top: (row: 0
         return (
           <span
             key={i}
-            className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${l.deadhead ? "font-semibold text-deadhead" : tone}`}
+            className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${l.deadhead ? deadheadTone : tone}`}
             style={{ left: x, top: top(l.row), height: SIZE.line }}
           >
             {l.text}
@@ -97,11 +100,11 @@ function spans(labels: BarLabel[], row: 0 | 1, width: number): [number, number][
  * Each leg's flight number under the middle of its bar ("1875", "CAB" for a ride by road), and "HSTBY" under hotel
  * standby — wherever the bar is long enough to hold it clear of the cities at its ends. The rest are a tap away.
  */
-function middleWords(bars: DayBars, width: number, taken: [number, number][]): { x: number; text: string; tone: string }[] {
+function middleWords(bars: DayBars, width: number, taken: [number, number][], plain = false): { x: number; text: string; tone: string }[] {
   const x = (m: number) => (m / DAY) * width;
   const items = [
-    ...bars.legs.map((l) => ({ start: l.start, end: l.end, text: l.cab ? "CAB" : l.flightNumber, tone: l.deadhead ? "text-deadhead" : "text-leg" })),
-    ...bars.standby.map((s) => ({ start: s.start, end: s.end, text: "HSTBY", tone: "text-standby" })),
+    ...bars.legs.map((l) => ({ start: l.start, end: l.end, text: l.cab ? "CAB" : l.flightNumber, tone: plain ? (l.deadhead ? "text-ink-muted" : "text-ink") : l.deadhead ? "text-deadhead" : "text-leg" })),
+    ...bars.standby.map((s) => ({ start: s.start, end: s.end, text: "HSTBY", tone: plain ? "text-ink" : "text-standby" })),
   ];
   const out: { x: number; text: string; tone: string }[] = [];
   for (const it of items) {
@@ -175,6 +178,11 @@ interface LegBarsProps {
   cityPreferences?: Record<string, CityMark>;
   /** The words on a layover, in place of "L/O SEA 16h ♥" — handed the pilot's mark for the city to place. */
   formatStay?: (stay: { city: string; hours: number; hotel: string | null }, mark: ReactNode) => ReactNode;
+  /**
+   * The Heat Map: each duty period's band and each layover's line in its heat colour (`lib/line-heat.ts`), everything
+   * else in ink over them, so the colour is only ever heat.
+   */
+  heatOf?: HeatOf;
 }
 
 /**
@@ -184,7 +192,12 @@ interface LegBarsProps {
  * little flying). Under that, the layover: a green line from landing to the next pickup, the hotel van (GT) a cyan
  * mark at each end, the city, its length and the hotel on it; a crew-rest hotel at a hub a gold line of its own.
  */
-export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences, formatStay }: LegBarsProps) {
+export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences, formatStay, heatOf }: LegBarsProps) {
+  /** On the Heat Map a flight (or hotel standby) is drawn in its duty period's heat, finely edged, over the band's wash of it. */
+  const heatPaint = (seg: TimelineSegment | undefined) => {
+    const heat = heatOf?.(seg, "duty");
+    return heat ? { background: heatColor(heat.heat), boxShadow: HEAT_EDGE } : undefined;
+  };
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
   const bars = dayBars(segments, minGapAt(width), stayLabeled, width);
@@ -196,7 +209,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
   const wordsTop = laneTop + SIZE.lane + 3;
   const height = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
   const cityTop = (row: 0 | 1) => citiesTop + row * SIZE.line;
-  const middle = middleWords(bars, width, spans(bars.cities, 0, width));
+  const middle = middleWords(bars, width, spans(bars.cities, 0, width), !!heatOf);
   const words = laneWords(bars, width);
 
   return (
@@ -204,24 +217,35 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
       {[6, 12, 18].map((h) => (
         <span key={h} className="absolute w-px bg-ink/20" style={{ left: x(h * 60), top: trackTop + SIZE.track - 3, height: 3 }} />
       ))}
-      {bars.duty.map((d, i) => (
-        <span key={`d${i}`} className="absolute rounded-[3px] bg-trip-band" style={{ left: x(d.start) - 2, width: x(d.end) - x(d.start) + 4, top: mid - SIZE.duty / 2, height: SIZE.duty }} />
-      ))}
+      {bars.duty.map((d, i) => {
+        const heat = heatOf?.(d.seg, "duty");
+        return (
+          <span
+            key={`d${i}`}
+            className={`absolute rounded-[3px] ${heat ? "" : "bg-trip-band"}`}
+            style={{ left: x(d.start) - 2, width: x(d.end) - x(d.start) + 4, top: mid - SIZE.duty / 2, height: SIZE.duty, ...(heat ? { background: heatWash(heat.heat) } : {}) }}
+            title={heat ? heatPieceText(heat) : undefined}
+          />
+        );
+      })}
       {bars.standby.map((d, i) => (
-        <span key={`s${i}`} className="absolute rounded-full bg-standby" style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
+        <span key={`s${i}`} className={`absolute rounded-full ${heatPaint(d.seg) ? "" : "bg-standby"}`} style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar, ...heatPaint(d.seg) }} />
       ))}
       {bars.legs.map((l, i) => {
-        const tone = l.deadhead ? "bg-deadhead" : "bg-leg";
+        // On the Heat Map, the colour of its duty period's heat (a deadhead a little fainter); else blue flown, magenta deadheaded.
+        const paint = heatPaint(l.seg);
+        const flown = paint ? { ...paint, ...(l.deadhead ? { opacity: 0.7 } : {}) } : undefined;
+        const tone = paint ? "" : l.deadhead ? "bg-deadhead" : "bg-leg";
         return (
           <span key={`l${i}`}>
-            <span className={`absolute ${tone}`} style={{ left: x(l.start), width: Math.max(2, x(l.end) - x(l.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
-            {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.start), top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
-            {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.end) - 2, top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+            <span className={`absolute ${tone}`} style={{ ...flown, left: x(l.start), width: Math.max(2, x(l.end) - x(l.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
+            {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.start), top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+            {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.end) - 2, top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
           </span>
         );
       })}
-      {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} />}
-      <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} />
+      {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} deadheadTone={heatOf ? "text-ink-muted" : undefined} />}
+      <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} deadheadTone={heatOf ? "font-semibold text-ink-muted" : undefined} />
       {middle.map((m, i) => (
         <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
           {m.text}
@@ -236,14 +260,20 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
           const gtOut = s.runsOn ? null : Math.min(x(s.end) + GT_GAP, width - GT_PX);
           const left = gtIn === null ? x(s.start) : gtIn + GT_PX + GT_GAP;
           const right = gtOut === null ? x(s.end) : gtOut - GT_GAP;
+          const heat = heatOf?.(s.seg, "layover");
+          const gt = heatOf ? "bg-ink-faint" : "bg-gt";
           return (
             <span key={`h${i}`}>
-              <span className={`absolute bg-layover ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`} style={{ left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }} />
-              {gtIn !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
-              {gtOut !== null && <span className="absolute rounded-full bg-gt" style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
+              <span
+                className={`absolute ${heat ? "" : "bg-layover"} ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`}
+                style={heat ? { left, width: Math.max(2, right - left), top: laneTop - 1, height: SIZE.lane + 2, background: heatColor(heat.heat) } : { left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }}
+                title={heat ? heatPieceText(heat) : undefined}
+              />
+              {gtIn !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
+              {gtOut !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
               {s.labeled && words.stays[i] && (
                 <span
-                  className="absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-layover"
+                  className={`absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
                   style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: wordsTop, height: SIZE.line }}
                 >
                   {formatStay ? (
@@ -266,9 +296,9 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
           const label = words.rests[i];
           return (
             <span key={`r${i}`}>
-              <span className="absolute rounded-full bg-rest" style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
+              <span className={`absolute rounded-full ${heatOf ? "bg-ink-faint" : "bg-rest"}`} style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
               {label && (
-                <span className="absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-rest" style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
+                <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink-muted" : "text-rest"}`} style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
                   {label.text}
                 </span>
               )}

@@ -42,6 +42,8 @@ import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
+import { heatModelOf } from "@/lib/line-heat";
+import { cityGradesOf } from "@/lib/ask-pack-run";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { useTextScale } from "@/lib/use-text-scale";
 import { packColumns } from "@/lib/bidpack-row";
@@ -830,10 +832,15 @@ export function ResultsView({
   // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
   // they pick Timeline there, so the switch doesn't look broken.
   const stripView = stripViewFor(chosenStripView, bidPack);
+  // The pilot's own heat reading, worked out once the Heat Map is picked (it measures every line in the pack).
+  const heatModel = useMemo(
+    () => (stripView === "heat" ? heatModelOf(bidPack, pilotModel ?? null, cityGradesOf(pilotModel, profile.cityRatings)) : null),
+    [stripView, bidPack, pilotModel, profile.cityRatings]
+  );
   const [noTimelineSaid, setNoTimelineSaid] = useState(false);
   const chooseStripView = (next: StripViewMode) => {
     setStripView(next);
-    setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
+    setNoTimelineSaid(next !== "pack" && stripViewFor(next, bidPack) !== next);
   };
   // Held still while a line is dragged: the cards it can land on stay drawn where they were measured.
   const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}|${textScale}`, activeId !== null);
@@ -1766,6 +1773,7 @@ export function ResultsView({
                               packColumns={columns}
                               stripLayout={layout}
                               stripView={stripView}
+                              heatModel={heatModel}
                               open={open}
                               placedByYou={dragEnabled && swappedIds.has(id)}
                               actions={cardActions}

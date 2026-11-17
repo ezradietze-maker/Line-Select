@@ -1,6 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
+import type { HeatOf } from "@/components/results/HeatReasons";
+import { HEAT_EDGE, heatColor, heatWash } from "@/lib/heat-scale";
+import { heatPieceText } from "@/lib/line-heat";
 import { dayBars, fitLayoverLabel, LABEL_CHAR_PX, layoverHours, sideBySide, type DayBars } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
@@ -59,6 +62,11 @@ interface CalendarDayBarsProps {
   bleed?: number;
   /** The month is on Zulu's clock: a flight across the date line is its plain length, marked where it crosses. */
   zulu?: boolean;
+  /**
+   * The Heat Map: each duty period's band and each layover's line in its heat colour (`lib/line-heat.ts`), the flying
+   * and the words in ink over them, so the colour is only ever heat.
+   */
+  heatOf?: HeatOf;
 }
 
 /** "+17h", "−17h": how far the local clock jumps crossing the date line. */
@@ -103,7 +111,12 @@ function LayoverWords({ city, hours, withHours, mark }: { city: string; hours: n
  * bold to where it crosses, the date line a diagonal back and down to that moment on the arrival side's clock, the
  * rest of the flight and the layover on the lower row — his sketch, NRT up top and ANC at the foot of the diagonal.
  */
-export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreferences, minLabelWidth = 60, top, bleed = 0, zulu = false }: CalendarDayBarsProps) {
+export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreferences, minLabelWidth = 60, top, bleed = 0, zulu = false, heatOf }: CalendarDayBarsProps) {
+  /** On the Heat Map a flight (or hotel standby) is drawn in its duty period's heat, finely edged, over the band's wash of it. */
+  const heatPaint = (seg: TimelineSegment | undefined) => {
+    const heat = heatOf?.(seg, "duty");
+    return heat ? { background: heatColor(heat.heat), boxShadow: HEAT_EDGE } : undefined;
+  };
   const size = SIZE;
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
@@ -161,11 +174,13 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           const runsIn = d.start <= 0;
           const runsOn = d.end >= DAY;
           const left = x(d.start) - (runsIn ? bleed : DUTY_PAD);
+          const heat = heatOf?.(d.seg, "duty");
           return (
             <span
               key={`d${i}`}
-              className={`absolute bg-trip-band ${runsIn ? "" : "rounded-l-[3px]"} ${runsOn ? "" : "rounded-r-[3px]"}`}
-              style={{ left, width: x(d.end) + (runsOn ? bleed : DUTY_PAD) - left, top: mid - size.duty / 2, height: size.duty }}
+              className={`absolute ${heat ? "" : "bg-trip-band"} ${runsIn ? "" : "rounded-l-[3px]"} ${runsOn ? "" : "rounded-r-[3px]"}`}
+              style={{ left, width: x(d.end) + (runsOn ? bleed : DUTY_PAD) - left, top: mid - size.duty / 2, height: size.duty, ...(heat ? { background: heatWash(heat.heat) } : {}) }}
+              title={heat ? heatPieceText(heat) : undefined}
             />
           );
         })}
@@ -177,8 +192,8 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           return (
             <span
               key={`s${i}`}
-              className={`absolute bg-standby ${runsIn ? "" : "rounded-l-full"} ${runsOn ? "" : "rounded-r-full"}`}
-              style={{ left, width: Math.max(2, x(d.end) + (runsOn ? bleed : 0) - left), top: mid - size.bar / 2, height: size.bar }}
+              className={`absolute ${heatPaint(d.seg) ? "" : "bg-standby"} ${runsIn ? "" : "rounded-l-full"} ${runsOn ? "" : "rounded-r-full"}`}
+              style={{ left, width: Math.max(2, x(d.end) + (runsOn ? bleed : 0) - left), top: mid - size.bar / 2, height: size.bar, ...heatPaint(d.seg) }}
               title="Hotel standby"
             />
           );
@@ -206,18 +221,24 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           const runsIn = s.start <= 0 || s.runsIn;
           const runsOn = s.end >= DAY || s.runsOn;
           const left = x(s.start) - (runsIn ? bleed : 0);
+          const heat = heatOf?.(s.seg, "layover");
           return (
             <span
               key={`h${i}`}
-              className={`absolute bg-layover ${runsIn ? "" : "rounded-l-full"} ${runsOn ? "" : "rounded-r-full"}`}
-              style={{ left, width: x(s.end) + (runsOn ? bleed : 0) - left, top: f.laneTop, height: size.lane }}
+              className={`absolute ${heat ? "" : "bg-layover"} ${runsIn ? "" : "rounded-l-full"} ${runsOn ? "" : "rounded-r-full"}`}
+              style={
+                heat
+                  ? { left, width: x(s.end) + (runsOn ? bleed : 0) - left, top: f.laneTop - 1, height: size.lane + 2, background: heatColor(heat.heat) }
+                  : { left, width: x(s.end) + (runsOn ? bleed : 0) - left, top: f.laneTop, height: size.lane }
+              }
+              title={heat ? heatPieceText(heat) : undefined}
             />
           );
         })}
         {stayWords.map(({ s, up, center, words }, i) => (
           <span
             key={`w${i}`}
-            className="absolute flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap font-mono text-[11px] font-semibold leading-none text-layover"
+            className={`absolute flex -translate-x-1/2 items-center gap-0.5 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
             style={{ left: center, top: up ? 0 : f.wordsTop, height: up ? size.top : size.line }}
             title={`Layover in ${s.city}, ${layoverHours(s.hours)}`}
           >
@@ -226,15 +247,19 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
         ))}
         {b.legs.map((l, i) => {
           // A date-line flight is drawn in its own leg color too — blue flown, magenta deadheaded — its shape says the rest.
-          const tone = l.deadhead ? "bg-deadhead" : "bg-leg";
-          const ink = l.deadhead ? "text-deadhead" : "text-leg";
+          // On the Heat Map, the colour of its duty period's heat (a deadhead a little fainter); else blue flown, magenta deadheaded.
+          const paint = heatPaint(l.seg);
+          const flown = paint ? { ...paint, ...(l.deadhead ? { opacity: 0.7 } : {}) } : undefined;
+          const tone = paint ? "" : l.deadhead ? "bg-deadhead" : "bg-leg";
+          const ink = paint ? "text-ink" : l.deadhead ? "text-deadhead" : "text-leg";
+          const stroke = paint ? { color: paint.background } : undefined;
           const left = x(l.start) - (l.runsIn ? bleed : 0);
           const right = x(l.end) + (l.runsOn ? bleed : 0);
           // The ticks: a takeoff and a landing — none where the leg runs on past midnight or is cut at the date line.
           const ticks = (
             <>
-              {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.start), top: mid - size.tick / 2, height: size.tick }} />}
-              {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ left: x(l.end) - 2, top: mid - size.tick / 2, height: size.tick }} />}
+              {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.start), top: mid - size.tick / 2, height: size.tick }} />}
+              {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.end) - 2, top: mid - size.tick / 2, height: size.tick }} />}
             </>
           );
           const jumpWords = (at: number, minutes: number) =>
@@ -259,7 +284,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             const labelHere = l.clockJump != null && (l.back.part === "whole" || (l.back.part === "departure") === l.back.edgeFraction >= 0.5);
             return (
               <span key={`l${i}`} title={`Crosses the date line eastbound${l.clockJump != null ? ` — the local clock jumps ${jumpLabel(l.clockJump)}` : ""}`}>
-                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} style={stroke} width={width} height={height} aria-hidden>
                   <line x1={x0} y1={y0} x2={x1} y2={y1} stroke="currentColor" strokeWidth={size.bar} strokeLinecap={l.back.part === "whole" ? "round" : "butt"} />
                 </svg>
                 {labelHere && Math.abs(x1 - x0) > 26 && jumpWords((x0 + x1) / 2, l.clockJump!)}
@@ -271,11 +296,11 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             // local clock jumps there.
             return (
               <span key={`l${i}`} title={`Crosses the date line ${l.dateLine === "east" ? "eastbound" : "westbound"}${l.mark ? ` — the local clock jumps ${jumpLabel(l.mark.jumpMinutes)}` : ""}`}>
-                <span className={`absolute ${tone}`} style={{ left, width: Math.max(2, right - left), top: mid - size.bar / 2, height: size.bar }} />
+                <span className={`absolute ${tone}`} style={{ ...flown, left, width: Math.max(2, right - left), top: mid - size.bar / 2, height: size.bar }} />
                 {ticks}
                 {l.mark && (
                   <>
-                    <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                    <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} style={stroke} width={width} height={height} aria-hidden>
                       <polyline points={`${x(l.mark.at) - 4},${mid - 5} ${x(l.mark.at) - 1},${mid + 5} ${x(l.mark.at) + 1},${mid - 5} ${x(l.mark.at) + 4},${mid + 5}`} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
                     </svg>
                     {jumpWords(x(l.mark.at), l.mark.jumpMinutes)}
@@ -290,9 +315,9 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             const j1 = l.jump.end >= DAY ? width + bleed : x(l.jump.end);
             return (
               <span key={`l${i}`} title={`Crosses the date line westbound — the flight in bold, the local clock's ${jumpLabel(l.jump.minutes)} jump as the squiggle`}>
-                {j0 > left && <span className={`absolute ${tone}`} style={{ left, width: j0 - left, top: mid - size.bar / 2, height: size.bar }} />}
-                {right > j1 && <span className={`absolute ${tone}`} style={{ left: j1, width: right - j1, top: mid - size.bar / 2, height: size.bar }} />}
-                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                {j0 > left && <span className={`absolute ${tone}`} style={{ ...flown, left, width: j0 - left, top: mid - size.bar / 2, height: size.bar }} />}
+                {right > j1 && <span className={`absolute ${tone}`} style={{ ...flown, left: j1, width: right - j1, top: mid - size.bar / 2, height: size.bar }} />}
+                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} style={stroke} width={width} height={height} aria-hidden>
                   <polyline points={squiggle(j0, j1, mid, l.jump.end >= DAY ? j1 : j0)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
                 </svg>
                 {ticks}
@@ -302,7 +327,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
           }
           return (
             <span key={`l${i}`}>
-              <span className={`absolute ${tone}`} style={{ left, width: Math.max(2, right - left), top: mid - size.bar / 2, height: size.bar }} />
+              <span className={`absolute ${tone}`} style={{ ...flown, left, width: Math.max(2, right - left), top: mid - size.bar / 2, height: size.bar }} />
               {ticks}
             </span>
           );
@@ -314,7 +339,7 @@ export function CalendarDayBars({ segments, widthPx, stayLabeled, cityPreference
             return center === null ? null : (
               <span
                 key={`c${i}`}
-                className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${c.deadhead ? "text-deadhead" : "text-ink"}`}
+                className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${c.deadhead ? (heatOf ? "text-ink-muted" : "text-deadhead") : "text-ink"}`}
                 style={{ left: center, top: f.citiesTop + (f.cityRows - 1) * size.line, height: size.line }}
               >
                 {c.text}
