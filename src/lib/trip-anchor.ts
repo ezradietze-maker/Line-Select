@@ -60,7 +60,9 @@ export function reportsFromHome(trip: Pick<Trip, "tafbHours" | "schedule" | "run
 export function tripReleaseHours(trip: Pick<Trip, "tafbHours" | "schedule" | "runStarts">): number {
   const days = runDaysOf(trip);
   const last = days?.[days.length - 1];
-  return last ? last.startMinutes / 60 + last.hours : trip.tafbHours;
+  // On the pack's own minute: TAFB is kept to two decimals of an hour, so report plus it fell up to 18 seconds short
+  // and a clock cut to the minute read a third of releases a minute early (TAFB 69:56 after 0212 read 00:07).
+  return Math.round((last ? last.startMinutes / 60 + last.hours : trip.tafbHours) * 60) / 60;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
