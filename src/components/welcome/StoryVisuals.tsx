@@ -107,7 +107,9 @@ export function InterviewVisual({ active }: { active: boolean }) {
           {[0, 1, 2, 3, 4].map((n) => (
             <div
               key={n}
-              className={`relative py-2 transition-colors duration-300 ${active && n === pick ? "font-semibold text-sign" : "text-ink-muted"}`}
+              // The digit under the black selection is always sign yellow: waiting on 0 before the step plays, grey on
+              // black was 2.5:1 by day.
+              className={`relative py-2 transition-colors duration-300 ${n === (active ? pick : 0) ? "font-semibold text-sign" : "text-ink-muted"}`}
               // Lights up as the selection arrives, not before it.
               style={{ transitionDelay: active && !reduce ? "1100ms" : "0ms" }}
             >
