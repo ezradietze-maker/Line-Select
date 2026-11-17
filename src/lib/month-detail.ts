@@ -1,7 +1,7 @@
 import { buildLineMonthCalendar, type LineMonthDay } from "@/lib/line-month";
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
-import { DEFAULT_MIN_HOME_HOURS, groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
+import { DEFAULT_MIN_HOME_HOURS, departureDays, groupDepartures, type DepartureOptions } from "@/lib/metrics/departures";
 import { hubTurnsOf, summarizeHubTurns, type HubTurnSummary } from "@/lib/metrics/hub-turns";
 import { DEFAULT_MIN_BREAK_NIGHTS, homeStretches, summarizeHomeTime } from "@/lib/metrics/home-stretches";
 import { bidMonthEnd, lineCarryOver, monthLine, nextMonthName, uncutTrip } from "@/lib/bid-month";
@@ -9,8 +9,9 @@ import { fullDayDates } from "@/lib/full-days";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
+import { dayTripsOf, lineByDay, tripReportUtc } from "@/lib/trip-anchor";
 import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
-import type { Line } from "@/types/bidpack";
+import type { Line, Trip } from "@/types/bidpack";
 import type { CityMark, PreferenceProfile } from "@/types/preferences";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 
@@ -28,6 +29,13 @@ import type { FlightAnswers } from "@/lib/flights/trip-travel";
 const WOCL_START_MIN = 2 * 60;
 const WOCL_END_MIN = 6 * 60;
 const RED_EYE_END_MIN = 5 * 60;
+const HOUR_MS = 3_600_000;
+
+/** Hours from a trip's report to its last block-in. */
+function lastBlockInHours(trip: Trip): number {
+  return Math.max(0, ...trip.schedule.flatMap((d) => [d.startMinutes, ...d.legs.map((l) => l.endMinutes)])) / 60;
+}
+
 /**
  * Trips this close together at base are drawn as one departure: a pilot who lives elsewhere flies them back to back
  * without going home ("that combination of trips is a single departure"). In the October MD-11 pack, chained trips
@@ -374,7 +382,10 @@ export function buildDetailedMonth(
   /** Zulu: the days are Zulu days and every time is Zulu (see `buildLineMonthCalendar`); the summary stays the line's own. */
   mode: TimeMode = "local"
 ): DetailedMonth {
-  const calendar = buildLineMonthCalendar(line, bidPeriodStart, bidPeriodDays, mode);
+  // The days as the pack prints them: a run of day trips is its days, each its own trip with its own credit, report and
+  // end (`lineByDay`). Every `tripIndex` below is into `shown.trips`; the summary and the departures take the line whole.
+  const shown = lineByDay(line);
+  const calendar = buildLineMonthCalendar(shown, bidPeriodStart, bidPeriodDays, mode);
   const clock = mode === "zulu" ? "Z" : "L";
   // In Zulu, the month as the base counts it: its summary, and which trips report early — a body-clock matter, on the
   // clock the pilot lives on, not Zulu's.
@@ -401,7 +412,7 @@ export function buildDetailedMonth(
   };
   const days: DetailedDay[] = calendar.days.map((day) => {
     const tripIndex = day.tripIndex;
-    const trip = tripIndex !== null ? line.trips[tripIndex] : null;
+    const trip = tripIndex !== null ? shown.trips[tripIndex] : null;
     const label = day.date ? String(Number(day.date.slice(8, 10))) : String(day.dayIndex + 1);
     const isWeekend = day.weekday === "Sat" || day.weekday === "Sun";
     const base = {
@@ -422,7 +433,7 @@ export function buildDetailedMonth(
 
     const spill = day.spill
       ? {
-          tripNumber: line.trips[day.spill.tripIndex]?.pairingNumber ?? null,
+          tripNumber: shown.trips[day.spill.tripIndex]?.pairingNumber ?? null,
           segments: day.spill.segments,
           // Its last landing, on that airport's clock.
           landsAt:
@@ -613,10 +624,23 @@ export function buildDetailedMonth(
   if (departureOptions) {
     const deps = groupDepartures(month.trips, { bidPeriodStart, base: departureOptions.base }, departureOptions);
     departureCount = deps.length;
-    // A trip cut at the month's end is a new object; it keeps its place in the line.
-    const indexOf = new Map(month.trips.map((t) => [t, line.trips.findIndex((x) => x.id === t.id && x.startDayIndex === t.startDayIndex)] as const));
+    // Each departure's days as the calendar draws them (`departureDays`), each found by its trip and date — a trip cut at
+    // the month's end is a new object — with which of the departure's trips it's a day of. A day joins the one before it.
+    const ctx = { bidPeriodStart, base: departureOptions.base };
+    const indexOf = (t: Trip) => shown.trips.findIndex((x) => x.id === t.id && x.startDayIndex === t.startDayIndex);
+    const depDays = deps.map((dep) => departureDays(dep, ctx).map(({ day, of }) => ({ i: indexOf(day), day, k: dep.trips.indexOf(of) })));
     const link = new Map<number, { prev: number; turnHours: number }>();
-    for (const dep of deps) dep.trips.forEach((t, k) => k > 0 && link.set(indexOf.get(t)!, { prev: indexOf.get(dep.trips[k - 1])!, turnHours: dep.turnHours[k - 1] }));
+    deps.forEach((dep, d) =>
+      depDays[d].forEach(({ i, day, k }, n) => {
+        if (n === 0) return;
+        const prev = depDays[d][n - 1];
+        // Two days of one run: from the first's last block-in to the next one's report.
+        const from = tripReportUtc(ctx, prev.day);
+        const to = tripReportUtc(ctx, day);
+        const turnHours = prev.k !== k ? dep.turnHours[k - 1] : from !== null && to !== null ? (to - from) / HOUR_MS - lastBlockInHours(prev.day) : 0;
+        link.set(i, { prev: prev.i, turnHours });
+      })
+    );
     // What each departure means at base for a commuter, said on the day it happens.
     const code = departureOptions.base;
     const firstDayOf = (trip: number) => days.find((x) => x.tripIndex === trip && x.isTripStart);
@@ -627,9 +651,9 @@ export function buildDetailedMonth(
       day.baseNote = day.baseNote ? `${day.baseNote} ${text}` : text;
       day.title = `${day.title}; ${text.charAt(0).toLowerCase()}${text.slice(1)}`;
     };
-    for (const dep of deps) {
-      const first = indexOf.get(dep.trips[0])!;
-      const last = indexOf.get(dep.trips[dep.trips.length - 1])!;
+    deps.forEach((dep, d) => {
+      const first = depDays[d][0]?.i ?? -1;
+      const last = depDays[d].at(-1)?.i ?? -1;
       const startDay = firstDayOf(first);
       if (dep.jumpseatIns > 0)
         note(startDay, `Shows at ${startDay?.dutyStart ?? "an early hour"} in ${code}, too early to commute in that morning — but the first duty is short, so this is a jumpseat in on the evening flight the night before, with a nap at the hub, rather than a hotel.`);
@@ -639,12 +663,12 @@ export function buildDetailedMonth(
         if (b.reason === "between" && b.runDay !== undefined) {
           // Before a later day of a run of day trips: said on that day.
           const trip = dep.trips.find((t) => t.pairingNumber === b.tripNumber);
-          const first = trip ? firstDayOf(indexOf.get(trip)!) : undefined;
-          const day = first ? days.find((x) => x.tripIndex === first.tripIndex && x.dayIndex === first.dayIndex + b.runDay!) : undefined;
+          const runDay = trip ? dayTripsOf(trip)[b.runDay] : undefined;
+          const day = runDay ? firstDayOf(indexOf(runDay)) : undefined;
           note(day, `${nightsWord(b.nights)} in a ${code} hotel before this day of the trip — not long enough at home to be worth the trip back.`);
         } else if (b.reason === "between") {
           const k = dep.trips.findIndex((t) => t.pairingNumber === b.tripNumber);
-          const day = k > 0 ? firstDayOf(indexOf.get(dep.trips[k])!) : undefined;
+          const day = k > 0 ? firstDayOf(depDays[d].find((x) => x.k === k)?.i ?? -1) : undefined;
           note(day, `${nightsWord(b.nights)} in a ${code} hotel waiting for this trip — not long enough at home to be worth the trip back.`);
         }
         if (b.reason === "after") {
@@ -661,7 +685,7 @@ export function buildDetailedMonth(
           note(day, `Back in ${code}${time ? ` at ${time}${afterMidnight ? ", just after midnight" : ""}` : ""} — too late to get home that night, so a night in ${code}.`);
         }
       }
-    }
+    });
     // Hub turns, said on the day the duty they're part of started: a night one on the evening before the sort.
     const turns = bidPeriodStart ? hubTurnsOf(month.trips, { bidPeriodStart, base: code }) : [];
     summaryHubs = turns.length ? summarizeHubTurns(turns) : null;
@@ -717,7 +741,7 @@ export function buildDetailedMonth(
       if (!l) return;
       const prevLast = days.filter((x) => x.tripIndex === l.prev && x.kind !== "off").at(-1);
       d.chain = {
-        fromTripNumber: line.trips[l.prev]?.pairingNumber ?? null,
+        fromTripNumber: shown.trips[l.prev]?.pairingNumber ?? null,
         city: prevLast?.finish?.city ?? d.route[0]?.city ?? departureOptions.base,
         turnMinutes: Math.max(0, Math.round(l.turnHours * 60)),
         landed: prevLast?.finish?.time ?? "",
@@ -731,7 +755,7 @@ export function buildDetailedMonth(
     if (d.route[0]?.city !== prev.finish.city) return;
     const turn = i * 1440 + clockMinutes(d.dutyStart) - ((i - 1) * 1440 + clockMinutes(prev.finish.time) + (prev.finish.nextDay ? 1440 : 0));
     if (turn < 0 || turn > CHAIN_MAX_MINUTES) return;
-    d.chain = { fromTripNumber: prev.tripNumber ?? line.trips[prev.tripIndex]?.pairingNumber ?? null, city: prev.finish.city, turnMinutes: turn, landed: prev.finish.time, reports: d.dutyStart };
+    d.chain = { fromTripNumber: prev.tripNumber ?? shown.trips[prev.tripIndex]?.pairingNumber ?? null, city: prev.finish.city, turnMinutes: turn, landed: prev.finish.time, reports: d.dutyStart };
   });
 
   // Full days in a layover city, on the date they fall on there — on the base's calendar, which is the city's date for
@@ -811,7 +835,7 @@ function summarize(
     .sort((a, b) => nightOrder(a) - nightOrder(b));
 
   return {
-    departures: departureCount ?? line.trips.length - days.filter((d) => d.chain).length,
+    departures: departureCount ?? lineByDay(line).trips.length - days.filter((d) => d.chain).length,
     base,
     hubTurns,
     home,

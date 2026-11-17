@@ -1,6 +1,7 @@
 import { CreditHours } from "@/components/results/TripMarks";
 import type { LineCarryOver } from "@/lib/bid-month";
 import { tripStandbyDays } from "@/lib/standby";
+import { dayTripsOf, runOfDay } from "@/lib/trip-anchor";
 import { hm } from "@/lib/trip-day-stats";
 import type { Trip } from "@/types/bidpack";
 
@@ -13,7 +14,9 @@ function inFlyingOrder(trips: Trip[]): Trip[] {
 /** A trip's credit and landings in this bid month — and, for the one running into the next, what it carries there. */
 function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver | null }) {
   const standby = tripStandbyDays(trip);
-  const carries = trip.carriesIntoNextMonth && carryOver ? carryOver : null;
+  // A run of day trips cut at the month's end carries on from its last day here, not from each of them.
+  const of = runOfDay(trip);
+  const carries = trip.carriesIntoNextMonth && carryOver && (!of || of.index === dayTripsOf(of.run).length - 1) ? carryOver : null;
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-md border border-border bg-canvas px-2 py-0.5 font-mono text-xs text-ink"
@@ -39,7 +42,8 @@ function TripChip({ trip, carryOver }: { trip: Trip; carryOver?: LineCarryOver |
 
 /**
  * The bid pack's own trip (pairing) numbers for a line, each with its credit and landings in the bid month (pass the
- * line's `monthLine` trips; the one running into the next month shows its C/O) — the identifiers pilots
+ * line's `monthLine` trips a day at a time, `lineByDay`, as the pack prints a run of day trips; the one running into
+ * the next month shows its C/O) — the identifiers pilots
  * actually use to look a trip up in the pack or offer it on the Trade Board, shown right above the calendar. Trips
  * flown back to back without getting home between (`departures`, from `groupDepartures`) sit together in one tinted
  * box: one departure from home, however many trips.

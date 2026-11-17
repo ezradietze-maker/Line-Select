@@ -92,6 +92,24 @@ export function runOfDay(trip: Trip): { run: Trip; day: RunDay; index: number } 
   return runOf.get(trip) ?? null;
 }
 
+const byDay = new WeakMap<object, object>();
+
+/**
+ * A line as its pack's line page prints it, for drawing: each run of day trips as its days (`dayTripsOf`), each with
+ * its own trip number, credit, report and release. Kept whole, the strips and the month calendar drew a four-day run
+ * of trip 31 as one trip "31 25:36" ending on its last day, where the pack prints "31" over "6:24" on each day and the
+ * pilot is home each night. Scores and sorts still take the line as it is. The same object each time it's asked for,
+ * and the line itself when it has no run.
+ */
+export function lineByDay<L extends { trips: Trip[] }>(line: L): L {
+  const known = byDay.get(line);
+  if (known) return known as L;
+  const trips = line.trips.flatMap(dayTripsOf);
+  const shown = trips.length === line.trips.length ? line : { ...line, trips };
+  byDay.set(line, shown);
+  return shown;
+}
+
 /**
  * Days of runs back into runs: each unbroken stretch of a run's days, as one shorter run. Taken a day at a time when a
  * vacation or carry-in hits one, a run's other days were left as separate one-day trips, and scored as more trips and
