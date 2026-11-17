@@ -137,6 +137,17 @@ export function FirstVisitTour({ ready, skip = false }: { ready: boolean; skip?:
     // Scrolled so the part and its tip fit on the screen together, the tip under it. A part too tall for both (the
     // bid panel on a small phone) goes to the top of the screen, so its top — the countdown — is what's lit.
     const place = () => {
+      // A part in a scroller of its own (the rail's Your flying, on a phone turned sideways) is scrolled to in there
+      // first: the page's scroll doesn't move it, and below the rail's fold the last tip lit nothing and ran off the screen.
+      for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+        if (!/auto|scroll/.test(getComputedStyle(a).overflowY) || a.scrollHeight <= a.clientHeight) continue;
+        const part = el.getBoundingClientRect();
+        const box = a.getBoundingClientRect();
+        // As little as it takes: its foot into view, but never its top out of it.
+        if (part.bottom > box.bottom) a.scrollTop += Math.min(part.bottom - box.bottom, part.top - box.top);
+        else if (part.top < box.top) a.scrollTop -= box.top - part.top;
+        break;
+      }
       const r = el.getBoundingClientRect();
       // Below the phone's top bar, which stays on the page: a part scrolled under it had its top hidden.
       const bar = document.querySelector("[data-top-bar]")?.getBoundingClientRect();
@@ -212,6 +223,8 @@ export function FirstVisitTour({ ready, skip = false }: { ready: boolean; skip?:
     cardTop = Math.max(EDGE, vh - EDGE - cardHeight);
     spotHeight = Math.max(24, cardTop - GAP - spotTop);
   }
+  // Never past the foot of the screen, where its Next and Done couldn't be pressed.
+  cardTop = Math.max(EDGE, Math.min(cardTop, vh - EDGE - cardHeight));
   const cardLeft = Math.min(Math.max(EDGE, rect.left), window.innerWidth - EDGE - Math.min(360, window.innerWidth - 2 * EDGE));
   const visibleSteps = STEPS.map((x, i) => i).filter((i) => shown(document.querySelector(STEPS[i].target)));
   const position = visibleSteps.indexOf(step) + 1;

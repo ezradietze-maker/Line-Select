@@ -16,7 +16,11 @@ import type { BidPack, Trip } from "@/types/bidpack";
  */
 
 const HOUR = 3_600_000;
-const COL = 26;
+/**
+ * A day's narrowest column, room for "We" over "30". At 26 the month never fit the panel, even on a wide desktop: its
+ * last days, often where the vacation itself was, sat past the right edge behind a scroll with no bar to show it.
+ */
+const COL = 18;
 const WEEKDAY = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
