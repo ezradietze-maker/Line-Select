@@ -328,34 +328,33 @@ describe("gymScore", () => {
 
 describe("range targets (daysOff/dutyPeriods floor-ideal-ceiling)", () => {
   it("scores a full match for any line inside [min,max], distance-penalized only outside it", () => {
-    // Sample pack daysOff spread is [18,24]: 9001=24, 9002=24, 9003=23, 9004=20, 9005=19, 9006=18.
+    // Sample pack daysOff spread is [23,26]: 9001=26, 9002=26, 9003=25, 9004=24, 9005=23, 9006=23.
     const profile = {
       ...neutralProfile(),
-      explicitTargets: { daysOff: { min: 20, max: 24 } },
+      explicitTargets: { daysOff: { min: 25, max: 26 } },
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
     const matchFor = (lineNumber: string) =>
       ranked.find((r) => r.line.lineNumber === lineNumber)!.dimensions.find((d) => d.key === "daysOff")!.match;
 
-    // 9001/9002/9003/9004 all sit inside [20,24] -> full match.
+    // 9001/9002/9003 all sit inside [25,26] -> full match.
     expect(matchFor("9001")).toBe(1);
     expect(matchFor("9002")).toBe(1);
     expect(matchFor("9003")).toBe(1);
-    expect(matchFor("9004")).toBe(1);
-    // 9005 (19) and 9006 (18) sit below the floor -> distance-penalized, worse the further below.
-    expect(matchFor("9005")).toBeLessThan(1);
-    expect(matchFor("9006")).toBeLessThan(matchFor("9005"));
+    // 9004 (24) and 9005 (23) sit below the floor -> distance-penalized, worse the further below.
+    expect(matchFor("9004")).toBeLessThan(1);
+    expect(matchFor("9005")).toBeLessThan(matchFor("9004"));
   });
 
   it("behaves identically to a bare pinned number when only min is given (degenerates to a floor, not a two-point band)", () => {
     const profile = {
       ...neutralProfile(),
-      explicitTargets: { daysOff: { min: 22 } },
+      explicitTargets: { daysOff: { min: 25 } },
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
     const matchFor = (lineNumber: string) =>
       ranked.find((r) => r.line.lineNumber === lineNumber)!.dimensions.find((d) => d.key === "daysOff")!.match;
-    // 24, 24, 23 all clear the floor -> full match. 20, 19, 18 fall short.
+    // 26, 26, 25 all clear the floor -> full match. 24, 23, 23 fall short.
     expect(matchFor("9001")).toBe(1);
     expect(matchFor("9003")).toBe(1);
     expect(matchFor("9004")).toBeLessThan(1);
@@ -368,15 +367,15 @@ describe("dealbreakers on explicit-target ranges (floor/ceiling breach)", () => 
       ...neutralProfile(),
       discoveredFacts: [
         dealbreakerFact(
-          { type: "explicit-target", key: "daysOff", value: 20, rangeRole: "min" },
-          "Fewer than 20 days off is a dealbreaker."
+          { type: "explicit-target", key: "daysOff", value: 24, rangeRole: "min" },
+          "Fewer than 24 days off is a dealbreaker."
         ),
       ],
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
-    const line9005 = ranked.find((r) => r.line.lineNumber === "9005")!; // daysOff 19
-    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 18
-    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!; // daysOff 20
+    const line9005 = ranked.find((r) => r.line.lineNumber === "9005")!; // daysOff 23
+    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 23
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!; // daysOff 24
 
     expect(line9005.violatedDealbreakers).toHaveLength(1);
     expect(line9005.score).toBeLessThanOrEqual(35);
@@ -407,9 +406,11 @@ describe("dealbreakers on explicit-target ranges (floor/ceiling breach)", () => 
   it("still never honors a dealbreaker on a bare 'ideal' explicit-target (no rangeRole)", () => {
     const profile = {
       ...neutralProfile(),
-      discoveredFacts: [dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 20, rangeRole: "ideal" })],
+      discoveredFacts: [dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 25, rangeRole: "ideal" })],
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    // 9004, 9005 and 9006 sit below the ideal, and still aren't capped.
+    expect(ranked.filter((r) => r.line.daysOff < 25)).toHaveLength(3);
     for (const r of ranked) {
       expect(r.violatedDealbreakers).toHaveLength(0);
     }
@@ -573,25 +574,25 @@ describe("dealbreaker near-misses", () => {
   }
 
   it("flags a line sitting close to (but not below) a stated daysOff floor as a near-miss, not a violation", () => {
-    // Sample pack daysOff: 9001/9002=24, 9003=23, 9004=20, 9005=19, 9006=18.
+    // Sample pack daysOff: 9001/9002=26, 9003=25, 9004=24, 9005/9006=23.
     const profile = {
       ...buildProfile(emptyWeights(), false, []),
       discoveredFacts: [
         dealbreakerFact(
-          { type: "explicit-target", key: "daysOff", value: 18, rangeRole: "min" },
-          "Fewer than 18 days off is a dealbreaker."
+          { type: "explicit-target", key: "daysOff", value: 23, rangeRole: "min" },
+          "Fewer than 23 days off is a dealbreaker."
         ),
       ],
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
-    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 18 == the floor itself, not below it -> not violated
+    const line9006 = ranked.find((r) => r.line.lineNumber === "9006")!; // daysOff 23 == the floor itself, not below it -> not violated
     expect(line9006.violatedDealbreakers).toHaveLength(0);
 
-    const line9005 = ranked.find((r) => r.line.lineNumber === "9005")!; // daysOff 19, 1 above the floor -> near-miss
-    expect(line9005.violatedDealbreakers).toHaveLength(0);
-    expect(line9005.nearMissDealbreakers).toHaveLength(1);
+    const line9004 = ranked.find((r) => r.line.lineNumber === "9004")!; // daysOff 24, 1 above the floor -> near-miss
+    expect(line9004.violatedDealbreakers).toHaveLength(0);
+    expect(line9004.nearMissDealbreakers).toHaveLength(1);
 
-    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!; // daysOff 24, far above the floor -> neither
+    const line9001 = ranked.find((r) => r.line.lineNumber === "9001")!; // daysOff 26, far above the floor -> neither
     expect(line9001.nearMissDealbreakers).toHaveLength(0);
   });
 
@@ -599,10 +600,12 @@ describe("dealbreaker near-misses", () => {
     const profile = {
       ...buildProfile(emptyWeights(), false, []),
       discoveredFacts: [
-        dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 20, rangeRole: "min" }),
+        dealbreakerFact({ type: "explicit-target", key: "daysOff", value: 24, rangeRole: "min" }),
       ],
     };
     const ranked = rankLines(SAMPLE_BID_PACK, profile);
+    // 9005 and 9006 (23) fall below it; 9004 (24) and 9003 (25) sit just above.
+    expect(ranked.filter((r) => r.violatedDealbreakers.length > 0).map((r) => r.line.lineNumber).sort()).toEqual(["9005", "9006"]);
     for (const r of ranked) {
       if (r.violatedDealbreakers.length > 0) {
         expect(r.nearMissDealbreakers).toHaveLength(0);

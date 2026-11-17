@@ -28,7 +28,7 @@ describe("learnFromReorder", () => {
     const profile = neutralProfile();
     const ranked = rankedLines(profile);
     const highCredit = ranked.find((r) => r.line.lineNumber === "9006")!; // 36 credit hours
-    const lowCredit = ranked.find((r) => r.line.lineNumber === "9001")!; // 7.5 credit hours
+    const lowCredit = ranked.find((r) => r.line.lineNumber === "9001")!; // 7:48 credit hours
 
     const judgment: PairwiseJudgment = { favored: highCredit, overtaken: lowCredit };
     const result = learnFromReorder(profile, implicitValuesByLine, [judgment]);
