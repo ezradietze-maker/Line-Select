@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { isJsonObject, isText } from "@/lib/server/json-body";
 import { getCurrentServerUser } from "@/lib/server/auth";
+import { accessRefusal } from "@/lib/server/gating";
 import { confirmEmailRefusal, fromVerified, isVerified, verifiedPilotHashes } from "@/lib/server/verified-pilots";
 import { checkRateLimit, checkRequestLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { summarizeBands } from "@/lib/server/award-aggregate";
@@ -49,6 +50,10 @@ function isShareableMonth(value: unknown, now = new Date()): value is string {
 
 export async function GET(request: Request) {
   if (!(await checkRequestLimit("award-history-read", request, 120, 60 * 60)).ok) return rateLimitedResponse();
+  // Reading the award history is a member tool (reporting your own award, and deleting it, stay open to everyone).
+  // A no-op while `FREE_FOR_ALL` is on.
+  const gated = accessRefusal(await getCurrentServerUser());
+  if (gated) return gated;
   const { searchParams } = new URL(request.url);
   const base = searchParams.get("base");
   const aircraft = searchParams.get("aircraft");
