@@ -9,7 +9,7 @@ import type { UserAccount } from "@/types/auth";
 const state = vi.hoisted(() => ({ enforced: true, user: null as UserAccount | null }));
 vi.mock("@/lib/membership", async (real) => {
   const m = await real<typeof import("@/lib/membership")>();
-  return { ...m, hasAccess: (u: UserAccount | null) => (state.enforced ? m.isMember(u) : m.hasAccess(u)) };
+  return { ...m, hasAccess: (u: UserAccount | null) => (state.enforced ? m.isMember(u) : true) };
 });
 vi.mock("@/lib/server/auth", () => ({ getCurrentServerUser: async () => state.user }));
 const db = vi.hoisted(() => ({ claimFreeMember: vi.fn() }));
@@ -56,8 +56,8 @@ describe("POST /api/billing/claim-free", () => {
     expect(db.claimFreeMember).not.toHaveBeenCalled();
   });
 
-  it("won't take one while the whole app is free for everyone, as it is today", async () => {
-    // An account made after the cutover is "locked" on the model's merits, though it has full access while it's all free.
+  it("won't take one for a pilot who already has the whole app", async () => {
+    // Already a member some other way (grandfathered, or Pro): no spot is used up on them.
     state.enforced = false;
     const res = await claim();
     expect(res.status).toBe(409);

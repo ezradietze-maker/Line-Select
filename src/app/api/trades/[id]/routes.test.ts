@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TradeOffer } from "@/types/trade";
 
+// These tests are about the route itself, for a pilot with a membership (the gate has its own test).
+vi.mock("@/lib/membership", async (real) => ({ ...(await real<typeof import("@/lib/membership")>()), hasAccess: () => true }));
+
 const mocks = vi.hoisted(() => ({
   user: { id: "pilot-1", displayName: "J Pilot", emailVerified: true } as { id: string; displayName: string; emailVerified?: boolean } | null,
   offer: null as unknown,

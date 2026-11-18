@@ -7,11 +7,11 @@ vi.mock("@/lib/server/calendar-feeds", () => feeds);
 vi.mock("@/lib/server/alerts", () => ({ reportProblem: vi.fn() }));
 const rate = vi.hoisted(() => ({ checkRateLimit: vi.fn() }));
 vi.mock("@/lib/server/rate-limit", () => ({ checkRateLimit: rate.checkRateLimit, rateLimitedResponse: () => new Response(null, { status: 429 }) }));
-// `enforced`: the membership model as it runs once FREE_FOR_ALL is flipped off (it stays on in the app).
+// `enforced`: the membership model as it runs with FREE_FOR_ALL off; otherwise the pilot has a membership.
 const membership = vi.hoisted(() => ({ enforced: false }));
 vi.mock("@/lib/membership", async (real) => {
   const m = await real<typeof import("@/lib/membership")>();
-  return { ...m, hasAccess: (u: Parameters<typeof m.hasAccess>[0]) => (membership.enforced ? m.isMember(u) : m.hasAccess(u)) };
+  return { ...m, hasAccess: (u: Parameters<typeof m.hasAccess>[0]) => (membership.enforced ? m.isMember(u) : true) };
 });
 
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
