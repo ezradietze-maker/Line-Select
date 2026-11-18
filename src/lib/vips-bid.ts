@@ -21,10 +21,20 @@ export const VIPS_BID_REVIEW_URL = `${VIPS_CGI}?webmbd`;
 
 /** VIPS's catch-all choices, bid after the specific lines: "any line of this kind that's left." */
 export const ANY_LINE_CODES = {
+  /** The highest-paying regular line left, counting its carryover into next month, and without it. */
+  highestPaid: "9970",
+  highestPaidNoCarryOver: "9980",
   regular: "9950",
   secondary: "9952",
   reserve: "9954",
 } as const;
+
+/**
+ * 9970 and 9980 ("highest paid normal line", with and without carryover) appear in a FedEx pilot's bidding tool but in
+ * no FedEx or union source we've found. Off until a current pilot confirms VIPS takes them; then this one line turns them
+ * on in Send to VIPS.
+ */
+export const HIGHEST_PAID_CATCH_ALLS_ON = false;
 
 export type AnyLineKind = keyof typeof ANY_LINE_CODES;
 

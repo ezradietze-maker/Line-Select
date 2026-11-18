@@ -3,6 +3,7 @@ import { reportProblem } from "@/lib/server/alerts";
 import { getCurrentServerUser } from "@/lib/server/auth";
 import { accessRefusal } from "@/lib/server/gating";
 import { feedStatus, revokeFeed, setFeedOptions, startFeed, syncFeed, type FeedChoice } from "@/lib/server/calendar-feeds";
+import type { FeedOptions } from "@/lib/calendar-feed";
 import { isJsonObject } from "@/lib/server/json-body";
 import { checkRateLimit, rateLimitedResponse } from "@/lib/server/rate-limit";
 import { crossSiteRefusal } from "@/lib/server/same-origin";
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
   const gated = accessRefusal(user);
   if (gated) return gated;
   const body = await bodyOf(request);
-  const options = typeof body?.homeDays === "boolean" ? { homeDays: body.homeDays } : undefined;
+  const options = optionsFrom(body);
   try {
-    const { token, status } = await startFeed(user.id, options);
+    const { token, status } = await startFeed(user.id, Object.keys(options).length ? options : undefined);
     return NextResponse.json({ ...status, url: `${new URL(request.url).origin}/api/calendar/${token}.ics` }, { headers: NO_STORE });
   } catch (e) {
     return failed(e, "start");
@@ -64,12 +65,21 @@ export async function PATCH(request: Request) {
   const { user, error } = await signedIn(request);
   if (error) return error;
   const body = await bodyOf(request);
-  if (typeof body?.homeDays !== "boolean") return NextResponse.json({ error: "Invalid option." }, { status: 400 });
+  const options = optionsFrom(body);
+  if (!Object.keys(options).length) return NextResponse.json({ error: "Invalid option." }, { status: 400 });
   try {
-    return NextResponse.json(await setFeedOptions(user.id, { homeDays: body.homeDays }), { headers: NO_STORE });
+    return NextResponse.json(await setFeedOptions(user.id, options), { headers: NO_STORE });
   } catch (e) {
     return failed(e, "options");
   }
+}
+
+/** The feed options a request sets: days off as "Home" events, and reminders. Anything else is ignored. */
+function optionsFrom(body: Record<string, unknown> | null): Partial<FeedOptions> {
+  const options: Partial<FeedOptions> = {};
+  if (typeof body?.homeDays === "boolean") options.homeDays = body.homeDays;
+  if (typeof body?.alarms === "boolean") options.alarms = body.alarms;
+  return options;
 }
 
 function readChoice(body: Record<string, unknown> | null): FeedChoice | null {

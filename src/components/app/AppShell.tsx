@@ -19,6 +19,7 @@ import { CommandPalette } from "@/components/ui/CommandPalette";
 import { ScreenTransition, type NavDirection } from "@/components/ui/ScreenTransition";
 import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
+import { openStrategy, type StrategyMenuId } from "@/lib/strategy-menu";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
 import { navTargetForPath } from "@/lib/nav-target";
 import { waitsForSavedState } from "@/lib/site-pages";
@@ -151,6 +152,12 @@ function Chrome({ children }: { children: React.ReactNode }) {
     onNavigate: (target: NavTarget) => {
       if (`/${target}` !== pathname) setPendingNav({ target, from: pathname });
       router.push(`/${target}`);
+    },
+    onOpenStrategy: (id: StrategyMenuId) => {
+      // Already on Strategies: the page follows the address, so only it changes (and Back returns to the one before).
+      if (pathname === "/strategies") return openStrategy(id);
+      setPendingNav({ target: "strategies", from: pathname });
+      router.push(`/strategies#${id}`);
     },
     onSignIn: () => router.push("/auth"),
     onLogout: handleLogout,

@@ -347,3 +347,52 @@ describe("on a real pack", () => {
     }
   });
 });
+
+describe("reminders, when the pilot turns them on", () => {
+  const alarmsOf = (ics: string, startsWith: string) => {
+    const comp = new ICAL.Component(ICAL.parse(ics));
+    const ev = comp.getAllSubcomponents("vevent").find((v) => String(v.getFirstPropertyValue("summary")).startsWith(startsWith))!;
+    return ev.getAllSubcomponents("valarm").map((a) => ({ trigger: String(a.getFirstPropertyValue("trigger")), text: String(a.getFirstPropertyValue("description")) }));
+  };
+
+  it("are off unless asked for: a link made before reminders existed has none", () => {
+    expect(renderFeed([month()], { homeDays: false })).not.toContain("BEGIN:VALARM");
+    expect(renderFeed([month()], { homeDays: false, alarms: false })).not.toContain("BEGIN:VALARM");
+  });
+
+  it("keep the feed valid iCalendar", () => {
+    const ics = renderFeed([month()], { homeDays: true, alarms: true });
+    expectValid(ics);
+    expect(parsed(ics).length).toBeGreaterThan(0);
+  });
+
+  it("go off 2 hours before a trip's report, and an hour before each hotel pickup, as the pack prints it", () => {
+    const alarms = alarmsOf(renderFeed([month()], { homeDays: false, alarms: true }), "Trip 27");
+    expect(alarms).toHaveLength(2);
+    expect(alarms[0].trigger).toBe("-PT2H");
+    expect(alarms[0].text).toMatch(/report in 2 hours$/);
+    // Report 0930 MEM on Sep 30 (14:30Z); the next duty starts 2070 minutes later, so the pickup is Oct 2 01:00Z.
+    expect(alarms[1].trigger).toBe("2026-10-02T00:00:00Z");
+    expect(alarms[1].text).toBe("Hotel pickup in NRT at 10:45 local, in 1 hour");
+  });
+
+  it("put a day's and an hour's warning on the bid close, and none on the dates that don't need one", () => {
+    const ics = renderFeed([month()], { homeDays: false, alarms: true });
+    expect(alarmsOf(ics, "OCT26 bid closes").map((a) => a.trigger)).toEqual(["-P1D", "-PT1H"]);
+    expect(alarmsOf(ics, "OCT26 View/Add window opens").map((a) => a.trigger)).toEqual(["PT0S"]);
+    expect(alarmsOf(ics, "OCT26 conflict input opens")).toEqual([]);
+  });
+
+  it("still remind of the report on a month built before pickups were kept", () => {
+    const old = month();
+    const stripped = {
+      ...old,
+      trips: old.trips.map((t) => {
+        const copy = { ...t };
+        delete copy.pickups;
+        return copy;
+      }),
+    };
+    expect(alarmsOf(renderFeed([stripped], { homeDays: false, alarms: true }), "Trip 27").map((a) => a.trigger)).toEqual(["-PT2H"]);
+  });
+});

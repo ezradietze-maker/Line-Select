@@ -32,6 +32,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
+import { BlockLimitLineNote, BlockLimitsPanel, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
 import { LineCard, type LineCardActions } from "@/components/results/LineCard";
@@ -42,6 +43,8 @@ import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
+import { heatModelOf } from "@/lib/line-heat";
+import { cityGradesOf } from "@/lib/ask-pack-run";
 import { useMeasuredWidth } from "@/components/results/LegBars";
 import { useTextScale } from "@/lib/use-text-scale";
 import { packColumns } from "@/lib/bidpack-row";
@@ -830,10 +833,15 @@ export function ResultsView({
   // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
   // they pick Timeline there, so the switch doesn't look broken.
   const stripView = stripViewFor(chosenStripView, bidPack);
+  // The pilot's own heat reading, worked out once the Heat Map is picked (it measures every line in the pack).
+  const heatModel = useMemo(
+    () => (stripView === "heat" ? heatModelOf(bidPack, pilotModel ?? null, cityGradesOf(pilotModel, profile.cityRatings)) : null),
+    [stripView, bidPack, pilotModel, profile.cityRatings]
+  );
   const [noTimelineSaid, setNoTimelineSaid] = useState(false);
   const chooseStripView = (next: StripViewMode) => {
     setStripView(next);
-    setNoTimelineSaid(next === "timeline" && stripViewFor(next, bidPack) !== next);
+    setNoTimelineSaid(next !== "pack" && stripViewFor(next, bidPack) !== next);
   };
   // Held still while a line is dragged: the cards it can land on stay drawn where they were measured.
   const rows = useWindowedRows(listRef, displayedIds, firstBatch, printing, `${stripView}|${listWidth}|${textScale}`, activeId !== null);
@@ -981,6 +989,9 @@ export function ResultsView({
   // the next. Only read when copied, so it's worked out then, once per line until the profile changes, rather than for
   // every line of the pack on every swap.
   const noteOf = useMemo(() => lineNotes(bidPack, profile), [profile, bidPack]);
+  // Federal flight-time limits for each line as it will be flown, with what the pilot flew before the bid period.
+  const flownSoFar = useFlownSoFar(bidPack.id);
+  const blockFindings = useBlockFindings(carry.flown.pack, flownSoFar);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
       exportable.lines.map((r) => ({
@@ -1410,6 +1421,7 @@ export function ResultsView({
       />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
+      <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
@@ -1766,6 +1778,7 @@ export function ResultsView({
                               packColumns={columns}
                               stripLayout={layout}
                               stripView={stripView}
+                              heatModel={heatModel}
                               open={open}
                               placedByYou={dragEnabled && swappedIds.has(id)}
                               actions={cardActions}
@@ -1792,6 +1805,7 @@ export function ResultsView({
                             />
                           </ErrorBoundary>
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
+                          <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>
                       ) : (
                         <LineStandIn id={id} line={lineScore.line} height={rows.heightOf(id)} />
