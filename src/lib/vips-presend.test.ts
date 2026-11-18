@@ -346,9 +346,79 @@ describe.skipIf(packFiles.length === 0)("on the October packs", () => {
       expect(byId(run(last), "run-out")!.level, f).toBe("warn");
       expect(byId(run(last), "catch-all")!.level, f).toBe("warn");
     }
-  });
+  }, 20_000); // Seven real packs, each checked line by line: a busy machine or a CI runner takes more than the 5-second default.
 
   it("flags an October pack as over in November", () => {
     for (const f of packFiles) expect(byId(runPresendChecks(input(load(f), { now: new Date("2026-11-07T12:00:00Z") })), "period-started"), f).toBeDefined();
+  });
+});
+
+describe("against what VIPS says at the top of its bid page", () => {
+  const pack = packWith(20);
+  const run = (over: Partial<PresendInput>) => runPresendChecks(input(pack, over));
+  const vipsOnly = (over: Partial<PresendInput>) => run(over).filter((c) => c.id.startsWith("vips-"));
+
+  it("says nothing when the pilot hasn't copied it, or when it matches the pack", () => {
+    expect(vipsOnly({})).toEqual([]);
+    expect(vipsOnly({ vipsHeader: { base: pack.base, aircraft: pack.aircraft.replace(/^B/, ""), seat: pack.seat, purpose: "flying" } })).toEqual([]);
+  });
+
+  it("stops when VIPS is taking a bid for another domicile, fleet or seat: the line numbers belong to that bid", () => {
+    const other = pack.seat === "FO" ? "CAP" : "FO";
+    const c = byId(run({ vipsHeader: { base: "ZZZ", seat: other } }), "vips-other-bid")!;
+    expect(c.level).toBe("stop");
+    expect(c.message).toMatch(/domicile ZZZ/);
+    expect(c.message).toMatch(/different bid/);
+  });
+
+  it("notes a pay-only bid", () => {
+    expect(byId(run({ vipsHeader: { purpose: "pay" } }), "vips-pay")?.level).toBe("info");
+  });
+
+  it("notes when VIPS's place differs from the pack's list, and says the odds use VIPS's", () => {
+    const seniority = { rank: 12, totalPilots: 20, source: "typed" as const };
+    expect(byId(run({ seniority, vipsHeader: { position: { number: 12, of: 20 } } }), "vips-place")).toBeUndefined();
+    const c = byId(run({ seniority, vipsHeader: { position: { number: 10, of: 19 } } }), "vips-place")!;
+    expect(c.message).toBe("VIPS has you 10 of 19; the pack's list had you 12 of 20. VIPS's number is today's, so your odds here use it.");
+  });
+
+  it("warns when the list is shorter than the pilots bidding ahead, and only notes it with a catch-all", () => {
+    const short = { lineNumbers: pack.lines.slice(0, 3).map((l) => l.lineNumber), vipsHeader: { position: { number: 11, of: 20 } } };
+    const bare = byId(run(short), "vips-short-list")!;
+    expect(bare.level).toBe("warn");
+    expect(bare.message).toBe("10 pilots bid before you, and you list 3 lines. Add more lines, or end with a catch-all.");
+    expect(byId(run({ ...short, anyLines: ["secondary"] }), "vips-short-list")?.level).toBe("info");
+    expect(byId(run({ ...short, vipsHeader: { position: { number: 3, of: 20 } } }), "vips-short-list")).toBeUndefined();
+  });
+});
+
+describe("the highest-paid endings (built, off until a pilot confirms VIPS takes them)", () => {
+  it("go after the pilot's list and before any regular line, when ticked", () => {
+    expect(fullBidOrder(["1001", "1002"], ["highestPaid", "regular", "secondary", "reserve"], ["7001"])).toEqual(["1001", "1002", "9970", "9950", "9952", "7001", "9954"]);
+    expect(fullBidOrder(["1001"], ["highestPaidNoCarryOver"], [])).toEqual(["1001", "9980"]);
+  });
+});
+
+describe("the forecast with VIPS's place", () => {
+  it("counts the pilots ahead from VIPS's number instead of the list's", () => {
+    const pack = packWith(20);
+    const ids = pack.lines.map((l) => l.id);
+    const fromList = forecastBid({ bidPack: pack, seniorityNumber: 1011, myRanking: ids, simulations: 50 })!;
+    const fromVips = forecastBid({ bidPack: pack, seniorityNumber: 1011, myRanking: ids, simulations: 50, bidNumber: 4 })!;
+    expect(fromList.pilotsAhead).toBe(11);
+    expect(fromVips.pilotsAhead).toBe(3);
+  });
+});
+
+describe("federal flight-time limits before sending", () => {
+  const pack = packWith(20);
+  it("says nothing without what the pilot flew before, on a pack that stays clear", () => {
+    expect(byId(runPresendChecks(input(pack)), "block-limits")).toBeUndefined();
+  });
+
+  it("warns when a line near the top would go over, naming it and its place on the list", () => {
+    const c = byId(runPresendChecks(input(pack, { flownSoFar: { yearHours: 999.9 } })), "block-limits")!;
+    expect(c.level).toBe("warn");
+    expect(c.message).toMatch(/^Line \S+, #1 on your list: Over the 1,000-hour limit in 2026/);
   });
 });

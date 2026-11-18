@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { BidWeek } from "@/components/results/BidWeek";
 import { BidDeadlineEditor, bidCloseSourceLabel, closeTimeWords, formatTimeLeft, urgencyFor, useBidDeadline, useTimeLeft, type Urgency } from "@/components/results/BidCountdown";
 import { BidPeriodChangeBanner } from "@/components/results/BidPeriodChangeBanner";
 import { ForecastBanner } from "@/components/results/ForecastBanner";
@@ -345,7 +346,10 @@ export function ResultsStatusPanel({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline pt-3">
+      {/* Every date of this bid for the pilot's seat, from the close to open time: what's next, opening to the rest. */}
+      <BidWeek pack={pack} className="mt-4 border-t border-hairline pt-3" />
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline pt-3">
         {f.hasList && (
           <Readout
             id="chances"

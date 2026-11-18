@@ -125,6 +125,8 @@ export interface FeatureForecastInput {
   regularLines: number;
   dropoutRate: number;
   seniorityNumber: number;
+  /** The pilot's place in the bid order when it's known better than the list says: VIPS's own "3 of 45", copied by the pilot. */
+  bidNumber?: number;
   /** Line indices (into `features`), best first. */
   myRanking: number[];
   known: KnownRanking[];
@@ -172,7 +174,7 @@ export function forecastFromFeatures(input: FeatureForecastInput): BidForecast {
 /** The forecast plus the raw simulation behind it — what the server stores to check against the award later. */
 export function forecastWithCore(input: FeatureForecastInput): { forecast: BidForecast; core: ForecastCore } {
   const { features, seniorityList: list } = input;
-  const position = resolveBidPosition(list, input.seniorityNumber);
+  const position = input.bidNumber ? { bidNumber: input.bidNumber, exact: true } : resolveBidPosition(list, input.seniorityNumber);
   // The list's PAY flags say exactly who isn't bidding a line this month; with them, the guessed dropout shrinks to the
   // few who might still pass (choosing reserve, say).
   const notBidding = new Set(list.filter((e) => e.pay).map((e) => e.bidNumber));
@@ -242,6 +244,8 @@ export interface ForecastInput {
   bidPack: BidPack;
   /** The pilot's own system seniority number. */
   seniorityNumber: number;
+  /** Their place in the bid order from VIPS, when the pilot copied it; otherwise read from the pack's list. */
+  bidNumber?: number;
   /** Line ids, best first — what the pilot would bid. Lines left off are treated as unwanted. */
   myRanking: string[];
   /** Other pilots' real rankings, as line numbers, best first — only ever supplied server-side. */
@@ -269,6 +273,7 @@ export function forecastBid(input: ForecastInput): BidForecast | null {
     regularLines: bidPack.lines.length,
     dropoutRate: estimateDropoutRate(bidPack, seatSize(list)),
     seniorityNumber: input.seniorityNumber,
+    ...(input.bidNumber ? { bidNumber: input.bidNumber } : {}),
     myRanking: input.myRanking.map((id) => indexById.get(id)).filter((i): i is number => i !== undefined),
     known: (input.known ?? []).map((k) => ({
       bidNumber: k.bidNumber,

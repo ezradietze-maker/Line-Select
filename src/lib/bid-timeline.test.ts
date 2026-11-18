@@ -29,6 +29,7 @@ describe("the timeline printed on the pack's cover", () => {
     const events = bidTimeline(pack({ bidCalendar: printed }));
     expect(brief(events, "OCT26")).toEqual({
       "bid-close": "Tue, Sep 8, 12:00",
+      awards: "Tue, Sep 8, 17:00",
       "conflict-open": "Tue, Sep 8, 17:00",
       "conflict-close": "Fri, Sep 11, 07:00",
       "view-add-open": "Sun, Sep 13, 07:00",
@@ -38,7 +39,9 @@ describe("the timeline printed on the pack's cover", () => {
       "secondary-lines": "Wed, Sep 23, 17:00",
       "open-time": "Thu, Sep 24, 19:15",
     });
-    expect(events.every((e) => e.source === "pack")).toBe(true);
+    // Awards aren't printed on the cover: counted from its close, by the contract (25.C.11).
+    expect(events.filter((e) => e.kind !== "awards").every((e) => e.source === "pack")).toBe(true);
+    expect(events.find((e) => e.kind === "awards")?.source).toBe("contract");
   });
 
   it("gives a first officer their own close, conflict window and open time", () => {
@@ -53,7 +56,7 @@ describe("the timeline printed on the pack's cover", () => {
 
   it("names each step in 30 characters, so a phone's calendar shows whether it opens or closes", () => {
     const events = [...bidTimeline(pack({ bidCalendar: printed })), ...bidTimeline(pack({ month: "JAN27" }), "2026-12-07T18:00:00.000Z")];
-    expect(new Set(events.map((e) => e.kind)).size).toBe(9);
+    expect(new Set(events.map((e) => e.kind)).size).toBe(10);
     for (const e of events) expect(e.label.length, e.label).toBeLessThanOrEqual(30);
     expect(events.find((e) => e.kind === "conflict-open")?.label).toBe("OCT26 conflict input opens");
     expect(events.find((e) => e.kind === "conflict-close")?.label).toBe("OCT26 conflict input closes");
@@ -96,6 +99,7 @@ describe("counted from the close when nothing is printed", () => {
     const events = bidTimeline(pack({ month: "JAN27" }), "2026-12-07T18:00:00.000Z");
     expect(brief(events, "JAN27")).toEqual({
       "bid-close": "Mon, Dec 7, 12:00",
+      awards: "Mon, Dec 7, 17:00", // 25.C.11: by 1700 CT for Captains
       "conflict-open": "Mon, Dec 7, 17:00", // 25.E.2: 5 hours following the close
       "conflict-close": "Thu, Dec 10, 07:00",
       "view-add-open": "Sat, Dec 12, 07:00",
@@ -153,5 +157,36 @@ describe("counted from the close when nothing is printed", () => {
     // Counted on the 2026 times throughout: the F/O close and its conflict window from the same rule.
     const fo = bidTimeline(pack({ month: "JAN27", seat: "FO", bidCalendar: [{ date: "2026-12-03", text: "JAN27 Bid Opens 1700 CT", time: "17:00", zone: "CT" }] }));
     expect(brief(fo, "JAN27")).toMatchObject({ "bid-close": "Wed, Dec 9, 07:00", "conflict-open": "Wed, Dec 9, 12:00" });
+  });
+});
+
+describe("when awards post (25.C.11)", () => {
+  it("CBA 2015: by 1700 CT on the close date, for both seats", () => {
+    const cap = bidTimeline(pack({ bidCalendar: printed }));
+    const fo = bidTimeline(pack({ bidCalendar: printed, seat: "FO" }));
+    expect(central(cap.find((e) => e.kind === "awards")!.at)).toBe("Tue, Sep 8, 17:00");
+    expect(central(fo.find((e) => e.kind === "awards")!.at)).toBe("Wed, Sep 9, 17:00");
+  });
+
+  it("CBA 2026: First Officers' awards by 1200 CT on their close date", () => {
+    const fo = bidTimeline(pack({ month: "JAN27", seat: "FO" }), "2026-12-09T13:00:00.000Z");
+    expect(central(fo.find((e) => e.kind === "awards")!.at)).toBe("Wed, Dec 9, 12:00");
+  });
+
+  it("gives a First Officer the Captains' awards too: on the Captains' close date the cover prints", () => {
+    const fo = bidTimeline(pack({ bidCalendar: printed, seat: "FO" }));
+    const cap = fo.find((e) => e.kind === "captain-awards")!;
+    expect(central(cap.at)).toBe("Tue, Sep 8, 17:00");
+    expect(cap.source).toBe("pack");
+    expect(cap.label).toBe("OCT26 Captain awards posted");
+  });
+
+  it("counts the Captains' close back from a First Officer's own when nothing is printed: two days under 2026", () => {
+    const fo = bidTimeline(pack({ month: "JAN27", seat: "FO" }), "2026-12-09T13:00:00.000Z");
+    expect(central(fo.find((e) => e.kind === "captain-awards")!.at)).toBe("Mon, Dec 7, 17:00");
+  });
+
+  it("never gives a Captain the Captains' awards as a separate date", () => {
+    expect(bidTimeline(pack({ bidCalendar: printed })).some((e) => e.kind === "captain-awards")).toBe(false);
   });
 });

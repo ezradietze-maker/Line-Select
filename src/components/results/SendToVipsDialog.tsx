@@ -15,10 +15,13 @@ import { RESERVE_TYPE_LABEL, rankReserveLines } from "@/lib/reserve-rank";
 import type { LineScore } from "@/lib/scoring";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { fullBidOrder, runPresendChecks, vipsQuestionNotes, type CheckFix, type PresendCheck } from "@/lib/vips-presend";
+import { useFlownSoFar } from "@/components/results/BlockLimitsPanel";
+import { loadVipsHeaderText, parseVipsHeader, saveVipsHeaderText, seatWords } from "@/lib/vips-header";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import {
   ANY_LINE_CODES,
+  HIGHEST_PAID_CATCH_ALLS_ON,
   VIPS_BID_REVIEW_URL,
   VIPS_QUESTIONS,
   buildVipsBidFields,
@@ -34,6 +37,12 @@ import {
 } from "@/lib/vips-bid";
 
 const ANY_LINE_LABELS: { kind: AnyLineKind; label: string }[] = [
+  ...(HIGHEST_PAID_CATCH_ALLS_ON
+    ? [
+        { kind: "highestPaid" as const, label: "Then the highest-paying regular line left, counting carryover" },
+        { kind: "highestPaidNoCarryOver" as const, label: "Then the highest-paying regular line left, without carryover" },
+      ]
+    : []),
   { kind: "regular", label: "Then any regular line" },
   { kind: "secondary", label: "Then any secondary line" },
   { kind: "reserve", label: "Then any reserve line" },
@@ -108,13 +117,19 @@ export function SendToVipsDialog({
   const [advice, setAdvice] = useState<VipsRecommendation[] | null>(null);
 
   const { bidPack, profile, rankedForecast, rankedIds } = presend;
+  // The pilot's copy of VIPS's own header, kept on this device for this pack so it's entered once.
+  const [vipsHeaderText, setVipsHeaderText] = useState(() => loadVipsHeaderText(bidPack.id));
+  const vipsHeader = useMemo(() => parseVipsHeader(vipsHeaderText), [vipsHeaderText]);
+  const vipsPlace = vipsHeader?.position?.number;
+  const flownSoFar = useFlownSoFar(bidPack.id);
   const reserveLines = useMemo(() => rankReserveLines(bidPack, { model: profile.pilotModel, isCommuter: profile.isCommuter }), [bidPack, profile.pilotModel, profile.isCommuter]);
   const reserveNumbers = useMemo(() => reserveLines.map((l) => l.lineNumber), [reserveLines]);
   const forecast = useMemo(() => {
     const ids = lineScores.map((s) => s.line.id);
-    if (rankedForecast && ids.join() === rankedIds.join()) return rankedForecast;
-    return profile.seniorityNumber ? forecastBid({ bidPack, seniorityNumber: profile.seniorityNumber, myRanking: ids, simulations: 200 }) : null;
-  }, [lineScores, rankedForecast, rankedIds, bidPack, profile.seniorityNumber]);
+    // VIPS's own place, when the pilot copied it, is today's: the odds are worked from it instead of the pack's list.
+    if (rankedForecast && ids.join() === rankedIds.join() && (!vipsPlace || vipsPlace === rankedForecast.pilotsAhead + 1)) return rankedForecast;
+    return profile.seniorityNumber ? forecastBid({ bidPack, seniorityNumber: profile.seniorityNumber, myRanking: ids, simulations: 200, ...(vipsPlace ? { bidNumber: vipsPlace } : {}) }) : null;
+  }, [lineScores, rankedForecast, rankedIds, bidPack, profile.seniorityNumber, vipsPlace]);
   const carryIn = useMemo(() => loadCarryIn(user?.id ?? null, bidPack.id), [user?.id, bidPack.id]);
   const checks = useMemo(
     () =>
@@ -132,14 +147,18 @@ export function SendToVipsDialog({
         now: openedAt,
         answers,
         carryInElections: carryIn.items.length ? carryIn.elections : null,
+        vipsHeader,
+        flownSoFar,
       }),
-    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn]
+    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn, vipsHeader, flownSoFar]
   );
   const stopped = checks.some((c) => c.level === "stop");
   // Lines that won't be bid are said at the top, by the order itself, not under the questions where they read as an
   // afterthought.
   const leftOutCheck = checks.find((c) => c.id === "left-out") ?? null;
-  const laterChecks = checks.filter((c) => c !== leftOutCheck);
+  // What the pilot's copy of VIPS says is shown under the box it came from.
+  const vipsChecks = checks.filter((c) => c.id.startsWith("vips-"));
+  const laterChecks = checks.filter((c) => c !== leftOutCheck && !vipsChecks.includes(c));
   const notes = useMemo(() => vipsQuestionNotes(bidPack, lineNumbers), [bidPack, lineNumbers]);
 
   // Named reserve lines sit between the secondary and reserve catch-alls, so the order goes in whole.
@@ -230,6 +249,34 @@ export function SendToVipsDialog({
           <p className="mt-0.5 text-xs text-ink-muted">
             Check VIPS says you&rsquo;re bidding this same domicile, fleet and seat before you submit.
           </p>
+          <label className="mt-2 block text-xs">
+            <span className="font-medium text-ink">What VIPS says</span>{" "}
+            <span className="text-ink-faint">(optional: paste the top of VIPS&rsquo;s bid page, or type it)</span>
+            <input
+              value={vipsHeaderText}
+              onChange={(e) => {
+                setVipsHeaderText(e.target.value);
+                saveVipsHeaderText(bidPack.id, e.target.value);
+              }}
+              placeholder={`You are bidding as a ${bidPack.base} ${bidPack.aircraft} ${seatWords(bidPack.seat)} for Flying Purposes · 3 of 45`}
+              className="mt-1 w-full rounded border border-field-edge bg-surface px-2 py-1.5 text-xs text-ink"
+              data-vips-header
+            />
+          </label>
+          {vipsHeaderText.trim() && (
+            <p className="mt-1 text-2xs text-ink-faint" data-vips-header-read>
+              {vipsHeader
+                ? `Read: ${[vipsHeader.base, vipsHeader.aircraft, vipsHeader.seat && seatWords(vipsHeader.seat), vipsHeader.purpose && `${vipsHeader.purpose} purposes`, vipsHeader.position && `${vipsHeader.position.number} of ${vipsHeader.position.of}`].filter(Boolean).join(" · ")}`
+                : "Couldn't read that. Paste the line that starts \u201cYou are bidding as\u201d, or type your domicile, fleet, seat and \u201cN of M\u201d."}
+            </p>
+          )}
+          {vipsChecks.length > 0 && (
+            <ul className="mt-2 space-y-1.5">
+              {vipsChecks.map((c) => (
+                <CheckRow key={c.id} check={c} onFix={applyFix} />
+              ))}
+            </ul>
+          )}
           {leftOutCheck && (
             <ul className="mt-2">
               <CheckRow check={leftOutCheck} onFix={applyFix} />
@@ -360,7 +407,7 @@ export function SendToVipsDialog({
 
         {!build.ok && <p className="text-xs text-danger">{build.reason}</p>}
 
-        {laterChecks.length > 0 && (
+        {(laterChecks.length > 0 || stopped) && (
           <section aria-label="Before you send">
             <h3 className="font-medium">Before you send</h3>
             <ul className="mt-1.5 space-y-1.5">

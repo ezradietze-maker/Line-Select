@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 14, 2026";
+const LAST_UPDATED = "November 17, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -98,8 +98,9 @@ export default function PrivacyPage() {
           <p className="mt-3">
             If you turn on a calendar link, your account also keeps what that calendar shows, for up to your last
             three bid months: your seat&rsquo;s bid dates; your awarded or #1 line&rsquo;s number and its trips, with
-            their times, layovers, hotels, rides, pickups and any suggested commute flights; and your days off, if
-            you ask for them. Your browser tells our server which line is your #1 so the calendar can follow it. It
+            their times, layovers, hotels, rides, pickups and any suggested commute flights; your days off, if
+            you ask for them; and whether you asked for reminders, which your calendar app then sets from those same
+            times. Your browser tells our server which line is your #1 so the calendar can follow it. It
             never includes other pilots&rsquo; data. We store only a hash of the link, but the link itself is secret:
             anyone who has it can read that calendar without signing in, and the calendar service you add it to
             (Apple, Google or Microsoft, say) fetches it and keeps a copy under its own terms. Making a new link

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import { useAppState } from "@/lib/app-state";
-import { feedChoiceFor, feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, MembershipNeededError, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
+import { feedChoiceFor, feedLinks, fetchFeedStatus, forgetFeedSync, makeFeedLink, MembershipNeededError, setFeedAlarms, setFeedHomeDays, syncFeedChoice, turnOffFeed, useCalendarFeedSync, type FeedStatusView } from "@/lib/calendar-feed-client";
 
 /**
  * A private subscription link for the pilot's calendar app: their bid dates and their awarded or #1 line, kept up to
@@ -17,6 +17,7 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
   const [status, setStatus] = useState<FeedStatusView | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [homeDays, setHomeDays] = useState(false);
+  const [alarms, setAlarms] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** Making a link was refused for no membership: the error is shown with the way to one. */
@@ -49,13 +50,14 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
         const s = await fetchFeedStatus();
         setStatus(s);
         setHomeDays(s.options?.homeDays ?? false);
+        setAlarms(s.options?.alarms ?? false);
       });
     }
   }
 
   const makeLink = () =>
     act(async () => {
-      const made = await makeFeedLink(homeDays);
+      const made = await makeFeedLink({ homeDays, alarms });
       setLink(made.url ?? null);
       setStatus(made);
       setCopied(false);
@@ -81,6 +83,19 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
       } catch (e) {
         // Refused: the box shows what the link still does, not what was asked for.
         setHomeDays(!next);
+        throw e;
+      }
+    });
+  };
+
+  const changeAlarms = (next: boolean) => {
+    setAlarms(next);
+    if (!status?.on) return;
+    void act(async () => {
+      try {
+        setStatus(await setFeedAlarms(next));
+      } catch (e) {
+        setAlarms(!next);
         throw e;
       }
     });
@@ -132,6 +147,19 @@ export function CalendarSubscribe({ topLineNumber = null }: { /** The pilot's cu
                 <input type="checkbox" checked={homeDays} disabled={busy} onChange={(e) => changeHomeDays(e.target.checked)} />
                 Also show my days off as all-day &ldquo;Home&rdquo; events
               </label>
+              <label className="mt-2 flex items-start gap-2 text-xs text-ink">
+                <input type="checkbox" className="mt-0.5" checked={alarms} disabled={busy} onChange={(e) => changeAlarms(e.target.checked)} />
+                <span>
+                  Add reminders: a day and an hour before the bid closes, when awards post, View/Add and open time, 2 hours before
+                  each report and an hour before each hotel pickup
+                </span>
+              </label>
+              {alarms && (
+                <p className="mt-1.5 pl-5 text-2xs leading-relaxed text-ink-faint">
+                  Apple Calendar keeps them only if you untick &ldquo;Remove alerts&rdquo; when you subscribe. Google Calendar doesn&rsquo;t
+                  show reminders from a subscribed calendar.
+                </p>
+              )}
 
               {links && (
                 <div className="mt-3">
