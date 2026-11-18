@@ -427,6 +427,8 @@ function LineDetails({
                 <span className="inline-block max-w-full">
                   <span className="whitespace-nowrap">
                     {month.totalLandings} landing{month.totalLandings === 1 ? "" : "s"}
+                    {/* With what carries beside it, as Compare says it, so it adds up to the strip's LDGS. */}
+                    {carryOver && carryOver.landings > 0 && ` +${carryOver.landings} ${carryOver.month.slice(0, 3)}`}
                   </span>
                   {carryOver && (
                     <span className="text-carry" title={`What the last trip flies after the bid month ends — the ${carryOver.month} bid month's, not counted in this one`}>
