@@ -15,6 +15,7 @@ import { RESERVE_TYPE_LABEL, rankReserveLines } from "@/lib/reserve-rank";
 import type { LineScore } from "@/lib/scoring";
 import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { fullBidOrder, runPresendChecks, vipsQuestionNotes, type CheckFix, type PresendCheck } from "@/lib/vips-presend";
+import { useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { loadVipsHeaderText, parseVipsHeader, saveVipsHeaderText, seatWords } from "@/lib/vips-header";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -120,6 +121,7 @@ export function SendToVipsDialog({
   const [vipsHeaderText, setVipsHeaderText] = useState(() => loadVipsHeaderText(bidPack.id));
   const vipsHeader = useMemo(() => parseVipsHeader(vipsHeaderText), [vipsHeaderText]);
   const vipsPlace = vipsHeader?.position?.number;
+  const flownSoFar = useFlownSoFar(bidPack.id);
   const reserveLines = useMemo(() => rankReserveLines(bidPack, { model: profile.pilotModel, isCommuter: profile.isCommuter }), [bidPack, profile.pilotModel, profile.isCommuter]);
   const reserveNumbers = useMemo(() => reserveLines.map((l) => l.lineNumber), [reserveLines]);
   const forecast = useMemo(() => {
@@ -146,8 +148,9 @@ export function SendToVipsDialog({
         answers,
         carryInElections: carryIn.items.length ? carryIn.elections : null,
         vipsHeader,
+        flownSoFar,
       }),
-    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn, vipsHeader]
+    [bidPack, lineNumbers, leftOut, lineScores, profile, savedSeniority, forecast, reserveLines, anyLines, reserveAdded, openedAt, answers, carryIn, vipsHeader, flownSoFar]
   );
   const stopped = checks.some((c) => c.level === "stop");
   // Lines that won't be bid are said at the top, by the order itself, not under the questions where they read as an

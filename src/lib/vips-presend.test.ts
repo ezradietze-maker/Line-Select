@@ -409,3 +409,16 @@ describe("the forecast with VIPS's place", () => {
     expect(fromVips.pilotsAhead).toBe(3);
   });
 });
+
+describe("federal flight-time limits before sending", () => {
+  const pack = packWith(20);
+  it("says nothing without what the pilot flew before, on a pack that stays clear", () => {
+    expect(byId(runPresendChecks(input(pack)), "block-limits")).toBeUndefined();
+  });
+
+  it("warns when a line near the top would go over, naming it and its place on the list", () => {
+    const c = byId(runPresendChecks(input(pack, { flownSoFar: { yearHours: 999.9 } })), "block-limits")!;
+    expect(c.level).toBe("warn");
+    expect(c.message).toMatch(/^Line \S+, #1 on your list: Over the 1,000-hour limit in 2026/);
+  });
+});

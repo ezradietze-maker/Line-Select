@@ -8,6 +8,7 @@ import type { LineScore } from "@/lib/scoring";
 import { computeStanding, type Band } from "@/lib/strategy-engine";
 import { ANY_LINE_CODES, type AnyLineKind, type VipsBidAnswers, type VipsBidDraft } from "@/lib/vips-bid";
 import { sameAircraft, seatWords, type VipsHeader } from "@/lib/vips-header";
+import { describeFinding, lineBlockLimits, type FlownSoFar } from "@/lib/block-limits";
 import type { BidPack, Line } from "@/types/bidpack";
 import type { SeniorityInput } from "@/types/strategy";
 
@@ -56,6 +57,8 @@ export interface PresendInput {
   carryInElections?: PhaseInElections | null;
   /** What the pilot copied from the top of VIPS's bid page, when they did (`parseVipsHeader`). */
   vipsHeader?: VipsHeader | null;
+  /** Block hours the pilot flew before this bid period, for the federal flight-time limits. */
+  flownSoFar?: FlownSoFar;
 }
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -341,6 +344,31 @@ export function vipsHeaderChecks({ bidPack, vipsHeader: h, lineNumbers, anyLines
   return out;
 }
 
+// ---------------------------------------------------------------- federal flight-time limits
+
+/**
+ * A line near the top that would put the pilot over a federal flight-time limit (14 CFR 121.471, 121.481) can still be
+ * awarded, and crew scheduling then takes flying off it: worth knowing before it's bid high. Lines coming close are said
+ * only as a note.
+ */
+export function blockLimitsCheck({ bidPack, lineNumbers, flownSoFar }: PresendInput): PresendCheck | null {
+  const byNumber = new Map(bidPack.lines.map((l) => [l.lineNumber, l]));
+  const hits = lineNumbers.slice(0, TOP_FOR_SANITY).flatMap((n) => {
+    const line = byNumber.get(n);
+    const f = line ? lineBlockLimits(bidPack, line, flownSoFar)[0] : undefined;
+    return f ? [{ n, f }] : [];
+  });
+  const over = hits.filter((h) => h.f.level === "over");
+  const first = over[0] ?? hits[0];
+  if (!first) return null;
+  const others = (over.length ? over : hits).length - 1;
+  return {
+    id: "block-limits",
+    level: over.length ? "warn" : "info",
+    message: `Line ${first.n}, #${lineNumbers.indexOf(first.n) + 1} on your list: ${describeFinding(first.f)}${others > 0 ? ` ${plural(others, "more line")} in your top ${TOP_FOR_SANITY} ${over.length ? "would too" : "come close too"}.` : ""}`,
+  };
+}
+
 // ---------------------------------------------------------------- order sanity
 
 function orderChecks({ lineScores, leftOut }: PresendInput): PresendCheck[] {
@@ -394,6 +422,7 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
     runOutCheck(input),
     catchAllCheck(input),
     answersDifferCheck(input),
+    blockLimitsCheck(input),
     ...orderChecks(input),
     constructionCheck(input),
   ].filter((c): c is PresendCheck => c !== null);

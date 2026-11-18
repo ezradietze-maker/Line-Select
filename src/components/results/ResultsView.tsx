@@ -32,6 +32,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
+import { BlockLimitLineNote, BlockLimitsPanel, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
 import { LineCard, type LineCardActions } from "@/components/results/LineCard";
@@ -988,6 +989,9 @@ export function ResultsView({
   // the next. Only read when copied, so it's worked out then, once per line until the profile changes, rather than for
   // every line of the pack on every swap.
   const noteOf = useMemo(() => lineNotes(bidPack, profile), [profile, bidPack]);
+  // Federal flight-time limits for each line as it will be flown, with what the pilot flew before the bid period.
+  const flownSoFar = useFlownSoFar(bidPack.id);
+  const blockFindings = useBlockFindings(carry.flown.pack, flownSoFar);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
       exportable.lines.map((r) => ({
@@ -1417,6 +1421,7 @@ export function ResultsView({
       />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
+      <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
@@ -1800,6 +1805,7 @@ export function ResultsView({
                             />
                           </ErrorBoundary>
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
+                          <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>
                       ) : (
                         <LineStandIn id={id} line={lineScore.line} height={rows.heightOf(id)} />
