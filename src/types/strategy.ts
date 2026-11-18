@@ -28,6 +28,7 @@ export type StrategyId =
   | "reserve-pays-more"
   | "vacation-overlap"
   | "carry-over"
+  | "pay-only"
   | "sweep-flights"
   | "after-award";
 

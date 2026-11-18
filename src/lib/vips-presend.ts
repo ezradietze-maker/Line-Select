@@ -432,16 +432,39 @@ export function runPresendChecks(input: PresendInput): PresendCheck[] {
 // ---------------------------------------------------------------- the bid, in the order VIPS reads it
 
 /**
+ * Where a bid for pay only puts secondary and reserve among the lines (`lib/pay/line-total.ts` `payOnlyOrder`): "any
+ * secondary line" after the first `secondaryAt` lines, the ones paying more than a secondary would, and reserve after the
+ * first `reserveAt`, the ones paying at least its RLG (null: the pack prints no RLG, so reserve stays at the end).
+ */
+export interface PayOnlySplits {
+  secondaryAt: number;
+  reserveAt: number | null;
+}
+
+/**
  * The pilot's list, then the catch-alls, with named reserve lines before "any reserve line" so they're reached first.
+ * For pay only, secondary and reserve go where they'd pay as much as the lines around them (`PayOnlySplits`).
  * A line listed twice (a pack that prints a line on two pages) stays where it first comes, as `buildVipsBidFields`
  * sends it: with the repeat kept, the dialog counted one more choice than VIPS got, and the pilot checks that count in
  * Monthly Bid Review.
  */
-export function fullBidOrder(lineNumbers: string[], anyLines: AnyLineKind[], reserveLines: string[]): string[] {
+export function fullBidOrder(lineNumbers: string[], anyLines: AnyLineKind[], reserveLines: string[], payOnly?: PayOnlySplits | null): string[] {
   const named = (kinds: AnyLineKind[]) => kinds.filter((k) => anyLines.includes(k)).map((k) => ANY_LINE_CODES[k]);
   const seen = new Set<string>();
+  const reserve = [...reserveLines, ...named(["reserve"])];
   // A highest-paid ending is a regular line too, so it goes with "any regular line", before it.
-  return [...lineNumbers, ...named(["highestPaid", "highestPaidNoCarryOver", "regular", "secondary"]), ...reserveLines, ...named(["reserve"])].filter((n) => {
+  const order = payOnly
+    ? [
+        ...lineNumbers.slice(0, payOnly.secondaryAt),
+        ...named(["secondary"]),
+        ...lineNumbers.slice(payOnly.secondaryAt, payOnly.reserveAt ?? lineNumbers.length),
+        ...(payOnly.reserveAt === null ? [] : reserve),
+        ...lineNumbers.slice(payOnly.reserveAt ?? lineNumbers.length),
+        ...named(["highestPaid", "highestPaidNoCarryOver", "regular"]),
+        ...(payOnly.reserveAt === null ? reserve : []),
+      ]
+    : [...lineNumbers, ...named(["highestPaid", "highestPaidNoCarryOver", "regular", "secondary"]), ...reserve];
+  return order.filter((n) => {
     const key = n.trim();
     if (seen.has(key)) return false;
     seen.add(key);

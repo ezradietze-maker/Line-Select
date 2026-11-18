@@ -25,6 +25,7 @@ export const STRATEGY_MENU: StrategyMenuItem[] = [
   { id: "reserve-pays-more", label: "When reserve pays more", name: "When reserve pays more than a line" },
   { id: "vacation-overlap", label: "Vacation under big trips", name: "Put your vacation under a line's biggest trips" },
   { id: "carry-over", label: "Credit into next month", name: "Start next month with credit in the bank" },
+  { id: "pay-only", label: "Pay-only month", name: "Bid a pay-only month" },
   { id: "sweep-flights", label: "Trips that get rerouted", name: "Know which trips can be rerouted" },
   { id: "after-award", label: "After the award", name: "Work every window after the award" },
 ];

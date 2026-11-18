@@ -22,6 +22,9 @@ import type { LineScore } from "@/lib/scoring";
 import type { LineSort } from "@/lib/use-line-sort";
 import type { Region } from "@/lib/metrics/trip-facts";
 
+/** A sort's name inside a sentence: its words in lower case, its abbreviations as written ("Total CH", "Nights in MEM"). */
+const inSentence = (label: string) => label.replace(/\b([A-Z])([a-z])/g, (_, a: string, b: string) => a.toLowerCase() + b);
+
 /** The sort button and its menu: every measure in plain words, searchable, with a look at what each one puts on top. */
 export function SortMenu({ sort, lines }: { sort: LineSort; lines: LineScore[] }) {
   const [open, setOpen] = useState(false);
@@ -53,7 +56,7 @@ export function SortNote({ sort }: { sort: LineSort }) {
   if (sort.isRanking) return null;
   return (
     <p className="mt-2 text-xs text-ink-muted print:hidden">
-      Sorted by {sort.def.label.toLowerCase()} to look through. Send to VIPS and Copy still follow your ranking and tiers.{" "}
+      Sorted by {inSentence(sort.def.label)} to look through. Send to VIPS and Copy still follow your ranking and tiers.{" "}
       <button type="button" onClick={() => sort.choose(DEFAULT_SORT)} className="font-semibold text-accent underline-offset-2 hover:underline">
         Back to your ranking
       </button>

@@ -69,6 +69,7 @@ export const LINE_SORTS: SortDef[] = [
   { id: "creditHours", group: "pay", label: "Credit this month", better: "more", ...hours, definition: "Credit the line prints for the bid month." },
   { id: "carryOverCredit", group: "pay", label: "Carryover credit", better: "depends", ...hours, definition: "Credit of a trip that runs past the end of the bid month, paid in the next one." },
   { id: "totalCredit", group: "pay", label: "Credit with carryover", better: "more", ...hours, definition: "This month's credit plus what carries over into the next." },
+  { id: "totalCH", group: "pay", label: "Total CH", better: "more", ...hours, definition: "What the line pays as you'll fly it: credit raised to the minimum guarantee, less what your carry-in drops, plus C/O." },
   { id: "blockHours", group: "pay", label: "Hours flown", better: "depends", ...hours, definition: "Block hours you operate. Deadheads don't count." },
   { id: "creditPerBlockHour", group: "pay", label: "Credit per block hour", better: "more", ...rate, definition: "What the line pays for the flying itself: credit for each hour you operate." },
   { id: "creditPerDayAway", group: "pay", label: "Credit per day away", better: "more", ...rate, definition: "Credit for each 24 hours away from base, as scheduled, on the line's whole trips." },
@@ -215,6 +216,8 @@ export interface SortContext {
   commuter: boolean;
   bidPeriodStart: string | null;
   cities: string[];
+  /** Each line's Total CH, by line id, as the pilot will fly it (`lib/pay/line-total.ts`); absent, it's the printed credit and C/O. */
+  totals?: Map<string, number>;
 }
 
 function homeFromProfile(profile: Pick<PreferenceProfile, "isCommuter" | "commuteFrom" | "hasCrashPad" | "minHomeHours">): MetricParams {
@@ -340,6 +343,9 @@ function readSortValues(def: SortDef, choice: SortChoice, ctx: SortContext): Map
       return out;
     case "totalCredit":
       each((l) => l.totalCreditHours + (l.carryOverCreditHours ?? 0));
+      return out;
+    case "totalCH":
+      each((l) => ctx.totals?.get(l.id) ?? l.totalCreditHours + (l.carryOverCreditHours ?? 0));
       return out;
     case "requestedDatesKept": {
       const worked = measureAll("requestedDatesWorked", lines, pack, { ...ctx.home, dates: ctx.dates });

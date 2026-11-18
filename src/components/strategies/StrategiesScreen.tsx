@@ -25,6 +25,8 @@ import { SENIORITY_BANDS } from "@/lib/seniority-bands";
 import { learnFromStrategyReaction } from "@/lib/strategy-learning";
 import { openStrategy, STRATEGY_MENU, useStrategyId, type StrategyMenuId } from "@/lib/strategy-menu";
 import { keepFocusIn } from "@/lib/focus-keeper";
+import { setPayOrder, usePayOrder } from "@/lib/pay/pay-order";
+import { loadVipsHeaderText, parseVipsHeader } from "@/lib/vips-header";
 import type { AwardSummaryResponse } from "@/types/award-history";
 import type { BidPack } from "@/types/bidpack";
 import type { UserAccount } from "@/types/auth";
@@ -330,7 +332,9 @@ function StrategyResults({
   );
 
   const strategies = useMemo(() => {
-    const generated = generateStrategies(bidPack, seniority, awardSummary, { lineScores: ranked, isCommuter: profile?.isCommuter ?? null });
+    // VIPS's own header, as the pilot copied it into Send to VIPS: "for Pay Purposes" makes the pay-only month theirs.
+    const payPurposes = parseVipsHeader(loadVipsHeaderText(bidPack.id))?.purpose === "pay";
+    const generated = generateStrategies(bidPack, seniority, awardSummary, { lineScores: ranked, isCommuter: profile?.isCommuter ?? null, payPurposes });
     const preferenceRanked = rankStrategiesByPreference(generated);
     return attachScoreContext(preferenceRanked, ranked);
   }, [bidPack, seniority, profile, ranked, awardSummary]);
@@ -380,6 +384,7 @@ function StrategyResults({
         topPick={strategy.id === topPickId}
         reaction={profile?.strategyReactions?.[strategy.id] ?? null}
         onReact={profile ? (reaction) => handleReaction(strategy.id, reaction) : undefined}
+        action={strategy.id === "pay-only" && profile ? <PayOrderSwitch packId={bidPack.id} /> : undefined}
       />
     );
   }
@@ -565,6 +570,23 @@ function StandingPanel({ standing: st }: { standing: Standing }) {
       )}
       {st.effective === null && (
         <p className="mt-2 text-xs text-ink-faint">Re-upload your bid pack to read who on the list isn&rsquo;t bidding a line this month &mdash; it sharpens your real place.</p>
+      )}
+    </div>
+  );
+}
+
+/** The pay-only strategy's one tap: My Rankings in pay-only order, or back to the pilot's own. */
+function PayOrderSwitch({ packId }: { packId: string }) {
+  const on = usePayOrder(packId);
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5" data-pay-order-switch>
+      <Button variant={on ? "secondary" : "primary"} className="px-3 py-1.5 text-xs" onClick={() => setPayOrder(packId, !on)}>
+        {on ? "Back to your ranking" : "Put my list in pay-only order"}
+      </Button>
+      {on && (
+        <Link href="/results" className="text-xs font-medium text-brand underline underline-offset-2">
+          See it on My Rankings
+        </Link>
       )}
     </div>
   );

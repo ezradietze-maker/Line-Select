@@ -51,7 +51,7 @@ describe("the sort table", () => {
   });
 
   it("names nothing the catalog retired, or that it doesn't have, except the sorts worked out here", () => {
-    const own = new Set([MATCH_SORT, LINE_NUMBER_SORT, "carryOverCredit", "totalCredit", "requestedDatesKept"]);
+    const own = new Set([MATCH_SORT, LINE_NUMBER_SORT, "carryOverCredit", "totalCredit", "totalCH", "requestedDatesKept"]);
     const known = new Set(METRICS.filter((m) => !m.retired).map((m) => m.id));
     expect(LINE_SORTS.filter((s) => !known.has(s.id) && !own.has(s.id)).map((s) => s.id)).toEqual([]);
   });
