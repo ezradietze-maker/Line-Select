@@ -280,9 +280,10 @@ function Cell({
           </span>
         )}
         {day.fullDay && (
-          // Wraps on a phone rather than run into the next day.
+          // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
+          // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
           <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
-            Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
+            Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
           </span>
         )}
         {!isOff && day.finish && <End finish={day.finish} mode={mode} />}

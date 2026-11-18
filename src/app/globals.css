@@ -918,15 +918,31 @@ html {
 }
 
 /*
- * Text fields and dropdowns on touch screens: 44 px tall, and 16 px text —
- * below 16 px, iPhone Safari zooms the whole page in when a field is tapped
- * and leaves it zoomed. Unlayered on purpose, so it beats `text-sm`.
+ * A field is never wider than the space it sits in. A dropdown is as wide as its longest choice, and with the text set
+ * larger "2004 on Sep 28 (87:26 CH)" pushed a phone's page sideways. Held to its box, Safari still counted the choice's
+ * full width past it, so a dropdown clips its own overflow. In the base layer, so a field's own `max-w-*` wins.
+ */
+@layer base {
+  :where(input, select, textarea) {
+    max-width: 100%;
+  }
+  :where(select) {
+    overflow: clip;
+  }
+}
+
+/*
+ * Text fields and dropdowns on touch screens: 44 px tall, and at least 16 px
+ * text — below 16 px, iPhone Safari zooms the whole page in when a field is
+ * tapped and leaves it zoomed. Unlayered on purpose, so it beats `text-sm`.
+ * Never smaller than the page's own text, though: held at 16 px, a phone's
+ * text set larger left the fields at their usual size beside it.
  */
 @media (pointer: coarse) {
   input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   select,
   textarea {
-    font-size: 16px;
+    font-size: max(16px, 1rem);
   }
   input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]),
   select {

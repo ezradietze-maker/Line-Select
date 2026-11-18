@@ -67,7 +67,10 @@ function Tick({ done }: { done: boolean }) {
   );
 }
 
-/** One of the panel's quieter readouts: a label and its value, opening the detail underneath. */
+/**
+ * One of the panel's quieter readouts: a label and its value, opening the detail underneath. The value goes under its
+ * label when the two don't fit across (a phone with its text set larger).
+ */
 function Readout({ id, label, value, open, onToggle, tone = "text-ink" }: { id: DrawerId; label: string; value: ReactNode; open: boolean; onToggle: (id: DrawerId) => void; tone?: string }) {
   return (
     <button
@@ -75,7 +78,7 @@ function Readout({ id, label, value, open, onToggle, tone = "text-ink" }: { id: 
       onClick={() => onToggle(id)}
       aria-expanded={open}
       aria-controls={`status-drawer-${id}`}
-      className={`inline-flex items-baseline gap-1.5 rounded-md px-1.5 py-1 text-left text-sm transition-colors hover:bg-ink/[0.05] ${open ? "bg-ink/[0.05]" : ""}`}
+      className={`inline-flex flex-wrap items-baseline gap-1.5 rounded-md px-1.5 py-1 text-left text-sm transition-colors hover:bg-ink/[0.05] ${open ? "bg-ink/[0.05]" : ""}`}
     >
       <span className="text-ink-muted">{label}</span>
       <span className={`font-medium ${tone}`}>{value}</span>

@@ -116,9 +116,11 @@ function Results({ found, zone, pack }: { found: VacationSlides; zone: string; p
       )}
 
       {onCalendar && (
-        <div className="space-y-2">
+        <div className="@container space-y-2">
+          {/* The dropdown goes under its words where the two can't sit side by side (a phone with its text set larger):
+              beside them it ran off the side of the page. */}
           {found.lines.length > 1 && (
-            <label className="flex items-center gap-2 text-xs text-ink-muted">
+            <label className="flex items-center gap-2 text-xs text-ink-muted @max-[14rem]:flex-wrap">
               Line to see on the calendar
               <select className={`${FIELD} py-1`} value={lineIdx} onChange={(e) => setLineIdx(Number(e.target.value))}>
                 {found.lines.map((row, i) => (
@@ -241,7 +243,7 @@ export function VacationSlidePanel({ bidPack, seniority, profile, userId, order 
           addTyped();
         }}
       >
-        <label className="text-xs text-ink-muted">
+        <label className="max-w-full text-xs text-ink-muted">
           First vacation day
           <input type="date" className={`${FIELD} mt-1 block`} value={firstDay} onChange={(e) => setFirstDay(e.target.value)} />
         </label>

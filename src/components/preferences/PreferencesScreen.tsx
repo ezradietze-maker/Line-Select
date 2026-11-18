@@ -229,7 +229,8 @@ export function PreferencesScreen({
       <div className="flex flex-col gap-4">
         <div>
           {bidPack && <div className="text-2xs font-medium text-accent">{packEyebrow(bidPack)}</div>}
-          <Heading as="h1" className={`text-3xl tracking-tight text-ink sm:text-4xl ${bidPack ? "mt-1.5" : ""}`}>Your preferences</Heading>
+          {/* On a 320 px phone with its text at its largest "preferences" is wider than the page: it breaks rather than push it sideways. */}
+          <Heading as="h1" className={`break-words text-3xl tracking-tight text-ink sm:text-4xl ${bidPack ? "mt-1.5" : ""}`}>Your preferences</Heading>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
             <span>
               Last answered {completedDate.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
