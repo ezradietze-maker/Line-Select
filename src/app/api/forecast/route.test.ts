@@ -86,6 +86,9 @@ vi.mock("@/lib/server/forecast-store", () => ({
 
 import { DELETE, POST } from "./route";
 
+// These tests are about the route itself, for a pilot with a membership (the gate has its own test).
+vi.mock("@/lib/membership", async (real) => ({ ...(await real<typeof import("@/lib/membership")>()), hasAccess: () => true }));
+
 const LINES = 12;
 const lineNumbers = Array.from({ length: LINES }, (_, i) => String(1000 + i));
 const lineIds = lineNumbers.map((n) => `line-${n}`);

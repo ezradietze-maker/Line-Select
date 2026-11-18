@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+// These tests are about the route itself, for a pilot with a membership (the gate has its own test).
+vi.mock("@/lib/membership", async (real) => ({ ...(await real<typeof import("@/lib/membership")>()), hasAccess: () => true }));
+
 /**
  * Every trade action an account whose email isn't confirmed can't take: posting, answering or agreeing an offer, saying
  * what it holds, finding trades and saying yes to one. Each is refused with words that say to confirm the email (and

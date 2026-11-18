@@ -3,6 +3,9 @@ import { getTableColumns } from "drizzle-orm";
 import { awardHistoryRecords } from "@/lib/server/schema";
 import type { AwardRow } from "@/lib/server/award-aggregate";
 
+// These tests are about the route itself, for a pilot with a membership (the gate has its own test).
+vi.mock("@/lib/membership", async (real) => ({ ...(await real<typeof import("@/lib/membership")>()), hasAccess: () => true }));
+
 const mocks = vi.hoisted(() => ({
   user: vi.fn<() => Promise<{ id: string; email: string; displayName: string; emailVerified?: boolean } | null>>(async () => null),
   rows: vi.fn<() => Promise<AwardRow[]>>(async () => []),

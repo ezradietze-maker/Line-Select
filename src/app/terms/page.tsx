@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 11, 2026";
+const LAST_UPDATED = "November 17, 2026";
 
 /**
  * A real Terms of Service — not boilerplate copy-pasted from a generator.
@@ -130,6 +130,24 @@ export default function TermsPage() {
             compromised. You agree to provide accurate information when creating an account and to
             use your own real identity &mdash; the Service is built for individual pilots, not
             shared or third-party accounts.
+          </p>
+        </Section>
+
+        <Section title="5a. Membership and billing">
+          <p>
+            Without a membership you can take the interview and see your top-ranked lines; the full ranking and the
+            tools need one. A membership is either a free spot (limited to the first pilots to claim one, while they
+            last) or Pro, a monthly subscription at the price shown on the Pricing page.
+          </p>
+          <p className="mt-3">
+            Your first Pro membership starts with a free month. Unless you cancel before it ends, Pro then renews and is
+            charged automatically each month to the payment method you gave, until you cancel. Payments are processed by
+            Stripe; we don&rsquo;t see or store your full card details.
+          </p>
+          <p className="mt-3">
+            You can cancel any time from Membership, in your account menu. Cancelling stops the next renewal; you keep
+            Pro until the end of the period you&rsquo;ve paid for. Payments already made aren&rsquo;t refunded, except
+            where the law requires it. We may change the price with notice before your next renewal.
           </p>
         </Section>
 

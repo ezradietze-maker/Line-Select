@@ -13,7 +13,10 @@ describe("the pricing page", () => {
     const html = renderToStaticMarkup(createElement(PricingPage));
     expect(html).toContain("$20/month");
     expect(html).toContain("first month free");
+    expect(html).toContain("Free membership");
     expect(html).not.toContain("to be announced");
-    expect(html).toContain("free for every pilot");
+    expect(html).toContain("15 free spots");
+    expect(html).toContain("top 10 lines");
+    expect(html).not.toContain("free for every pilot");
   });
 });
