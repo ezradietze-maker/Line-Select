@@ -34,7 +34,7 @@ export const FREE_MEMBER_CAP = 15;
  * Accounts created before this are grandfathered: full access, no slot used. Set it to the go-live moment when you
  * flip `FREE_FOR_ALL` to false, so every existing pilot keeps access and only genuinely new sign-ups face the cap.
  */
-export const MEMBERSHIP_CUTOVER = "2026-11-18T00:00:00Z";
+export const MEMBERSHIP_CUTOVER = "2026-11-18T01:00:00Z";
 
 export type MembershipTier = "grandfathered" | "pro" | "free" | "locked";
 
