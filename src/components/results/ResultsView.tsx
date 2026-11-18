@@ -120,6 +120,9 @@ import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
+import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
+import { usePayOrder } from "@/lib/pay/pay-order";
+import { PayOrderBanner, TotalChLineNote } from "@/components/results/TotalChNote";
 import { settleScrollTo } from "@/lib/settle-scroll";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
@@ -473,6 +476,20 @@ export function ResultsView({
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
   const carry = useCarryIn(bidPack, userId, profile);
+  // What each line pays as the pilot will fly it (Total CH), and whether they've put the list in pay-only order.
+  const totals = useMemo(
+    () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, carry.flown.vacationLines.get(l.id)?.chargedCH)])),
+    [bidPack, carry.flown]
+  );
+  const totalCH = useMemo(() => new Map([...totals].map(([id, t]) => [id, t.total])), [totals]);
+  const payOrderOn = usePayOrder(bidPack.id);
+  const payPlan = useMemo(() => payOnlyOrder(bidPack, totals), [bidPack, totals]);
+  const printedById = useMemo(() => new Map(bidPack.lines.map((l) => [l.id, l])), [bidPack]);
+  // For Send to VIPS: the lines paying more than a secondary, and at least a reserve line, by number.
+  const payOnlySets = useMemo(() => {
+    const numbers = payPlan.order.map((id) => printedById.get(id)!.lineNumber);
+    return { aboveAverage: new Set(numbers.slice(0, payPlan.aboveAverage)), aboveReserve: payPlan.aboveReserve === null ? null : new Set(numbers.slice(0, payPlan.aboveReserve)) };
+  }, [payPlan, printedById]);
   // The first ranking's slow part — every trip's body-clock points and facts, each measure on every line — worked out a
   // slice at a time first, while the page says it's ranking, instead of freezing it for seconds (see
   // `lib/ranking-warm-up.ts`). Flights that land later are measured the same way before the ranking takes them.
@@ -530,7 +547,13 @@ export function ResultsView({
   const packLineIds = useMemo(() => bidPack.lines.map((l) => l.id), [bidPack]);
   const allTiers = useLineTiers(userId, bidPack.id, packLineIds, placed, teachTiersRef, recordTierStep);
   const orderByTier = allTiers.order;
-  const ranked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
+  const myRanked = useMemo(() => orderByTier(placed), [orderByTier, placed]);
+  // In pay-only order the list is bid by Total CH; the pilot's own order stays in `myRanked`, untouched, for the way back.
+  const ranked = useMemo(() => {
+    if (!payOrderOn) return myRanked;
+    const at = new Map(payPlan.order.map((id, i) => [id, i]));
+    return [...myRanked].sort((a, b) => (at.get(a.line.id) ?? Infinity) - (at.get(b.line.id) ?? Infinity));
+  }, [payOrderOn, myRanked, payPlan]);
   // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
   const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
@@ -627,13 +650,14 @@ export function ResultsView({
   // from the moment they first landed here.
   useEffect(() => {
     if (!listReady) return;
-    saveTopLinesSnapshot(userId, bidPack.month, ranked);
-    saveBidPeriodSnapshot(userId, bidPack.month, ranked);
-  }, [userId, ranked, listReady, bidPack.month]);
+    // The pilot's own ranking, not a pay-only order: next month's ranking and its comparison read these.
+    saveTopLinesSnapshot(userId, bidPack.month, myRanked);
+    saveBidPeriodSnapshot(userId, bidPack.month, myRanked);
+  }, [userId, myRanked, listReady, bidPack.month]);
 
   const bidPeriodChange = useMemo(
-    () => summarizeBidPeriodChange(previousPeriodSnapshot, ranked),
-    [previousPeriodSnapshot, ranked]
+    () => summarizeBidPeriodChange(previousPeriodSnapshot, myRanked),
+    [previousPeriodSnapshot, myRanked]
   );
 
   // Global rank survives filtering — a filtered card or export entry always
@@ -688,7 +712,7 @@ export function ResultsView({
   );
   // Departures counted as each card counts them: the times the pilot leaves home.
   const departureOptions = useMemo(() => monthDepartureOptions(bidPack.base, profile, flights), [bidPack.base, profile, flights]);
-  const lineSort = useLineSort(userId, bidPack, profile, flights, departureOptions);
+  const lineSort = useLineSort(userId, bidPack, profile, flights, departureOptions, totalCH);
   const applyLineSort = lineSort.apply;
   const sorted = useMemo(() => applyLineSort(listable), [applyLineSort, listable]);
 
@@ -703,7 +727,8 @@ export function ResultsView({
   // keeps it out of reach of a move, and gives it back still selected when it's listed again (`useTiersWithin`).
   const listedSet = useMemo(() => new Set(listedIds), [listedIds]);
   const tiers = useTiersWithin(allTiers, listedSet);
-  const headings = useMemo(() => (lineSort.isRanking ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, listedIds, tiers.state]);
+  // Tiers head the pilot's own order; pay-only order mixes them, so it has none.
+  const headings = useMemo(() => (lineSort.isRanking && !payOrderOn ? tierHeadings(listedIds, tiers.state) : new Map()), [lineSort.isRanking, payOrderOn, listedIds, tiers.state]);
   const displayedIds = useMemo(() => displayed.map((r) => r.line.id), [displayed]);
 
   // Which cards changed place since the last render: only those animate into their new place. Measuring every card's
@@ -1067,7 +1092,8 @@ export function ResultsView({
 
   const activeLineScore = activeId ? ranked.find((r) => r.line.id === activeId) ?? null : null;
   // Drag-to-swap only means something in the pilot's own ranking order — in any other sort the visual order isn't the ranked order the judgment is built from.
-  const dragEnabled = lineSort.isRanking;
+  // Nor in pay-only order, which is Total CH's, not the pilot's.
+  const dragEnabled = lineSort.isRanking && !payOrderOn;
 
   // Where the finger or mouse is during a drag, to check the line it's dropped on is the one under it.
   const pointerAt = useRef<{ x: number; y: number } | null>(null);
@@ -1388,7 +1414,7 @@ export function ResultsView({
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
             {bidPack.lines.length} lines scored against what you told us
-            {lineSort.isRanking ? <span className="hidden sm:inline"> &middot; best match first</span> : null}
+            {lineSort.isRanking ? <span className="hidden sm:inline"> &middot; {payOrderOn ? "most Total CH first" : "best match first"}</span> : null}
           </p>
         </div>
         <Button variant="secondary" onClick={onEditPreferences} className="shrink-0 px-3 sm:px-4 print:hidden">
@@ -1422,6 +1448,7 @@ export function ResultsView({
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
+      {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
       <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
@@ -1628,7 +1655,7 @@ export function ResultsView({
                 packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
                 leftOut={bidPack.lines.length - exportable.lines.length}
                 leftOutWhy={leftOutPhrase(exportable.hidden, exportable.notBid)}
-                presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds }}
+                presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds, payOnly: payOrderOn ? payOnlySets : null }}
                 topLineNumber={exportable.lines[0]?.line.lineNumber ?? null}
               />
             </div>
@@ -1805,6 +1832,7 @@ export function ResultsView({
                             />
                           </ErrorBoundary>
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
+                          <TotalChLineNote line={printedById.get(id)} total={totals.get(id)} />
                           <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>
                       ) : (
@@ -1826,7 +1854,7 @@ export function ResultsView({
             <div className="panel-glass mt-4 flex flex-col items-center gap-2 px-4 py-4 text-center">
               <p className="text-sm text-ink-muted">
                 Showing {displayed.length} of {sorted.length} lines
-                {view === "all" && lineSort.isRanking ? " — the best matches first" : ""}.
+                {view === "all" && lineSort.isRanking ? (payOrderOn ? " — the most Total CH first" : " — the best matches first") : ""}.
               </p>
               <div className="flex flex-wrap justify-center gap-2 print:hidden">
                 <Button

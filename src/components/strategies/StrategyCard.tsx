@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatHoursValue } from "@/lib/interview-config";
 import type { FeasibilityTier, Strategy, StrategyFit, StrategyLineRecommendation } from "@/types/strategy";
 
@@ -135,6 +135,7 @@ export function StrategyCard({
   topPick,
   reaction = null,
   onReact,
+  action,
 }: {
   strategy: Strategy;
   topPick?: boolean;
@@ -142,6 +143,8 @@ export function StrategyCard({
   reaction?: "used" | "dismissed" | null;
   /** Absent hides the reaction buttons entirely — there's no profile yet for a reaction to nudge. */
   onReact?: (reaction: "used" | "dismissed") => void;
+  /** What the pilot can do about it right here, under the steps (the pay-only order's switch). */
+  action?: ReactNode;
 }) {
   // The mechanism paragraph and benefit bullets are the "why this works" — worth having, not worth putting in front of someone scanning eleven strategies for the one that fits. Lines (the actual picks) stay visible; the explanation is one tap away. A process tip (trade, grievance, vacation) has no lines, so its explanation is its content — but it sits in its own "Bonus moves" bank with its tagline showing, so it starts closed too rather than making that bank several screens of prose.
   const [showHow, setShowHow] = useState(false);
@@ -178,6 +181,7 @@ export function StrategyCard({
             </li>
           ))}
         </ol>
+        {action && <div className="mt-3">{action}</div>}
 
         {strategy.facts.length > 0 && (
           <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-lg border border-hairline bg-canvas/40 px-3.5 py-2.5 sm:grid-cols-2">

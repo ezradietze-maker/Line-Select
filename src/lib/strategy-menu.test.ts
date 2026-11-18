@@ -11,6 +11,7 @@ const ALL_STRATEGIES: Record<StrategyId, true> = {
   "reserve-pays-more": true,
   "vacation-overlap": true,
   "carry-over": true,
+  "pay-only": true,
   "sweep-flights": true,
   "after-award": true,
 };

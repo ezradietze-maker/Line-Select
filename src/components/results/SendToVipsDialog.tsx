@@ -58,6 +58,11 @@ export interface PresendContext {
   /** The forecast of the pilot's whole ranking, with its line ids. It answers for the bid only when the bid is that ranking. */
   rankedForecast: BidForecast | null;
   rankedIds: string[];
+  /**
+   * The list is in pay-only order (the "Pay-only month" strategy): the line numbers paying more than a secondary line would,
+   * and those paying at least a reserve line's RLG (null: no RLG printed), so the catch-alls go where they pay as much.
+   */
+  payOnly?: { aboveAverage: Set<string>; aboveReserve: Set<string> | null } | null;
 }
 
 const CHECK_TONE: Record<PresendCheck["level"], string> = {
@@ -162,7 +167,13 @@ export function SendToVipsDialog({
   const notes = useMemo(() => vipsQuestionNotes(bidPack, lineNumbers), [bidPack, lineNumbers]);
 
   // Named reserve lines sit between the secondary and reserve catch-alls, so the order goes in whole.
-  const fullOrder = useMemo(() => fullBidOrder(lineNumbers, anyLines, reserveAdded ? reserveNumbers : []), [lineNumbers, anyLines, reserveAdded, reserveNumbers]);
+  const payOnly = presend.payOnly ?? null;
+  // In pay-only order the lines paying more come first, so each split is a count from the top.
+  const splits = useMemo(
+    () => (payOnly ? { secondaryAt: lineNumbers.filter((n) => payOnly.aboveAverage.has(n)).length, reserveAt: payOnly.aboveReserve ? lineNumbers.filter((n) => payOnly.aboveReserve!.has(n)).length : null } : null),
+    [payOnly, lineNumbers]
+  );
+  const fullOrder = useMemo(() => fullBidOrder(lineNumbers, anyLines, reserveAdded ? reserveNumbers : [], splits), [lineNumbers, anyLines, reserveAdded, reserveNumbers, splits]);
   const build = useMemo(() => buildVipsBidFields({ lineNumbers: fullOrder, answers }), [fullOrder, answers]);
   const normalized = normalizeEmployeeNumber(employee);
 
@@ -297,7 +308,14 @@ export function SendToVipsDialog({
         </section>
 
         <fieldset>
-          <legend className="font-medium">If none of these are left</legend>
+          <legend className="font-medium">{splits ? "Secondary and reserve lines" : "If none of these are left"}</legend>
+          {splits && (
+            <p className="mt-1 text-xs leading-relaxed text-ink-muted" data-pay-only-splits>
+              Your list is in pay-only order, so these go where they pay as much as the lines around them: any secondary line
+              after your {splits.secondaryAt} {splits.secondaryAt === 1 ? "line" : "lines"} paying more than a secondary would
+              {splits.reserveAt !== null ? `, reserve after the ${splits.reserveAt} paying at least a reserve line` : ""}.
+            </p>
+          )}
           <div className="mt-1.5 space-y-1">
             {ANY_LINE_LABELS.map(({ kind, label }) => (
               <label key={kind} className="flex items-center gap-2">

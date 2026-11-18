@@ -3,6 +3,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { AwardHistorySummary } from "@/lib/award-history";
 import { forecastBid, seatSize } from "@/lib/forecast/forecast";
 import { formatHoursValue } from "@/lib/interview-config";
+import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
 import type { BidPack, Line, SeniorityEntry, VacationPeriod } from "@/types/bidpack";
@@ -177,6 +178,8 @@ export interface StrategyOptions {
   /** The pilot's own lines in My Rankings' order, first first (absent before an interview) — a move's lines go in that order. */
   lineScores?: LineScore[] | null;
   isCommuter?: boolean | null;
+  /** VIPS says the pilot is bidding "for Pay Purposes" (their copy of its header, `lib/vips-header.ts`). */
+  payPurposes?: boolean;
   /** Chance each line is still open at the pilot's turn, by line id. Worked out here from the pack's seniority list when not given. */
   pAvailable?: Record<string, number> | null;
 }
@@ -494,6 +497,53 @@ export function generateStrategies(
         )
       ),
     });
+  }
+
+  // ---- Pay only ----
+  {
+    // What the pack prints, as a line pays it (`lib/pay/line-total.ts`); My Rankings works it out with the pilot's
+    // carry-in and vacation too.
+    const totals = new Map(lines.map((l) => [l.id, lineTotal(bidPack, l)]));
+    const plan = payOnlyOrder(bidPack, totals);
+    const byId = new Map(lines.map((l) => [l.id, l]));
+    const ordered = plan.order.map((id) => byId.get(id)!);
+    const pay = (l: Line) => totals.get(l.id)!.total;
+    if (ordered.length) {
+      const top = ordered[0];
+      const avg = plan.averageBlg;
+      const rlg = plan.rlg;
+      strategies.push({
+        id: "pay-only",
+        name: "Bid a pay-only month",
+        tagline: `Not flying this month? Bid the lines that pay the most: up to ${hm(pay(top))} Total CH, line ${top.lineNumber}.`,
+        mechanism:
+          "A pilot who can't fly the whole bid period (training, sick leave, Association business) bids a line for pay only (CBA 2026 25.C.7) and is paid it without flying it, so what a line pays is all that matters. A secondary line pays a pay-only pilot the pack's average BLG (25.C.7.a), and a reserve line pays its RLG (4.C). So the order is the lines paying more than the average, then any secondary line, then the lines down to the RLG, then reserve, then the rest. Total CH is what a line pays: its credit raised to the minimum guarantee, less what a carry-in drops (4.I.1.c), plus the C/O.",
+        benefits: [],
+        fit: st.selfPay || options.payPurposes ? "now" : "later",
+        fitReason: st.selfPay
+          ? "Your entry on the seniority list is marked PAY this month."
+          : options.payPurposes
+            ? "VIPS says you're bidding for Pay Purposes."
+            : "For a month you're on the list but can't fly the whole of it.",
+        steps: [
+          "Put your list in pay-only order (the button below): most Total CH first. Your own ranking is kept for next month.",
+          ...(avg !== null ? [`${plural(plan.aboveAverage, "line")} pay${plan.aboveAverage === 1 ? "s" : ""} more than the ${hm(avg)} a secondary line would: bid "any secondary line" after ${plan.aboveAverage === 1 ? "it" : "them"}.`] : []),
+          ...(rlg !== null && plan.aboveReserve !== null
+            ? [`${plural(plan.aboveReserve, "line")} pay${plan.aboveReserve === 1 ? "s" : ""} at least the ${hm(rlg)} reserve guarantee: bid reserve after ${plan.aboveReserve === 1 ? "it" : "them"}, since the lines below pay less.`]
+            : []),
+          "Send to VIPS puts any secondary line and reserve in those places when you tick them.",
+          "A line goes to one pay-only pilot (25.C.7.c), so bid deep: pilots above you may be bidding for pay too.",
+        ],
+        facts: [
+          { label: "Most Total CH", value: `${hm(pay(top))} (line ${top.lineNumber})`, tone: "good" },
+          ...(avg !== null ? [{ label: "Average BLG (a secondary line's pay)", value: hm(avg) }] : []),
+          ...(rlg !== null ? [{ label: "Reserve line guarantee", value: hm(rlg) }] : []),
+          ...(avg !== null ? [{ label: "Lines paying more than a secondary", value: `${plan.aboveAverage} of ${lines.length}` }] : []),
+        ],
+        risk: "Total CH is worked out from the pack and the 2026 contract, not FedEx's pay system. A pilot in ITU training for a lateral or down bid isn't paid a pay-only line's C/O (4.I.5.c), so for them the C/O doesn't count. Block override isn't counted yet.",
+        lines: ordered.slice(0, 5).map((l) => rec(l, `${hm(pay(l))} Total CH`, `${hm(l.totalCreditHours)} credit this month${(l.carryOverCreditHours ?? 0) > 0 ? ` + ${hm(l.carryOverCreditHours!)} C/O` : ""}.`, openAt(l), openAt(l) !== null ? `${openOdds(openAt(l)!)}.` : "")),
+      });
+    }
   }
 
   // ---- Carry-over ----

@@ -166,6 +166,15 @@ describe("catch-all advice", () => {
     expect(fullBidOrder(["1"], [], [])).toEqual(["1"]);
   });
 
+  it("for pay only, puts secondary and reserve where they pay as much as the lines around them", () => {
+    const lines = ["1", "2", "3", "4"];
+    expect(fullBidOrder(lines, ["regular", "secondary", "reserve"], ["7001"], { secondaryAt: 1, reserveAt: 3 })).toEqual(["1", "9952", "2", "3", "7001", "9954", "4", "9950"]);
+    // No RLG printed: reserve keeps its place at the end.
+    expect(fullBidOrder(lines, ["secondary", "reserve"], [], { secondaryAt: 2, reserveAt: null })).toEqual(["1", "2", "9952", "3", "4", "9954"]);
+    // Nothing chosen to go between them: the lines as they are.
+    expect(fullBidOrder(lines, [], [], { secondaryAt: 1, reserveAt: 2 })).toEqual(lines);
+  });
+
   it("counts a line listed twice once, where it first comes, as VIPS is sent it", () => {
     const order = fullBidOrder(["101", "102", "101"], ["reserve"], ["7001", "7001", "102"]);
     expect(order).toEqual(["101", "102", "7001", "9954"]);

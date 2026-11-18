@@ -44,7 +44,9 @@ export function useLineSort(
   bidPack: BidPack,
   profile: PreferenceProfile,
   flights: FlightAnswers | null,
-  departureOptions: MonthDepartureOptions
+  departureOptions: MonthDepartureOptions,
+  /** Each line's Total CH as the pilot will fly it, for that sort. */
+  totals?: Map<string, number>
 ): LineSort {
   const [choice, setChoice] = useState<SortChoice>(() => loadSortChoice(userId, bidPack.id));
   const [prepared, setPrepared] = useState(false);
@@ -60,8 +62,8 @@ export function useLineSort(
   const ctx = useMemo(() => {
     if (!facts) return null;
     const pack = flights ? { ...facts, ctx: { ...facts.ctx, flights } } : facts;
-    return buildSortContext(bidPack, profile, pack, departureOptions);
-  }, [facts, flights, bidPack, profile, departureOptions]);
+    return { ...buildSortContext(bidPack, profile, pack, departureOptions), totals };
+  }, [facts, flights, bidPack, profile, departureOptions, totals]);
 
   const resolved = resolveSort(choice, ctx);
   const def = useMemo(() => ({ ...resolved, label: namedDomicile(resolved.label, bidPack.base), definition: namedDomicile(resolved.definition, bidPack.base) }), [resolved, bidPack.base]);
