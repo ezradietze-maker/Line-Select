@@ -277,12 +277,14 @@ export function ResultsFilterBar({
           )}
 
           <FilterRow label="Takeoffs">
+            {/* With a phone's text set larger each field goes under its words (as HoursRange's go under each other),
+                rather than run off the side of the page. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[0.8125rem] text-ink-muted">
-              <label className="flex items-center gap-1.5">
+              <label className="flex flex-wrap items-center gap-1.5">
                 None before
                 <TimeInput value={filters.noTakeoffBefore} onChange={(noTakeoffBefore) => onChange({ ...filters, noTakeoffBefore })} />
               </label>
-              <label className="flex items-center gap-1.5">
+              <label className="flex flex-wrap items-center gap-1.5">
                 None after
                 <TimeInput value={filters.noTakeoffAfter} onChange={(noTakeoffAfter) => onChange({ ...filters, noTakeoffAfter })} />
               </label>
@@ -438,7 +440,7 @@ function StepRow({ label, steps, value, suffix = "+", onChange }: { label: strin
 function HoursRange({ label, min, max, onChange }: { label: string; min: number; max: number; onChange: (min: number, max: number) => void }) {
   const read = (v: string) => Math.max(0, Number(v) || 0);
   return (
-    <div className="flex items-center gap-1.5 text-[0.8125rem] text-ink-muted">
+    <div className="flex flex-wrap items-center gap-1.5 text-[0.8125rem] text-ink-muted">
       <input type="number" inputMode="decimal" min={0} value={min || ""} onChange={(e) => onChange(read(e.target.value), max)} placeholder="Min" aria-label={`Fewest ${label} hours`} className={`${FIELD} w-20`} />
       to
       <input type="number" inputMode="decimal" min={0} value={max || ""} onChange={(e) => onChange(min, read(e.target.value))} placeholder="Max" aria-label={`Most ${label} hours`} className={`${FIELD} w-20`} />
@@ -576,13 +578,14 @@ function FilterRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+/** No wider than its row: with a phone's text set larger "No double deadheads" goes over two lines, not off the side. */
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`shrink-0 rounded-[3px] border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+      className={`max-w-full shrink-0 rounded-[3px] border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
         active
           ? "border-brand bg-brand-soft text-brand"
           : "border-border-strong text-ink-muted hover:border-brand hover:text-brand"

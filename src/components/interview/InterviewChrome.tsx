@@ -61,9 +61,10 @@ export function InterviewProgress({ fraction, left, right, base }: { fraction: n
   return (
     <div className="mb-6">
       <FlightPathProgress fraction={fraction} label="Interview progress" stops={stops} />
-      <div className="mt-1.5 flex items-center justify-between gap-4 text-2xs text-ink-faint font-medium">
+      {/* The right one goes under, still on the right, when the two don't fit across (a phone with its text set larger). */}
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-0.5 text-2xs text-ink-faint font-medium">
         <span className="whitespace-nowrap">{left}</span>
-        {right && <span className="whitespace-nowrap text-right">{right}</span>}
+        {right && <span className="ml-auto whitespace-nowrap text-right">{right}</span>}
       </div>
     </div>
   );

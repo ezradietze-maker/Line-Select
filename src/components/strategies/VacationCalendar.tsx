@@ -139,10 +139,11 @@ export function VacationCalendar({ row, pack, value, byModel }: { row: LineSlide
       {/* The month, with the vacation footprint over it. */}
       <div ref={scrollerRef} className="mt-3 overflow-x-auto pb-1" aria-hidden>
         <div className="grid items-end gap-px" style={{ gridTemplateColumns: `repeat(${dayCount}, minmax(${col}px, 1fr))`, gridTemplateRows: "14px auto auto 34px", minWidth: dayCount * col }}>
-          {/* Vacation band */}
+          {/* Vacation band. Its word only where the band holds it whole: over two days on a laptop it read "Vacati…". The
+              gold says it on its own (the key under the calendar), and the dates are in words above. */}
           {vacCol && (
-            <div className="flex items-center justify-center self-stretch rounded-full bg-accent" style={{ gridColumn: vacCol, gridRow: 1 }} title="Your vacation">
-              <span className="truncate px-1 text-2xs font-semibold leading-none text-surface-raised">Vacation</span>
+            <div className="@container flex items-center justify-center self-stretch rounded-full bg-accent" style={{ gridColumn: vacCol, gridRow: 1 }} title="Your vacation">
+              <span className="hidden truncate px-1 text-2xs font-semibold leading-none text-surface-raised @min-[3.25rem]:block">Vacation</span>
             </div>
           )}
           {/* Weekday + day number */}

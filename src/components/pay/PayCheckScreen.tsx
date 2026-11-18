@@ -127,7 +127,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
           {claimTrip && (
             <div className="panel-glass mt-3 p-4 sm:p-5">
               <div className="flex flex-wrap items-end gap-3">
-                <label className="text-xs text-ink-muted">
+                <label className="max-w-full text-xs text-ink-muted">
                   Trip
                   <select className={`${FIELD} mt-1 block`} value={claimAt} onChange={(e) => setTripAt(Number(e.target.value))}>
                     {pay?.trips.map((t, i) => (
@@ -139,7 +139,7 @@ export function PayCheckScreen({ bidPack, onGoToUpload, onTrySample }: { bidPack
                   </select>
                 </label>
                 {/* A full keyboard, not a phone's decimal pad: that has no colon, so 14:30 couldn't be typed on one. */}
-                <label className="text-xs text-ink-muted">
+                <label className="max-w-full text-xs text-ink-muted">
                   Credit you were actually paid
                   <input type="text" autoComplete="off" placeholder="e.g. 14:30" className={`${FIELD} mt-1 block w-32 font-mono`} value={paid} onChange={(e) => setPaid(e.target.value)} />
                 </label>
