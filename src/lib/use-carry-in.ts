@@ -26,8 +26,9 @@ export function useCarryIn(bidPack: BidPack, userId: string | null, profile: Pic
   // until the page was opened again.
   const { typedVacations, preferTyped } = state;
   const vacations = useMemo(() => pilotVacations(bidPack, { seniorityNumber }, seniority, { typedVacations, preferTyped }), [bidPack, seniorityNumber, seniority, typedVacations, preferTyped]);
-  const flown = useMemo(() => flySchedule(bidPack, state, withChoices(vacations.vacations, state.vacationChoices)), [bidPack, state, vacations]);
-  return { state, update, flown, vacations };
+  const chosen = useMemo(() => withChoices(vacations.vacations, state.vacationChoices), [vacations, state.vacationChoices]);
+  const flown = useMemo(() => flySchedule(bidPack, state, chosen), [bidPack, state, chosen]);
+  return { state, update, flown, vacations, chosen };
 }
 
 export type CarryIn = ReturnType<typeof useCarryIn>;

@@ -1,5 +1,6 @@
 "use client";
 
+import type { LineVacationMark } from "@/lib/vacation-marks";
 import dynamic from "next/dynamic";
 import { memo, useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
@@ -115,6 +116,8 @@ interface LineCardProps {
   topPick: boolean;
   /** Its place in the pilot's order, 1 first, shown beside its score. */
   rank: number | null;
+  /** The pilot's vacation on this line, drawn on its strip and its month (`lib/vacation-marks.ts`). */
+  vacation?: LineVacationMark | null;
   /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
   bidPeriodStart: string | null;
   bidPeriodDays: number;
@@ -148,6 +151,7 @@ export const LineCard = memo(function LineCard({
   capped,
   topPick,
   rank,
+  vacation = null,
   bidPeriodStart,
   bidPeriodDays,
   packId,
@@ -245,6 +249,7 @@ export const LineCard = memo(function LineCard({
         placedByYou={placedByYou}
         top={topPick}
         rank={rank}
+        vacation={vacation}
       />
 
       {/* Everything else about the line, opening out of its strip when it's tapped (Hand-off). */}
@@ -272,6 +277,7 @@ export const LineCard = memo(function LineCard({
               showEveryDimension={showEveryDimension}
               setShowEveryDimension={setShowEveryDimension}
               heat={tripHeats}
+              vacation={vacation}
             />
           </motion.div>
         )}
@@ -295,6 +301,7 @@ function LineDetails({
   showEveryDimension,
   setShowEveryDimension,
   heat,
+  vacation,
 }: {
   line: Line;
   details: LineCardDetails;
@@ -310,6 +317,7 @@ function LineDetails({
   setShowEveryDimension: Dispatch<SetStateAction<boolean>>;
   /** The Heat Map trip by trip, while it's showing. */
   heat: Map<number, TripHeat> | null;
+  vacation: LineVacationMark | null;
 }) {
   const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra } = details;
   const reduceMotion = useReducedMotion();
@@ -544,6 +552,7 @@ function LineDetails({
                 cityPreferences={marks}
                 departureOptions={departureOptions}
                 heat={heat}
+                vacation={vacation}
               />
             )}
           </div>

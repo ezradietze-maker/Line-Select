@@ -1,5 +1,6 @@
 "use client";
 
+import { reachSpans, type LineVacationMark } from "@/lib/vacation-marks";
 import { useInView } from "motion/react";
 import { memo, useMemo, useState } from "react";
 import { BedIcon } from "@/components/ui/icons";
@@ -200,6 +201,7 @@ function Cell({
   cityPreferences,
   mode,
   heatOf,
+  vacation = null,
 }: {
   day: DetailedDay;
   selected: boolean;
@@ -213,6 +215,7 @@ function Cell({
   cityPreferences?: Record<string, CityMark>;
   mode: TimeMode;
   heatOf?: HeatOf;
+  vacation?: VacationDay | null;
 }) {
   const isOff = day.kind === "off";
   const standby = day.flights.find((f) => f.kind === "standby");
@@ -231,6 +234,18 @@ function Cell({
       style={{ "--i": index } as React.CSSProperties}
     >
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
+      {/* The vacation: its days ringed and washed gold, where the pack had it dashed, the days it could slide to hatched along the foot. */}
+      {vacation?.on && <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md bg-accent/12 ring-2 ring-inset ring-accent" />}
+      {vacation?.awarded && !vacation.on && <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md border border-dashed border-accent/70" />}
+      {vacation?.reach && !vacation.on && (
+        // Along the foot: the top edge is the trip's own rail, in much the same colour.
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] rounded-b-md opacity-80" style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)" }} />
+      )}
+      {vacation?.first != null && (
+        <span aria-hidden className="pointer-events-none absolute bottom-0.5 right-1 font-mono text-[9px] font-bold leading-none text-accent">
+          VAC {vacation.first}
+        </span>
+      )}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
         <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
@@ -667,6 +682,31 @@ interface MiniLinePreviewProps {
   compact?: boolean;
   /** The Heat Map, trip by trip (`tripHeatsOf`): the days' duty periods and layovers in their heat colours. */
   heat?: Map<number, TripHeat> | null;
+  /** The pilot's vacation on this line: its days ringed gold, the days it could slide to hatched (`lib/vacation-marks.ts`). */
+  vacation?: LineVacationMark | null;
+}
+
+/** What a calendar day is to the pilot's vacation: on it (and its first day, for "VAC 7"), where the pack had it, or a day it could slide to. */
+interface VacationDay {
+  on: boolean;
+  first: number | null;
+  awarded: boolean;
+  reach: boolean;
+}
+
+function vacationDays(mark: LineVacationMark | null | undefined): Map<number, VacationDay> {
+  const out = new Map<number, VacationDay>();
+  const at = (d: number) => out.get(d) ?? out.set(d, { on: false, first: null, awarded: false, reach: false }).get(d)!;
+  for (const p of mark?.pieces ?? []) {
+    const { before, after } = reachSpans(p);
+    // The whole days it could slide over, counted out from its first day back or its last day on.
+    const run = (r: [number, number] | null, from: number, dir: 1 | -1) => (r ? Array.from({ length: Math.round((r[1] - r[0]) / 1440) }, (_, k) => from + dir * (k + 1)) : []);
+    for (const d of [...run(before, p.firstDay, -1), ...run(after, p.lastDay, 1)]) at(d).reach = true;
+    if (p.firstDay !== p.awardedFirstDay) for (let d = p.awardedFirstDay; d <= p.awardedLastDay; d++) at(d).awarded = true;
+    for (let d = p.firstDay; d <= p.lastDay; d++) at(d).on = true;
+    at(p.firstDay).first = p.days;
+  }
+  return out;
 }
 
 export const MiniLinePreview = memo(function MiniLinePreview({
@@ -679,6 +719,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   compact = false,
   homeBaseOffsetMinutes = null,
   heat = null,
+  vacation = null,
 }: MiniLinePreviewProps) {
   const [chosenMode, setMode] = useTimeMode();
   // The interview's small line cards stay on the base's calendar.
@@ -705,6 +746,8 @@ export const MiniLinePreview = memo(function MiniLinePreview({
     return (s: TimelineSegment) => labeled.has(s);
   }, [month]);
 
+  // On the domicile's days only: in Zulu a day isn't the one the vacation's dates are.
+  const vacDays = mode === "local" ? vacationDays(vacation) : new Map<number, VacationDay>();
   if (line.trips.length === 0) return null;
   const selectedDay = selected !== null ? month.days[selected] : null;
   const heatOfDay = (day: DetailedDay) => heatOfTrips(heat, day.tripIndex, day.spill ? { trip: day.spill.tripIndex, segments: day.spill.segments } : null);
@@ -743,6 +786,7 @@ export const MiniLinePreview = memo(function MiniLinePreview({
               cityPreferences={cityPreferences}
               mode={mode}
               heatOf={heatOfDay(day)}
+              vacation={vacDays.get(day.dayIndex) ?? null}
               onSelect={() => setSelected((cur) => (cur === day.dayIndex ? null : day.dayIndex))}
             />
           ))}

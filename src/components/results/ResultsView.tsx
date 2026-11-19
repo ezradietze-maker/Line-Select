@@ -122,6 +122,8 @@ import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import { withSatisfactionIndex } from "@/lib/satisfaction-index";
+import { useVacationOptions } from "@/lib/use-vacation-options";
+import { lineVacationMark } from "@/lib/vacation-marks";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
@@ -485,6 +487,13 @@ export function ResultsView({
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
   const carry = useCarryIn(bidPack, userId, profile, seniority);
+  // Every legal place for the pilot's vacation on every line, worked out in the background (`lib/vacation-engine.ts`); and
+  // what each line's pictures draw of it: where it falls, how far it can slide, what it takes off.
+  const vacationOptions = useVacationOptions(carry.flown.carriedPack, carry.chosen, carry.flown.carriedDays);
+  const vacationMarks = useMemo(
+    () => new Map(bidPack.lines.map((l) => [l.id, lineVacationMark(bidPack, carry.flown.vacationLines.get(l.id), carry.chosen, vacationOptions.options?.get(l.id)?.reach)])),
+    [bidPack, carry.flown.vacationLines, carry.chosen, vacationOptions.options]
+  );
   // What each line pays as the pilot will fly it (Total CH), and whether they've put the list in pay-only order.
   const totals = useMemo(
     () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, carry.flown.vacationLines.get(l.id)?.chargedCH)])),
@@ -1697,7 +1706,7 @@ export function ResultsView({
               took it from the right edge to under the key and back. Its own column on the right (on top on a phone). */}
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
             <div className="order-2 min-w-0 flex-1 sm:order-1">
-              <StripKey view={stripView} />
+              <StripKey view={stripView} vacation={carry.chosen.some((v) => v.choice !== "not-taking")} />
             </div>
             <div className="order-1 shrink-0 self-end sm:order-2 sm:self-start">
               <StripViewToggle view={stripView} onChange={chooseStripView} />
@@ -1836,6 +1845,7 @@ export function ResultsView({
                               capped={lineScore.violatedDealbreakers.length > 0}
                               topPick={rank === 1}
                               rank={rank || null}
+                              vacation={vacationMarks.get(id) ?? null}
                               bidPeriodStart={bidPack.bidPeriodStart}
                               bidPeriodDays={bidPack.bidPeriodDays}
                               packId={bidPack.id}
