@@ -52,7 +52,7 @@ describe("the strips at bigger text", () => {
     const wide = stripLayout(1850, 35, 2);
     expect(wide.mode).toBe("fit");
     expect(wide.textScale).toBe(2);
-    expect(wide.daysPx).toBe(1850 - 2 - (24 + 224 + 22 + 16) * 2);
+    expect(wide.daysPx).toBe(1850 - 2 - (24 + 240 + 22 + 16) * 2);
   });
 });
 

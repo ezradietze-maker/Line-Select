@@ -1,4 +1,5 @@
 import { formatHoursValue } from "@/lib/interview-config";
+import { formatIndex } from "@/lib/satisfaction-index";
 import { saveOrReport } from "@/lib/local-save-failed";
 import { groupDepartures } from "@/lib/metrics/departures";
 import { homeParams } from "@/lib/scoring-v2/score";
@@ -458,7 +459,7 @@ export interface SortPreview {
 export function previewSort(list: LineScore[], def: SortDef, choice: SortChoice, ctx: SortContext, n = 3): SortPreview {
   if (def.group === "order") {
     const top = applySort(list, { ...choice, id: def.id }, ctx).slice(0, n);
-    return { top: top.map((r) => ({ lineNumber: r.line.lineNumber, text: def.id === MATCH_SORT ? `${Math.round(r.score)} match` : "" })), measured: list.length, total: list.length };
+    return { top: top.map((r) => ({ lineNumber: r.line.lineNumber, text: def.id === MATCH_SORT ? `${formatIndex(r.score)} index` : "" })), measured: list.length, total: list.length };
   }
   const values = sortValues(def, choice, ctx);
   const top = applySort(list, { ...choice, id: def.id }, ctx).slice(0, n);

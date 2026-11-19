@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { formatIndex } from "@/lib/satisfaction-index";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { FlipText } from "@/components/ui/FlipText";
@@ -273,8 +274,8 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
                       {c.group === "Lines" ? <FlipText text={c.label} delay={Math.min(i, 8) * 45} stagger={22} /> : c.label}
                     </span>
                     {c.standing && (
-                      <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-2xs font-semibold tabular-nums" title="Score">
-                        {c.group === "Lines" ? <FlipText text={String(Math.round(c.standing.score))} delay={Math.min(i, 8) * 45 + 160} stagger={30} /> : Math.round(c.standing.score)}
+                      <span className="shrink-0 rounded-md border border-hairline px-1.5 py-0.5 font-mono text-2xs font-semibold tabular-nums" title="Satisfaction Index">
+                        {c.group === "Lines" ? <FlipText text={formatIndex(c.standing.score)} delay={Math.min(i, 8) * 45 + 160} stagger={30} /> : formatIndex(c.standing.score)}
                       </span>
                     )}
                     {c.hint && <span className={`hidden shrink-0 font-mono text-2xs tabular-nums sm:block ${i === active ? "text-on-wash" : "text-ink-faint"}`}>{c.hint}</span>}

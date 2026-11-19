@@ -120,6 +120,8 @@ import { lineHasHotel, type HotelFilter } from "@/lib/hotel-filter";
 import { FlipText } from "@/components/ui/FlipText";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
+import { withSatisfactionIndex } from "@/lib/satisfaction-index";
+import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
 import { PayOrderBanner, TotalChLineNote } from "@/components/results/TotalChNote";
@@ -534,9 +536,12 @@ export function ResultsView({
   // by scoring below and by every drag judgment, rather than recomputed per use.
   const implicitValuesByLine = useMemo(() => (warmUp.ready ? implicitLineValuesFor(bidPack) : NO_IMPLICIT_VALUES), [bidPack, warmUp.ready]);
   const scoredLines = useMemo(
-    () => (warmUp.ready ? rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown) : []),
+    // The fit scores shown as the Satisfaction Index, spread for this pack (`lib/satisfaction-index.ts`); the order is the ranking's.
+    () => (warmUp.ready ? withSatisfactionIndex(rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown)) : []),
     [warmUp.ready, bidPack, carry.flown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
+  // The index's range this month, for the key over the list.
+  const indexRange = useMemo(() => (scoredLines.length ? { best: Math.max(...scoredLines.map((r) => r.score)), worst: Math.min(...scoredLines.map((r) => r.score)) } : null), [scoredLines]);
   // Placements for lines that no longer exist never leak in, as with marks.
   const validPlacements = useMemo(() => prunePlacements(placements, new Set(bidPack.lines.map((l) => l.id))), [placements, bidPack]);
   // The pilot's order: the brain's ranking with every swap they made kept where they made it. Rank numbers, the bid
@@ -1665,6 +1670,7 @@ export function ResultsView({
             <StripKey view={stripView} />
             <StripViewToggle view={stripView} onChange={chooseStripView} />
           </div>
+          <SatisfactionIndexKey model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />
           {noTimelineSaid && stripView !== chosenStripView && (
             <p role="status" className="mt-1.5 text-right text-xs text-ink-muted print:hidden">
               This pack prints no bid period dates, so there&rsquo;s no timeline to put its trips on. Lines show as the bid pack prints them.
@@ -1733,7 +1739,7 @@ export function ResultsView({
           >
             {/* As wide as the strips were laid out for the paper (`printStripLayout`), so the days and their words line up. */}
             <div ref={listRef} className="mt-3 space-y-1.5" style={printing ? { width: PRINT_LIST_PX, maxWidth: "100%" } : undefined}>
-              {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} />}
+              {displayed.length > 0 && <BidPackHeader columns={columns} layout={layout} label="Satisfaction Index · # · line" />}
               {displayed.length === 0 && filtersActive(filters) && <FilterBlameList lines={bidPack.lines} filters={filters} ctx={filterCtx} onChange={setFilters} />}
               {displayed.length === 0 ? (
                 <EmptyState
@@ -1796,6 +1802,7 @@ export function ResultsView({
                               score={lineScore.score}
                               capped={lineScore.violatedDealbreakers.length > 0}
                               topPick={rank === 1}
+                              rank={rank || null}
                               bidPeriodStart={bidPack.bidPeriodStart}
                               bidPeriodDays={bidPack.bidPeriodDays}
                               packId={bidPack.id}

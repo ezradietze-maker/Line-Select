@@ -113,6 +113,8 @@ interface LineCardProps {
   capped: boolean;
   /** Number 1 in the pilot's order: the card glows. */
   topPick: boolean;
+  /** Its place in the pilot's order, 1 first, shown beside its score. */
+  rank: number | null;
   /** The bid pack's own real start date and period length — see `BidPack.bidPeriodStart`'s doc comment. Threaded down to the mini month calendar. */
   bidPeriodStart: string | null;
   bidPeriodDays: number;
@@ -145,6 +147,7 @@ export const LineCard = memo(function LineCard({
   score,
   capped,
   topPick,
+  rank,
   bidPeriodStart,
   bidPeriodDays,
   packId,
@@ -241,6 +244,7 @@ export const LineCard = memo(function LineCard({
         onToggle={onToggleOpen}
         placedByYou={placedByYou}
         top={topPick}
+        rank={rank}
       />
 
       {/* Everything else about the line, opening out of its strip when it's tapped (Hand-off). */}

@@ -2,6 +2,7 @@
 
 import { useId, type ReactNode } from "react";
 import { ScoreRing } from "@/components/results/ScoreRing";
+import { formatIndex } from "@/lib/satisfaction-index";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
@@ -36,8 +37,8 @@ import type { Line } from "@/types/bidpack";
 /** The grip's column, the numbers' block and the chevron's column, in px — the date header lines up on the same. */
 const GRIP_W = 24;
 // Room for the ring and the spelled-out numbers on one line each ("C/O blk 0:00 Days off 15" needs 174px): at 204 they
-// wrapped, and the last column ran under the line's first trip.
-const LEFT_W = 224;
+// wrapped, and the last column ran under the line's first trip. 16 more for the Satisfaction Index's decimal.
+const LEFT_W = 240;
 const CHEVRON_W = 22;
 /** The strip's padding each side, inside its panel. */
 const PAD_X = 8;
@@ -524,11 +525,13 @@ interface BidPackStripProps {
   placedByYou?: boolean;
   /** The pilot's top pick: its score is a location sign. */
   top?: boolean;
+  /** Its place in the pilot's order, 1 first; absent where the list isn't ranked (the interview). */
+  rank?: number | null;
 }
 
-export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false }: BidPackStripProps) {
+export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false, rank = null }: BidPackStripProps) {
   const heatSaid = view.kind === "heat" ? sharePercents(view.heat.share) : null;
-  const label = `Line ${line.lineNumber}${score !== null ? `, score ${Math.round(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""}${
+  const label = `${rank ? `Number ${rank}, ` : ""}Line ${line.lineNumber}${score !== null ? `, Satisfaction Index ${formatIndex(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""}${
     heatSaid && heatSaid.hot + heatSaid.mild + heatSaid.cold ? `, trips ${heatSaid.hot}% hot, ${heatSaid.mild}% mild, ${heatSaid.cold}% cold` : ""
   } — ${open ? "hide" : "show"} everything about it`;
   const k = layout.textScale;
@@ -539,7 +542,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   const title = (
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
       {score !== null ? (
-        <ScoreRing score={score} size={ring} capped={capped} top={top} />
+        <ScoreRing score={score} size={ring} capped={capped} top={top} index />
       ) : (
         tag && (
           <span aria-hidden className="flex shrink-0 items-center justify-center rounded-[3px] border-[1.5px] border-brand font-display text-base font-extrabold text-brand" style={{ width: Math.round(ring * 1.05), height: Math.round(ring * 0.78) }}>
@@ -549,6 +552,11 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
       )}
       <div className="w-min min-w-0 grow">
         <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink">
+          {rank !== null && (
+            <span aria-hidden className="tabular-nums text-accent" data-rank={rank}>
+              #{rank}
+            </span>
+          )}
           LINE {line.lineNumber}
           {placedByYou && (
             <span

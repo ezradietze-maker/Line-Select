@@ -125,6 +125,8 @@ export interface LineScore {
   score: number;
   /** The pilot model's score before it's held to 0–100 for display (it can fall below 0) — breaks ties among lines shown at 0. */
   rawScore?: number;
+  /** Once the list is shown (`withSatisfactionIndex`): the ranking's fit score, which `score` spreads over 1–100 for the pack. */
+  fitScore?: number;
   dimensions: DimensionScore[];
   topDimensions: DimensionScore[];
   explanation: string;

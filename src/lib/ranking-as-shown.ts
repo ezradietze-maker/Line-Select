@@ -4,6 +4,7 @@ import { loadCarryIn } from "@/lib/carry-in-storage";
 import { applyPlacements, loadPlacements, prunePlacements } from "@/lib/line-placements";
 import { applyTiers, loadTiers, pruneTiers } from "@/lib/line-tiers";
 import { rankLines, type LineScore } from "@/lib/scoring";
+import { withSatisfactionIndex } from "@/lib/satisfaction-index";
 import { loadSeniority } from "@/lib/seniority-storage";
 import { flySchedule, pilotVacations, rankedAsFlown, withChoices } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
@@ -22,7 +23,8 @@ export function rankingAsShown(bidPack: BidPack, profile: PreferenceProfile, use
   const carry = loadCarryIn(userId, bidPack.id);
   const vacations = pilotVacations(bidPack, profile, loadSeniority(userId)).vacations;
   const flown = flySchedule(bidPack, carry, withChoices(vacations, carry.vacationChoices));
-  const ranked = rankedAsFlown(rankLines(flown.pack, profile, {}, computeImplicitLineValues(bidPack), undefined, undefined, flights ?? undefined), bidPack, flown);
+  // Scores as My Rankings shows them: the Satisfaction Index (`lib/satisfaction-index.ts`).
+  const ranked = withSatisfactionIndex(rankedAsFlown(rankLines(flown.pack, profile, {}, computeImplicitLineValues(bidPack), undefined, undefined, flights ?? undefined), bidPack, flown));
   const valid = new Set(bidPack.lines.map((l) => l.id));
   const placed = applyPlacements(ranked, prunePlacements(loadPlacements(userId, bidPack.id), valid), (r) => r.line.id);
   return applyTiers(placed, pruneTiers(loadTiers(userId, bidPack.id), valid), (r) => r.line.id);

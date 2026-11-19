@@ -1,6 +1,7 @@
 "use client";
 
 import { bodyClockTone } from "@/components/results/BodyClock";
+import { formatIndex } from "@/lib/satisfaction-index";
 import { MiniLinePreview } from "@/components/results/MiniLinePreview";
 import { FlipText } from "@/components/ui/FlipText";
 import { Modal } from "@/components/ui/Modal";
@@ -89,11 +90,11 @@ export function LineComparisonModal({
         <div className="hidden sm:block" />
         {lineScores.map((ls) => (
           <div key={ls.line.id} className="text-center font-semibold text-ink">
-            #{ls.line.lineNumber}
+            Line {ls.line.lineNumber}
             {/* Said as a score: a bare number after the line's read as "2112 49". */}
             <span className="ml-1 font-normal text-ink-faint">
-              <span className="sr-only">score </span>
-              {Math.round(ls.score)}
+              <span className="sr-only">Satisfaction Index </span>
+              {formatIndex(ls.score)}
             </span>
           </div>
         ))}
