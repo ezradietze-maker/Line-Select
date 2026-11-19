@@ -21,7 +21,7 @@ export function rankingAsShown(bidPack: BidPack, profile: PreferenceProfile, use
   const flights = profile.pilotModel ? cachedFlightAnswers(bidPack, profile.pilotModel) : null;
   // Scored as it will fly with the pilot's carry-in and vacation, the way My Rankings does (`useCarryIn`).
   const carry = loadCarryIn(userId, bidPack.id);
-  const vacations = pilotVacations(bidPack, profile, loadSeniority(userId)).vacations;
+  const vacations = pilotVacations(bidPack, profile, loadSeniority(userId), carry).vacations;
   const flown = flySchedule(bidPack, carry, withChoices(vacations, carry.vacationChoices));
   // Scores as My Rankings shows them: the Satisfaction Index (`lib/satisfaction-index.ts`).
   const ranked = withSatisfactionIndex(rankedAsFlown(rankLines(flown.pack, profile, {}, computeImplicitLineValues(bidPack), undefined, undefined, flights ?? undefined), bidPack, flown));

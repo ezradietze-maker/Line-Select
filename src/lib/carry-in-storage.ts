@@ -1,4 +1,5 @@
 import { NO_ELECTIONS, type CarryInItem, type CarryInTrip, type PhaseInElections } from "@/lib/phase-in";
+import type { TypedVacation } from "@/lib/my-vacation";
 import type { VacationChoice } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { LoggedMonth } from "@/types/logbook";
@@ -9,6 +10,10 @@ export interface CarryInState {
   elections: PhaseInElections;
   /** What the pilot wants done with each vacation, by its id; "use" when it isn't here. */
   vacationChoices?: Record<string, VacationChoice>;
+  /** Vacations the pilot typed: where the pack can't say (not on its list, no schedule), or in place of it (`preferTyped`). */
+  typedVacations?: TypedVacation[];
+  /** The pilot said the pack's vacation isn't right: theirs is the one they typed. */
+  preferTyped?: boolean;
   /**
    * The pilot said nothing carries in from last month. Without it an empty list is only "not told": Open time and View/Add
    * read the two alike, but a trade can't hand on a trip in the month's first days until it's known (`carryInToSend`).
@@ -39,6 +44,10 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
       items,
       elections: { ...NO_ELECTIONS, ...stored.elections },
       ...(stored.vacationChoices ? { vacationChoices: stored.vacationChoices } : {}),
+      ...(Array.isArray(stored.typedVacations)
+        ? { typedVacations: stored.typedVacations.filter((t): t is TypedVacation => !!t && typeof t.firstDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.firstDay) && Number.isInteger(t.days) && t.days >= 1 && t.days <= 60) }
+        : {}),
+      ...(stored.preferTyped === true ? { preferTyped: true } : {}),
       ...(stored.none === true && !items.length ? { none: true } : {}),
     };
   } catch {
@@ -49,7 +58,8 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
 export function saveCarryIn(userId: string | null, packId: string, state: CarryInState): void {
   if (typeof window === "undefined") return;
   try {
-    if (state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
+    // Kept while it says anything: a typed vacation alone is worth keeping.
+    if (state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length || state.typedVacations?.length || state.preferTyped) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
     else window.localStorage.removeItem(key(userId, packId));
   } catch {
     // Storage unavailable: it lasts as long as the page.

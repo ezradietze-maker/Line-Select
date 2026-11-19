@@ -128,7 +128,7 @@ function SeniorityGate({
           initial={seniority}
           profile={profile}
           onSave={(input) => {
-            onSaveSeniority(input);
+            onSaveSeniority({ ...input, packId: bidPack.id });
             setEditing(false);
           }}
           onSaveNumber={(seniorityNumber) => {
@@ -136,7 +136,7 @@ function SeniorityGate({
             if (profile) onUpdateProfile({ ...profile, seniorityNumber });
             const list = bidPack.seniorityList ?? [];
             const position = resolveBidPosition(list, seniorityNumber);
-            onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between" });
+            onSaveSeniority({ rank: position.bidNumber, totalPilots: Math.max(seatSize(list), position.bidNumber), source: position.exact ? "typed" : "between", seniorityNumber, packId: bidPack.id });
             setEditing(false);
           }}
         />

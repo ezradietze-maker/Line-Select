@@ -1,10 +1,10 @@
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
 import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { formatHoursValue } from "@/lib/interview-config";
-import { deriveSeniorityInput } from "@/lib/seniority-derive";
-import { placeInPack } from "@/lib/strategy-engine";
+import type { CarryInState } from "@/lib/carry-in-storage";
+import { findMyVacation, type MyVacation } from "@/lib/my-vacation";
 import { namedWithHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import { CH_PER_VACATION_DAY, chargedToBank, monthReachEnd, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, chargedToBank, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -122,32 +122,20 @@ export function rankedAsFlown<T extends { line: Line; score: number }>(scored: T
   return printed.map((s) => ({ ...s, score: Math.round(s.score * (1 - lossOf(s)) * 10) / 10 })).sort((a, b) => b.score - a.score);
 }
 
-/**
- * Whether a vacation can touch this bid month's trips: during them, or close enough that a trip's buffer reaches it (CBA 2026
- * 12.D.1.d, 48 hours after a trip and 24 before). A trip carrying into next month can run into next month's vacation, and
- * 7.G.1 takes it off all the same.
- */
-function touchesMonth(v: VacationPeriod, pack: BidPack): boolean {
-  const reach = monthReachEnd(pack);
-  if (reach === null || !pack.bidPeriodStart) return false;
-  return Date.parse(v.from) - 48 * 3_600_000 < reach && Date.parse(v.to) + 24 * 3_600_000 > Date.parse(`${pack.bidPeriodStart}T00:00:00Z`);
-}
-
-export interface PilotVacations {
-  /** We know which pilot on the pack's list this is. */
+export interface PilotVacations extends MyVacation {
+  /** We know which vacation is theirs: found on the pack's schedule (with or without one this month), or typed. */
   known: boolean;
-  /** The pack prints a vacation schedule at all. */
-  packHasSchedule: boolean;
-  /** Their vacations this bid month can feel. */
-  vacations: VacationPeriod[];
 }
 
-/** The pilot's vacations from the pack's own schedule, found by their seniority number, or by the seniority they gave Strategies. */
-export function pilotVacations(pack: BidPack, profile: Pick<PreferenceProfile, "seniorityNumber"> | null, seniority: SeniorityInput | null): PilotVacations {
-  const packHasSchedule = (pack.seniorityList ?? []).some((e) => e.vacations?.length);
-  const input = deriveSeniorityInput(pack, profile) ?? seniority;
-  const me = input ? placeInPack(pack, input).me : undefined;
-  return { known: !!me, packHasSchedule, vacations: (me?.vacations ?? []).filter((v) => touchesMonth(v, pack)) };
+/** The pilot's vacations: from the pack's own schedule by their seniority number, or as they typed them (`findMyVacation`). */
+export function pilotVacations(
+  pack: BidPack,
+  profile: Pick<PreferenceProfile, "seniorityNumber"> | null,
+  seniority: SeniorityInput | null,
+  typed?: Pick<CarryInState, "typedVacations" | "preferTyped">
+): PilotVacations {
+  const found = findMyVacation(pack, profile, seniority, { vacations: typed?.typedVacations, preferTyped: typed?.preferTyped });
+  return { ...found, known: found.status === "found" || found.status === "none" || found.status === "typed" };
 }
 
 /** The vacations with the pilot's choice on each; "use" until they say otherwise. */

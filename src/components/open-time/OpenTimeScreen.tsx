@@ -19,10 +19,8 @@ import { pasteSnapshot } from "@/lib/open-time/parse";
 import type { AssignedAs, BankCode, Banks, RuleLevel } from "@/lib/open-time/rules";
 import { samplePaste } from "@/lib/open-time/sample";
 import type { OpenTimeSnapshot } from "@/lib/open-time/source";
-import { placeInPack } from "@/lib/strategy-engine";
 import { startingSettings } from "@/lib/use-commute-check";
-import { vacationId } from "@/lib/vacation-lines";
-import { vacationsInReach } from "@/lib/vacation-slide";
+import { pilotVacations, vacationId } from "@/lib/vacation-lines";
 import { tripKey } from "@/lib/view-add";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
@@ -247,7 +245,7 @@ function OpenTimeBuilder({ bidPack, seniority, profile, userId }: { bidPack: Bid
         carryIn: carry.items,
         elections: carry.elections,
         // Not one the pilot has said they aren't taking (traded away, 7.E.1.a): its days are open to them.
-        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking") : [],
+        vacations: pilotVacations(bidPack, profile, seniority, carry).vacations.filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking"),
         model: profile?.pilotModel,
         banks: entered,
         giveUp: line && giveUpKey ? { key: giveUpKey, as: giveUpAs, assignedAs } : null,

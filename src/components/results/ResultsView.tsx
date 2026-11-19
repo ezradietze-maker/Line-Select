@@ -128,6 +128,7 @@ import { usePayOrder } from "@/lib/pay/pay-order";
 import { PayOrderBanner, TotalChLineNote } from "@/components/results/TotalChNote";
 import { settleScrollTo } from "@/lib/settle-scroll";
 import type { BidPack } from "@/types/bidpack";
+import type { SeniorityInput } from "@/types/strategy";
 import type { PreferenceProfile, PreferenceWeights } from "@/types/preferences";
 
 /**
@@ -293,6 +294,9 @@ interface ResultsViewProps {
   onUpdateProfile: (profile: PreferenceProfile) => void;
   /** Identifies which pilot's remembered prior-cycle top lines to read/write (see `line-history-storage.ts`) — null for a guest. */
   userId: string | null;
+  /** The place the pilot saved on Strategies (with the number it came from), which finds their vacation when the profile has no number. */
+  seniority?: SeniorityInput | null;
+  onSaveSeniority?: (input: SeniorityInput) => void;
   /** Arrived from a Hotel Ratings card — start with the list narrowed to lines that stay at this hotel. */
   initialHotelFilter?: HotelFilter | null;
   /** A line number to bring into view and light up (from the ⌘K palette) — handed back through `onFocusHandled` once done. */
@@ -313,6 +317,8 @@ export function ResultsView({
   onEditPreferences,
   onUpdateProfile,
   userId,
+  seniority = null,
+  onSaveSeniority,
   initialHotelFilter = null,
   focusLine = null,
   onFocusHandled,
@@ -478,7 +484,7 @@ export function ResultsView({
   // keeps this period's entry current.
   const [previousPeriodSnapshot] = useState(() => loadPreviousPeriodSnapshot(userId, bidPack.month));
 
-  const carry = useCarryIn(bidPack, userId, profile);
+  const carry = useCarryIn(bidPack, userId, profile, seniority);
   // What each line pays as the pilot will fly it (Total CH), and whether they've put the list in pay-only order.
   const totals = useMemo(
     () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, carry.flown.vacationLines.get(l.id)?.chargedCH)])),
@@ -1470,8 +1476,9 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
+      {/* The vacation first: found in the pack by the pilot's number, it changes every line. */}
+      <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
       <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />

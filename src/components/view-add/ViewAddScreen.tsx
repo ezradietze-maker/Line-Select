@@ -15,9 +15,7 @@ import { formatHoursValue as hm } from "@/lib/interview-config";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { buildViewAdd, pairingDate, viewAddCopyText, type ViewAddChoice, type ViewAddPlan, type ViewAddPreference } from "@/lib/view-add";
 import { SendViewAdd } from "@/components/view-add/SendViewAdd";
-import { placeInPack } from "@/lib/strategy-engine";
-import { vacationId } from "@/lib/vacation-lines";
-import { vacationsInReach } from "@/lib/vacation-slide";
+import { pilotVacations, vacationId } from "@/lib/vacation-lines";
 import type { BidPack, Trip } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -225,7 +223,7 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
         makeUp: { cia: number(cia), muv: number(muv) },
         pasted,
         labels,
-        vacations: seniority ? vacationsInReach(placeInPack(bidPack, seniority).me?.vacations ?? [], bidPack).filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking") : [],
+        vacations: pilotVacations(bidPack, profile, seniority, carry).vacations.filter((v) => carry.vacationChoices?.[vacationId(v)] !== "not-taking"),
         model: profile?.pilotModel,
       })
     );
