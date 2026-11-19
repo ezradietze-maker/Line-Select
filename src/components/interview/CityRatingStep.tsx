@@ -192,10 +192,13 @@ function CityRow({
   const reasons = rating?.reasons ?? [];
   const length = facts.minHours === facts.maxHours ? hrs(facts.medianHours) : `usually ${hrs(facts.medianHours)} (${hrs(facts.minHours)}–${hrs(facts.maxHours)})`;
   return (
-    <li className="rounded-lg border border-border bg-surface p-3">
+    // A word wider than the card (a phone with its text set larger: "Johannesburg", "INTERCONTINENTAL") breaks inside it
+    // rather than run out of the card and push the page sideways; the name may go under its code.
+    <li className="break-words rounded-lg border border-border bg-surface p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="min-w-0">
           <span className="font-mono text-sm font-semibold text-ink">{facts.code}</span>
+          {name && <wbr />}
           {name && <span className="ml-2 text-sm text-ink">{name}</span>}
         </p>
         <p className="font-mono text-2xs text-ink-faint">

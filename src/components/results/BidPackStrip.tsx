@@ -193,8 +193,9 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
       <span className="relative z-10">{label}</span>
     </button>
   );
+  // No wider than its row: with a phone's text set larger, "Bid pack" goes over two lines rather than off the side.
   return (
-    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
+    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex max-w-full shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
       {option("timeline", "Timeline")}
       {option("pack", "Bid pack")}
       {option("heat", "Heat Map")}

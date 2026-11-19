@@ -1,3 +1,4 @@
+import { formatHoursValue } from "@/lib/interview-config";
 import { saveOrReport } from "@/lib/local-save-failed";
 import { groupDepartures } from "@/lib/metrics/departures";
 import { homeParams } from "@/lib/scoring-v2/score";
@@ -115,8 +116,8 @@ export const LINE_SORTS: SortDef[] = [
   { id: "tripCount", group: "trips", label: "Trips", better: "fewer", ...count("trip"), definition: "Trips in the month. One running into next month counts by the share of it in this one." },
   { id: "avgTripDays", group: "trips", label: "Average trip length", better: "depends", ...count("day"), definition: "Average trip length in days." },
   { id: "longestTripDays", group: "trips", label: "Longest trip", better: "fewer", ...count("day"), definition: "The length of the longest trip." },
-  { id: "dutyPeriods", group: "trips", label: "Duty periods", better: "fewer", ...count("duty", "duties"), definition: "Duty periods in the bid month, as the pack prints them (NO. DP'S)." },
-  { id: "landings", group: "trips", label: "Landings", better: "fewer", ...count("landing"), definition: "Operated landings in the month." },
+  { id: "dutyPeriods", group: "trips", label: "Duty periods", better: "fewer", ...count("duty", "duties"), definition: "Duty periods in the bid month: the pack's NO. DP'S, less any that report after the month ends." },
+  { id: "landings", group: "trips", label: "Landings", better: "fewer", ...count("landing"), definition: "Operated landings in the month: the pack's LANDINGS, less any after the month ends." },
   { id: "avgLegsPerDuty", group: "trips", label: "Legs per duty", better: "fewer", ...count("leg"), definition: "Average operated legs in a flying duty." },
   { id: "maxLegsInADuty", group: "trips", label: "Most legs in one duty", better: "fewer", ...count("leg"), definition: "The most operated legs in any one duty." },
   { id: "extraLegs", group: "trips", label: "Extra legs in multi-leg duties", better: "fewer", ...count("leg"), definition: "Every operated leg past the first in a duty: a three-leg duty counts 2." },
@@ -403,13 +404,16 @@ export function applySort(list: LineScore[], choice: SortChoice, ctx: SortContex
 
 const oneDecimal = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
+/** The line's own hours, as its strip prints them to the minute: in tenths, a card sorted by credit read "84.0 hrs" over "CR. 84:02". */
+const PRINTED_HOURS = new Set(["creditHours", "carryOverCredit", "totalCredit", "blockHours", "tafbHours"]);
+
 /** A sort's value in words: "85.3 hrs", "62%", "05:30", "4 of 5 dates". */
 export function formatSortValue(def: SortDef, value: number | null, ctx: Pick<SortContext, "dates">): string {
   if (value === null) return "Not known";
   if (def.id === "requestedDatesKept") return `${value} of ${ctx.dates.length} kept`;
   switch (def.kind) {
     case "hours":
-      return `${oneDecimal(value)} hrs`;
+      return PRINTED_HOURS.has(def.id) ? formatHoursValue(value) : `${oneDecimal(value)} hrs`;
     case "rate":
       return `${value.toFixed(2)} ${def.id === "creditPerBlockHour" ? "per block hr" : "hrs per day"}`;
     case "share":

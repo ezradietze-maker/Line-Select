@@ -178,8 +178,9 @@ function NavList({
               >
                 <RowIcon icon={item.icon} active={isActive} badge={item.target === "inbox" ? inboxUnreadCount : 0} />
                 <span className="truncate rail-collapsed:sr-only">{item.label}</span>
+                {/* Snug enough that the row it's on, in bold, keeps its whole name: Safari cut it to "Open Ti…". */}
                 {item.comingSoon && (
-                  <span aria-hidden className="ml-auto shrink-0 whitespace-nowrap rounded-[2px] border border-border px-1.5 py-px text-2xs font-medium leading-[14px] text-ink-faint rail-collapsed:hidden">
+                  <span aria-hidden className="ml-auto shrink-0 whitespace-nowrap rounded-[2px] border border-border px-1 py-px text-2xs font-medium leading-[14px] text-ink-faint rail-collapsed:hidden">
                     {COMING_SOON}
                   </span>
                 )}

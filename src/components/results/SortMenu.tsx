@@ -30,7 +30,8 @@ export function SortMenu({ sort, lines }: { sort: LineSort; lines: LineScore[] }
   const [open, setOpen] = useState(false);
   return (
     <>
-      {/* Edged like the line search beside it, and with the app's own focus ring: focus:outline-none took the ring away. */}
+      {/* Edged like the line search beside it, and with the app's own focus ring: focus:outline-none took the ring away.
+          No wider than its row: with the text set larger the measure's name is cut, not the page pushed sideways. */}
       <button
         type="button"
         aria-haspopup="dialog"
@@ -38,7 +39,7 @@ export function SortMenu({ sort, lines }: { sort: LineSort; lines: LineScore[] }
           sort.prepare();
           setOpen(true);
         }}
-        className="flex min-h-10 items-center gap-1.5 rounded-md border border-field-edge bg-canvas/50 px-2.5 py-2 text-left text-sm text-ink transition-colors hover:border-accent focus-visible:border-accent"
+        className="flex min-h-10 max-w-full items-center gap-1.5 rounded-md border border-field-edge bg-canvas/50 px-2.5 py-2 text-left text-sm text-ink transition-colors hover:border-accent focus-visible:border-accent"
       >
         <span className="text-ink-muted">Sort:</span>
         <span className="max-w-[11rem] truncate font-medium sm:max-w-[16rem]">{sort.def.label}</span>

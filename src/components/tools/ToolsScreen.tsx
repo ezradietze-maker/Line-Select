@@ -83,7 +83,7 @@ function WorldClock({ bidPack, profile }: { bidPack: BidPack | null; profile: Pr
           <h2 className="font-display text-xl font-semibold text-ink">World clock</h2>
           <p className="mt-0.5 text-sm text-ink-muted">{pickTime ? "At the time you picked." : "Now, everywhere your pack goes."}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
+        <div className="flex max-w-full flex-wrap items-center gap-2 text-sm">
           <span className="text-ink-muted">What time is it when it&rsquo;s</span>
           <input type="time" value={pickTime} onChange={(e) => setPickTime(e.target.value)} className="rounded-md border border-field-edge bg-surface px-2 py-1.5 font-mono text-sm text-ink" aria-label="Time to convert" />
           <span className="text-ink-muted">in</span>

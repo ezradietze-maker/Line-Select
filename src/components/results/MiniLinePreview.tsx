@@ -285,9 +285,10 @@ function Cell({
           </span>
         )}
         {day.fullDay && (
-          // Wraps on a phone rather than run into the next day.
+          // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
+          // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
           <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
-            Full day{day.fullDay.barely ? <span className="font-normal">, barely</span> : null}
+            Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
           </span>
         )}
         {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
@@ -546,7 +547,8 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
       <SummaryItem label="Trips" value={`${line.trips.length}${s.departures < line.trips.length ? ` · ${s.departures} departures` : ""} · longest ${s.longestTripDays}d`} />
       <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
       <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
-      <SummaryItem label="Block hours" value={line.totalBlockHours ? hm(line.totalBlockHours * 60) : "—"} />
+      {/* A line of nothing but hotel standby prints BLK. 0:00, and its strip says so: "—" read as not known. */}
+      <SummaryItem label="Block hours" value={line.totalBlockHours !== undefined ? hm(line.totalBlockHours * 60) : "—"} />
       <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
       {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
       {bodyClock && (

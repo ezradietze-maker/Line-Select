@@ -1,6 +1,6 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
-import { bidMonthEnd, bidMonthName, lineCarryOver, monthLine, nextMonthName, splitTrip, uncutTrip } from "@/lib/bid-month";
+import { bidMonthEnd, bidMonthName, lineCarryOver, monthCounts, monthLine, nextMonthName, splitTrip, uncutTrip } from "@/lib/bid-month";
 import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 import type { Line, Trip } from "@/types/bidpack";
 
@@ -44,6 +44,14 @@ describe("the bid month", () => {
     expect(month.totalDutyPeriods).toBe(3);
     expect(month.totalCreditHours).toBe(line.totalCreditHours);
     expect(month.carryOverCreditHours).toBe(4);
+  });
+
+  it("says the month's landings and duty periods with what carries, so they add up to the pack's LDGS and DP'S", () => {
+    // Compare said "Duty periods 9" beside the strip's printed "Duties 10" (B777 MEM line 2295), with nothing to say why.
+    const line = placed([2, 27]);
+    expect(monthCounts(line, ctx)).toEqual({ landings: `${line.totalLandings - 1} +1 Nov`, dutyPeriods: "3 +1 Nov" });
+    const inside = placed([2, 10]);
+    expect(monthCounts(inside, ctx)).toEqual({ landings: String(inside.totalLandings), dutyPeriods: "4" });
   });
 
   it("leaves estimated lines alone — nothing about their trips' dates is known", () => {

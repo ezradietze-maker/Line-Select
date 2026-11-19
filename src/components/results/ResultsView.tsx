@@ -1919,7 +1919,8 @@ export function ResultsView({
         />
       )}
 
-      <div className="mt-10 border-t border-border pt-5 text-center">
+      {/* Left off the sheet: printed, it was the only thing on the last page. */}
+      <div className="mt-10 border-t border-border pt-5 text-center print:hidden">
         <button
           type="button"
           onClick={() => setConfirmingStartOver(true)}
