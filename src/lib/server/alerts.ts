@@ -11,7 +11,7 @@ import { siteSpentOn, spendCaps } from "@/lib/server/spend-guard";
  * the daily run itself still happens.
  */
 
-export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed" | "accounts" | "billing";
+export type ProblemKind = "brain-build" | "brain-question" | "brain-ask" | "contract-ask" | "swap-reason" | "dictation" | "hotels" | "flights" | "trades" | "parse-bidpack" | "profile-save" | "forecast" | "learning" | "browser" | "calendar-feed" | "accounts" | "billing" | "vacation-goal";
 
 const LABELS: Record<ProblemKind, string> = {
   accounts: "Signing up and confirming emails",
@@ -31,6 +31,7 @@ const LABELS: Record<ProblemKind, string> = {
   browser: "The app in pilots' browsers",
   "calendar-feed": "Calendar links",
   billing: "Membership / billing",
+  "vacation-goal": "Vacation goals pilots typed",
 };
 
 /** Failures of one kind in a clock hour that send an email. */

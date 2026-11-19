@@ -27,7 +27,10 @@ export function useCarryIn(bidPack: BidPack, userId: string | null, profile: Pic
   const { typedVacations, preferTyped } = state;
   const vacations = useMemo(() => pilotVacations(bidPack, { seniorityNumber }, seniority, { typedVacations, preferTyped }), [bidPack, seniorityNumber, seniority, typedVacations, preferTyped]);
   const chosen = useMemo(() => withChoices(vacations.vacations, state.vacationChoices), [vacations, state.vacationChoices]);
-  const flown = useMemo(() => flySchedule(bidPack, state, chosen), [bidPack, state, chosen]);
+  // Flown again only when what's carried in or which vacation changes: a vacation goal, a line's own slide or the ranking
+  // switch saved here didn't change the carry-in, and flying the pack again made every slide be worked out again too.
+  const { items, elections } = state;
+  const flown = useMemo(() => flySchedule(bidPack, { items, elections }, chosen), [bidPack, items, elections, chosen]);
   return { state, update, flown, vacations, chosen };
 }
 

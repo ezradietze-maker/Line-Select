@@ -1,5 +1,8 @@
 "use client";
 
+import { DateTime } from "luxon";
+import { loadCarryIn } from "@/lib/carry-in-storage";
+import { slideWhere } from "@/lib/vacation-slide";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
@@ -131,6 +134,7 @@ export function LogbookScreen({ bidPack, profile, user, seniority, onUpdateProfi
                 <MonthEntry
                   entry={m}
                   isThisPack={m.id === thisMonth?.id}
+                  vacationSlide={m.id === thisMonth?.id && bidPack ? awardedSlide(bidPack, m.lineNumber ?? null, user?.id ?? null) : null}
                   onRelog={() => setRelogging(true)}
                   onCheckIn={(feel, words) => {
                     if (!profile) return;
@@ -445,9 +449,12 @@ function MonthEntry({
   onCheckIn,
   onDelete,
   onWithdraw,
+  vacationSlide = null,
 }: {
   entry: LoggedMonth;
   isThisPack: boolean;
+  /** This month's awarded line has the pilot's vacation slid: how far, and when the window to ask for it opens. */
+  vacationSlide?: { offset: number; opens: string | null } | null;
   onRelog: () => void;
   onCheckIn: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
   onDelete: () => Promise<void>;
@@ -495,6 +502,13 @@ function MonthEntry({
           {hm(m.creditHours)} credit &middot; {m.daysOff ?? "—"} days off &middot; {m.tripCount ?? "—"} trips
           {cities.length > 0 && <> &middot; {cities.join(" ")}</>}
         </div>
+      )}
+      {m.outcome === "line" && vacationSlide && (
+        <p className="mt-1.5 rounded-md border border-accent/50 bg-accent/5 px-3 py-1.5 text-xs text-ink" data-vacation-reminder>
+          Ask for your vacation slid {Math.abs(vacationSlide.offset)} day{Math.abs(vacationSlide.offset) === 1 ? "" : "s"} {vacationSlide.offset > 0 ? "later" : "earlier"} on line{" "}
+          {m.lineNumber} in the Conflict Input Window
+          {vacationSlide.opens ? `, which opens ${DateTime.fromISO(vacationSlide.opens, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'")}` : ""} (CBA 2026 7.E.2.a).
+        </p>
       )}
 
       {m.checkIn && !checking ? (
@@ -618,4 +632,15 @@ export function CheckInForm({
       </div>
     </div>
   );
+}
+
+/**
+ * The slide My Rankings placed the pilot's vacation at on the line they were awarded (`appliedPlacements`), and when the
+ * Conflict Input Window to ask for it opens; null when it's where the pack has it.
+ */
+function awardedSlide(pack: BidPack, lineNumber: string | null, userId: string | null): { offset: number; opens: string | null } | null {
+  const line = pack.lines.find((l) => l.lineNumber === lineNumber);
+  const placed = line ? loadCarryIn(userId, pack.id).appliedPlacements?.[line.id] : undefined;
+  const offset = placed ? Object.values(placed.offsets).find((o) => o !== 0) : undefined;
+  return offset ? { offset, opens: slideWhere(pack).opens } : null;
 }

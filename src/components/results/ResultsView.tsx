@@ -104,7 +104,6 @@ import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
 import { rankLinesWithTrips } from "@/lib/scoring-v2/trip-score";
-import { rankedAsFlown } from "@/lib/vacation-lines";
 import { useCarryIn } from "@/lib/use-carry-in";
 import { SortMenu, SortNote } from "@/components/results/SortMenu";
 import { TierBar, TierHeadingRow, TierMoveRow, useCardPressProps } from "@/components/results/TierBar";
@@ -124,6 +123,11 @@ import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import { withSatisfactionIndex } from "@/lib/satisfaction-index";
 import { useVacationOptions } from "@/lib/use-vacation-options";
 import { lineVacationMark } from "@/lib/vacation-marks";
+import { bestPlacements } from "@/lib/vacation-engine";
+import { toEngineGoal } from "@/lib/vacation-goal";
+import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib/vacation-lines";
+import { VacationGoal } from "@/components/results/VacationGoal";
+import { VacationGainNote, VacationLineControl } from "@/components/results/VacationLineControl";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
@@ -490,14 +494,72 @@ export function ResultsView({
   // Every legal place for the pilot's vacation on every line, worked out in the background (`lib/vacation-engine.ts`); and
   // what each line's pictures draw of it: where it falls, how far it can slide, what it takes off.
   const vacationOptions = useVacationOptions(carry.flown.carriedPack, carry.chosen, carry.flown.carriedDays);
+  // Where each line has the vacation: the goal's best spot for it, or where the pilot put it on that line themselves.
+  const vacationGoal = carry.state.vacationGoal;
+  const vacationOverrides = carry.state.vacationOverrides;
+  const vacationPlacements = useMemo(() => {
+    const goal = vacationGoal ? toEngineGoal(vacationGoal.aims, bidPack) : null;
+    const placed = vacationOptions.options && goal ? bestPlacements(vacationOptions.options, goal) : new Map<string, VacationPlacement>();
+    for (const [id, p] of Object.entries(vacationOverrides ?? {})) placed.set(id, p);
+    return placed;
+  }, [vacationOptions.options, vacationGoal, vacationOverrides, bidPack]);
+  // The vacation as each line's pictures and note show it: slid where it's placed, flown by the same call the ranking uses.
+  const shownVacationLines = useMemo(() => {
+    if (!vacationPlacements.size) return carry.flown.vacationLines;
+    const carriedById = new Map(carry.flown.carriedPack.lines.map((l) => [l.id, l]));
+    const out = new Map(carry.flown.vacationLines);
+    for (const [id, placement] of vacationPlacements) {
+      const line = carriedById.get(id);
+      if (line) out.set(id, flyVacationsOnLine(line, carry.flown.carriedPack, carry.chosen, carry.flown.carriedDays, placement));
+    }
+    return out;
+  }, [vacationPlacements, carry.flown, carry.chosen]);
   const vacationMarks = useMemo(
-    () => new Map(bidPack.lines.map((l) => [l.id, lineVacationMark(bidPack, carry.flown.vacationLines.get(l.id), carry.chosen, vacationOptions.options?.get(l.id)?.reach)])),
-    [bidPack, carry.flown.vacationLines, carry.chosen, vacationOptions.options]
+    () => new Map(bidPack.lines.map((l) => [l.id, lineVacationMark(bidPack, shownVacationLines.get(l.id), carry.chosen, vacationOptions.options?.get(l.id)?.reach)])),
+    [bidPack, shownVacationLines, carry.chosen, vacationOptions.options]
+  );
+  // The pilot's switch: ranked with each line's vacation where it's placed, or where the pack has it. On, a line is scored
+  // as the very line its pictures and note show — flown by the same call, its slid days off and the trips it takes off.
+  const slidesRank = !!carry.state.slidesRank;
+  const rankingFlown = useMemo(() => {
+    if (!slidesRank || !vacationPlacements.size) return carry.flown;
+    // A line the vacation stays put on keeps its own flown line, measured already; only the moved ones are new.
+    const lines = carry.flown.pack.lines.map((l) => (vacationPlacements.has(l.id) ? (shownVacationLines.get(l.id)?.line ?? l) : l));
+    return { ...carry.flown, pack: { ...carry.flown.pack, lines }, vacationLines: shownVacationLines };
+  }, [slidesRank, vacationPlacements, carry.flown, shownVacationLines]);
+  // Kept with the pack for the screens that rank without working each placement out (`rankingAsShown`).
+  const appliedKey = JSON.stringify(Object.fromEntries(vacationPlacements));
+  useEffect(() => {
+    if (!vacationOptions.options) return;
+    const stored = JSON.stringify(carry.state.appliedPlacements ?? {});
+    if (stored !== appliedKey) carry.update({ ...carry.state, appliedPlacements: vacationPlacements.size ? Object.fromEntries(vacationPlacements) : undefined });
+    // `vacationPlacements` is what `appliedKey` says.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appliedKey, vacationOptions.options]);
+  // For Send to VIPS: how far the vacation is slid on each line it moves, by line number (the first vacation's, or the second's).
+  const vacationSlides = useMemo(() => {
+    const byId = new Map(bidPack.lines.map((l) => [l.id, l.lineNumber]));
+    const out = new Map<string, number>();
+    for (const [id, p] of vacationPlacements) {
+      const moved = Object.values(p.offsets).find((o) => o !== 0);
+      if (moved && byId.has(id)) out.set(byId.get(id)!, moved);
+    }
+    return out;
+  }, [vacationPlacements, bidPack]);
+  const placeVacation = useCallback(
+    (lineId: string, placement: VacationPlacement | null) => {
+      const next = { ...carry.state.vacationOverrides };
+      if (placement) next[lineId] = placement;
+      else delete next[lineId];
+      carry.update({ ...carry.state, vacationOverrides: Object.keys(next).length ? next : undefined });
+    },
+    [carry]
   );
   // What each line pays as the pilot will fly it (Total CH), and whether they've put the list in pay-only order.
   const totals = useMemo(
-    () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, carry.flown.vacationLines.get(l.id)?.chargedCH)])),
-    [bidPack, carry.flown]
+    // The bank's share as each line's vacation is placed (Total CH itself doesn't move: those trips are still paid).
+    () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, shownVacationLines.get(l.id)?.chargedCH)])),
+    [bidPack, carry.flown, shownVacationLines]
   );
   const totalCH = useMemo(() => new Map([...totals].map(([id, t]) => [id, t.total])), [totals]);
   const payOrderOn = usePayOrder(bidPack.id);
@@ -553,8 +615,8 @@ export function ResultsView({
   const implicitValuesByLine = useMemo(() => (warmUp.ready ? implicitLineValuesFor(bidPack) : NO_IMPLICIT_VALUES), [bidPack, warmUp.ready]);
   const scoredLines = useMemo(
     // The fit scores shown as the Satisfaction Index, spread for this pack (`lib/satisfaction-index.ts`); the order is the ranking's.
-    () => (warmUp.ready ? withSatisfactionIndex(rankedAsFlown(rankLines(carry.flown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, carry.flown)) : []),
-    [warmUp.ready, bidPack, carry.flown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+    () => (warmUp.ready ? withSatisfactionIndex(rankedAsFlown(rankLines(rankingFlown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, rankingFlown)) : []),
+    [warmUp.ready, bidPack, rankingFlown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
   );
   // The index's range this month, for the key over the list.
   const indexRange = useMemo(() => (scoredLines.length ? { best: Math.max(...scoredLines.map((r) => r.score)), worst: Math.min(...scoredLines.map((r) => r.score)) } : null), [scoredLines]);
@@ -1056,7 +1118,7 @@ export function ResultsView({
   const noteOf = useMemo(() => lineNotes(bidPack, profile), [profile, bidPack]);
   // Federal flight-time limits for each line as it will be flown, with what the pilot flew before the bid period.
   const flownSoFar = useFlownSoFar(bidPack.id);
-  const blockFindings = useBlockFindings(carry.flown.pack, flownSoFar);
+  const blockFindings = useBlockFindings(rankingFlown.pack, flownSoFar);
   const bidOrderEntries = useMemo<BidOrderEntry[]>(
     () =>
       exportable.lines.map((r) => ({
@@ -1486,9 +1548,16 @@ export function ResultsView({
         }}
       />
       {/* The vacation first: found in the pack by the pilot's number, it changes every line. */}
+      <VacationGoal
+        pack={bidPack}
+        carry={carry}
+        share={vacationOptions.share}
+        moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null}
+        total={bidPack.lines.length}
+      />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
+      <BlockLimitsPanel pack={bidPack} flownPack={rankingFlown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
@@ -1696,7 +1765,7 @@ export function ResultsView({
                 packLabel={[bidPack.month, bidPack.base, bidPack.aircraft, bidPack.seat].join(" · ")}
                 leftOut={bidPack.lines.length - exportable.lines.length}
                 leftOutWhy={leftOutPhrase(exportable.hidden, exportable.notBid)}
-                presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds, payOnly: payOrderOn ? payOnlySets : null }}
+                presend={{ bidPack, profile, rankedForecast: forecast.result?.forecast ?? null, rankedIds: rankingLineIds, payOnly: payOrderOn ? payOnlySets : null, vacationSlides }}
                 topLineNumber={exportable.lines[0]?.line.lineNumber ?? null}
               />
             </div>
@@ -1875,13 +1944,25 @@ export function ResultsView({
                                       tripScores,
                                       sortedBy: lineSort.def.label,
                                       sortedValue: lineSort.valueFor(id),
-                                      openExtra: <TierMoveRow tiers={tiers} lineId={id} />,
+                                      openExtra: (
+                                        <>
+                                          <TierMoveRow tiers={tiers} lineId={id} />
+                                          <VacationLineControl
+                                            line={vacationOptions.options?.get(id)}
+                                            placement={vacationPlacements.get(id)}
+                                            overridden={!!vacationOverrides?.[id]}
+                                            onPlace={(p) => placeVacation(id, p)}
+                                            onReset={() => placeVacation(id, null)}
+                                          />
+                                        </>
+                                      ),
                                     }
                                   : null
                               }
                             />
                           </ErrorBoundary>
-                          <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={carry.flown.vacationLines.get(id)} />
+                          <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={shownVacationLines.get(id)} />
+                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} />
                           <TotalChLineNote line={printedById.get(id)} total={totals.get(id)} />
                           <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>

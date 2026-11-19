@@ -147,3 +147,25 @@ describe("two vacations in a month", () => {
     expect(lineVacationOptions(L, P, [{ vacation: V, choice: "not-taking" }]).options).toEqual([]);
   });
 });
+
+describe("ranked with the slide (the pilot's switch on)", () => {
+  it("a line a slide gives more days off is measured with them, on the pilot's own priorities", async () => {
+    const { scorePackV2 } = await import("@/lib/scoring-v2/score");
+    const model = { criteria: [{ id: "c", label: "Days off", metric: "daysOff", weight: 1, shape: { kind: "more" }, tier: "major", confidence: 1 }] } as never;
+    // A second line, so the scale is a pack's: the same trips three weeks on, its vacation days never touching them.
+    const other = line([trip("301", 0), trip("302", 3)], "1002");
+    const p = pack([L, other]);
+    const all = vacationOptions(p, [taking(V)]);
+    const goal: VacationGoal = { aims: [{ kind: "days-off" }] };
+    const asAwarded = flySchedule(p, { items: [], elections: NO_ELECTIONS }, [taking(V)]);
+    const slid = flySchedule(p, { items: [], elections: NO_ELECTIONS }, [taking(V)], bestPlacements(all, goal));
+    // What the ranking measures on the line (its score is on a scale the pack sets, and this line tops a pack of two).
+    const measured = (pk: BidPack) => scorePackV2(pk, model).find((s) => s.lineId === L.id)!.results[0].value!;
+    const best = bestOption(all.get(L.id)!, goal)!;
+    expect(best.daysOff).toBeGreaterThan(all.get(L.id)!.options[0].daysOff);
+    // Scored as the very line its option describes.
+    expect(slid.pack.lines.find((l) => l.id === L.id)!.daysOff).toBe(best.daysOff);
+    expect(measured(slid.pack)).toBe(best.daysOff);
+    expect(measured(slid.pack)).toBeGreaterThan(measured(asAwarded.pack));
+  });
+});
