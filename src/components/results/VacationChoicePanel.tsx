@@ -6,7 +6,7 @@ import { checkSeniority, parseSeniorityInput } from "@/components/interview/Seni
 import { Button } from "@/components/ui/Button";
 import { FIELD } from "@/components/ui/field";
 import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
-import type { TypedVacation } from "@/lib/my-vacation";
+import { otherMonthsNote, type TypedVacation } from "@/lib/my-vacation";
 import { zoneOf } from "@/lib/phase-in";
 import type { CarryIn } from "@/lib/use-carry-in";
 import { vacationId, type VacationChoice } from "@/lib/vacation-lines";
@@ -97,7 +97,7 @@ export function VacationChoicePanel({
   } else if (status === "none") {
     body = (
       <p className="text-xs text-ink-muted">
-        The pack&rsquo;s vacation schedule has no vacation for seniority #{number} in or near this bid month.{" "}
+        {otherMonthsNote(vacations.entry, bidPack) ?? <>The pack&rsquo;s vacation schedule has no vacation for seniority #{number} in or near this bid month.</>}{" "}
         <button type="button" className="font-medium text-brand underline underline-offset-2" onClick={() => setTyping(true)}>
           Not right?
         </button>

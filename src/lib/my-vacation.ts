@@ -1,4 +1,6 @@
-import { monthReachEnd, typedVacation, vacationsInReach } from "@/lib/vacation-slide";
+import { DateTime } from "luxon";
+import { zoneOf } from "@/lib/phase-in";
+import { monthReachEnd, periodSpan, typedVacation, vacationLabel, vacationsInReach } from "@/lib/vacation-slide";
 import type { BidPack, SeniorityEntry, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -50,6 +52,29 @@ export function inThisMonth(v: VacationPeriod, pack: BidPack): boolean {
   if (reach === null || !pack.bidPeriodStart) return false;
   const touches = Date.parse(v.from) - 48 * 3_600_000 < reach && Date.parse(v.to) + 24 * 3_600_000 > Date.parse(`${pack.bidPeriodStart}T00:00:00Z`);
   return touches || vacationsInReach([v], pack).length > 0;
+}
+
+/**
+ * For a pilot the pack lists with vacation, none of it this month ("none"): what the pack has for them, and why it
+ * doesn't touch this month's lines. Without it, "no vacation for seniority #80" read as wrong to a pilot looking at #80's
+ * Nov 9 vacation on the pack's own schedule. Null when the pack lists none for them.
+ */
+export function otherMonthsNote(entry: SeniorityEntry | null, pack: BidPack): string | null {
+  const period = periodSpan(pack);
+  const listed = entry?.vacations ?? [];
+  if (!period || !listed.length) return null;
+  const zone = zoneOf(pack);
+  // Base days start at 0130: the month's last is the day before the first minute after it.
+  const day = (ms: number, back = 0) => DateTime.fromMillis(ms, { zone }).minus({ days: back }).toFormat("LLL d");
+  const after = listed.every((v) => Date.parse(v.from) >= period.end);
+  const before = listed.every((v) => Date.parse(v.to) < period.start);
+  const when = after
+    ? `after this bid month's lines end on ${day(period.end, 1)}`
+    : before
+      ? `before this bid month starts on ${day(period.start)}`
+      : "outside this bid month";
+  const yours = listed.map((v) => vacationLabel(v, zone)).join(" and ");
+  return `The pack's vacation schedule has your vacation ${yours}. That's ${when}, and a slide of up to 5 days (CBA 2026 7.E.2.a) can't bring it onto any line here, so no line changes. It counts on the pack for the bid month it falls in.`;
 }
 
 /** The typed vacations as the pack prints vacations (base day to base day), the ones this month can feel. */

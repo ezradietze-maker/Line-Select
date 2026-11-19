@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findMyVacation, inThisMonth, typedVacations } from "@/lib/my-vacation";
+import { findMyVacation, inThisMonth, otherMonthsNote, typedVacations } from "@/lib/my-vacation";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 
 // An October 2026 Memphis pack: the bid period runs Sep 28 to Oct 25, base days from 0130 CDT (0630Z), as the pack's own
@@ -24,6 +24,14 @@ describe("findMyVacation", () => {
   it("says there's none this month for a pilot on the list whose vacation is another month", () => {
     expect(findMyVacation(pack(), { seniorityNumber: 1301 }, null)).toMatchObject({ status: "none", vacations: [] });
     expect(findMyVacation(pack(), { seniorityNumber: 1243 }, null)).toMatchObject({ status: "none", vacations: [] });
+  });
+
+  it("names a vacation the pack lists in another month, and why no line changes, rather than saying there's none", () => {
+    const v = findMyVacation(pack(), { seniorityNumber: 1301 }, null);
+    expect(otherMonthsNote(v.entry, pack())).toBe(
+      "The pack's vacation schedule has your vacation Dec 7 to Dec 13 (7 days). That's after this bid month's lines end on Oct 25, and a slide of up to 5 days (CBA 2026 7.E.2.a) can't bring it onto any line here, so no line changes. It counts on the pack for the bid month it falls in."
+    );
+    expect(otherMonthsNote(findMyVacation(pack(), { seniorityNumber: 1243 }, null).entry, pack())).toBeNull();
   });
 
   it("says when the number isn't on this pack's list, rather than reading someone else's", () => {
