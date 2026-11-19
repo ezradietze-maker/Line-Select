@@ -85,6 +85,18 @@ describe("the federal limits against a line", () => {
     expect(f.legs).toHaveLength(10);
   });
 
+  it("names the day of a counted leg that falls on the 8th calendar day of the 7-day window", () => {
+    // 7 hours a day Sep 29 – Oct 2 from 0900, then 3 hours at 0800 on Oct 6: inside the 168 hours from the first leg.
+    const line = {
+      trips: [
+        ...[1, 2, 3, 4].map((d) => dayTrip(d, [leg({ blockHours: 3.5 }), leg({ blockHours: 3.5, startMinutes: 300 })])),
+        dayTrip(8, [leg({ blockHours: 3, startMinutes: 0 })]),
+      ],
+    };
+    const f = lineBlockLimits(pack, line).find((x) => x.kind === "week")!;
+    expect(f).toMatchObject({ level: "over", hours: 31, when: "Sep 29–Oct 6" });
+  });
+
   it("uses 32 hours for a week with two-pilot international flying", () => {
     const line = { trips: [3, 4, 5, 6, 7].map((d) => dayTrip(d, [leg({ blockHours: 3.25, arrAirport: "YYZ" }), leg({ blockHours: 3.25, startMinutes: 300 })])) };
     const f = lineBlockLimits(pack, line).find((x) => x.kind === "week")!;

@@ -146,8 +146,12 @@ export function lineBlockLimits(pack: Pick<BidPack, "bidPeriodStart" | "base">, 
   if (worst) {
     const intl = worst.legs.some((l) => l.international);
     const first = local(worst.legs[0].at);
+    // 168 hours from a mid-morning departure reach into the 8th calendar day: name it when a counted leg flies then.
+    const sixth = first.plus({ days: 6 });
+    const lastLeg = local(worst.legs[worst.legs.length - 1].at);
+    const end = lastLeg.startOf("day") > sixth.startOf("day") ? lastLeg : sixth;
     const f = finding("week", worst.hours, intl ? WEEK_LIMIT_FLAG : WEEK_LIMIT_DOMESTIC, {
-      when: `${first.toFormat("LLL d")}–${first.plus({ days: 6 }).toFormat(first.plus({ days: 6 }).month === first.month ? "d" : "LLL d")}`,
+      when: `${first.toFormat("LLL d")}–${end.toFormat(end.month === first.month ? "d" : "LLL d")}`,
       before: 0,
       legs: worst.legs,
       rule: intl ? "14 CFR 121.481: 32 hours in any 7 consecutive days (two pilots)" : "14 CFR 121.471: 30 hours in any 7 consecutive days",

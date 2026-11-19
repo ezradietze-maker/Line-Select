@@ -74,7 +74,7 @@ export function VacationChoicePanel({ bidPack, carry, order }: { bidPack: BidPac
       </div>
       {top.length > 0 && (
         <p className="mt-3 text-sm text-ink">
-          {losing} of your top {top.length} lines lose a trip to it.
+          {losing} of your top {top.length} lines {losing === 1 ? "loses" : "lose"} a trip to it.
         </p>
       )}
       <p className="mt-2 text-xs text-ink-faint">Our reading of the contract, not an official award; the ranking doesn&rsquo;t charge for a heavy draw on your bank, and says so on the line. Your bank balance isn&rsquo;t in the pack. Some of this is still being checked with a retired FedEx captain.</p>

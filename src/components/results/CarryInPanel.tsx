@@ -85,7 +85,7 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
 
       {state.items.length > 0 && !open && losing.length > 0 && (
         <p className="mt-2 text-xs text-ink">
-          {losing.length} of your top {top.length} lines lose a trip to it.
+          {losing.length} of your top {top.length} lines {losing.length === 1 ? "loses" : "lose"} a trip to it.
         </p>
       )}
 
@@ -94,9 +94,9 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
           {state.items.length > 0 && (
             <ul className="space-y-1.5">
               {state.items.map((item) => (
-                <li key={item.id} className="flex items-center justify-between gap-3 text-sm text-ink">
-                  <span>{describe(item, zone)}</span>
-                  <Button variant="ghost" className="shrink-0 px-2 py-1 text-xs" aria-label={`Remove ${item.label}`} onClick={() => remember({ items: state.items.filter((i) => i.id !== item.id) })}>
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-ink">
+                  <span className="min-w-0 grow basis-40">{describe(item, zone)}</span>
+                  <Button variant="ghost" className="ml-auto shrink-0 px-2 py-1 text-xs" aria-label={`Remove ${item.label}`} onClick={() => remember({ items: state.items.filter((i) => i.id !== item.id) })}>
                     Remove
                   </Button>
                 </li>
@@ -105,9 +105,9 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
           )}
 
           {fromLog.map((trip) => (
-            <div key={trip.id} className="flex items-center justify-between gap-3 text-sm text-ink-muted">
-              <span>From your Logbook: {describe(trip, zone)}</span>
-              <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => remember({ items: [...state.items, trip] })}>
+            <div key={trip.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm text-ink-muted">
+              <span className="min-w-0 grow basis-40">From your Logbook: {describe(trip, zone)}</span>
+              <Button variant="secondary" className="ml-auto shrink-0 px-3 py-1.5 text-xs" onClick={() => remember({ items: [...state.items, trip] })}>
                 Use it
               </Button>
             </div>
@@ -171,7 +171,7 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
           {state.items.length > 0 && (
             <div>
               <p className="text-sm text-ink">
-                Of your top {top.length} lines, {losing.length} lose a trip{checking.length ? ` and ${checking.length} ${checking.length === 1 ? "has" : "have"} something to check` : ""}.
+                Of your top {top.length} lines, {losing.length} {losing.length === 1 ? "loses" : "lose"} a trip{checking.length ? ` and ${checking.length} ${checking.length === 1 ? "has" : "have"} something to check` : ""}.
               </p>
               {unchecked.length > 0 && <p className="mt-1 text-xs text-ink-faint">{unchecked.length} of them couldn&rsquo;t be checked: the pack doesn&rsquo;t put their trips on dates.</p>}
               <ul className="mt-1.5 space-y-1 text-xs text-ink-muted">
