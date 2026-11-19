@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
@@ -346,11 +347,17 @@ export function ResultsView({
   const [promptJudgment, setPromptJudgment] = useState<PairwiseJudgment | null>(null);
   const [promptCount, setPromptCount] = useState(0);
   const [askedPairIds, setAskedPairIds] = useState<Set<string>>(new Set());
-  const [filters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
+  const [chosenFilters, setFilters] = useState<LineFilters>(EMPTY_FILTERS);
   // At most two at a time — picking a third drops the oldest rather than growing unbounded, since the comparison view only ever shows two side by side.
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const [search, setSearch] = useState("");
-  const [hotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
+  const [typedSearch, setSearch] = useState("");
+  const [chosenHotelFilter, setHotelFilter] = useState<HotelFilter | null>(initialHotelFilter);
+  // A non-member sees their top lines only (`previewLimit`), and the filters and line search come with a membership:
+  // narrowing those ten left fewer than the "top 10" the note under them says.
+  const filtersLocked = previewLimit !== null;
+  const filters = filtersLocked ? EMPTY_FILTERS : chosenFilters;
+  const search = filtersLocked ? "" : typedSearch;
+  const hotelFilter = filtersLocked ? null : chosenHotelFilter;
   const [view, setView] = useState<"all" | "shortlist" | "realistic">("all");
   const [showHidden, setShowHidden] = useState(false);
   // Stars and hidden lines, and the lines the pilot swapped by hand, which stay where they put them (see
@@ -1561,7 +1568,8 @@ export function ResultsView({
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
-      <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />
+      {/* A filter in words, a member's like the rest: its answers were lines from the whole pack, past a non-member's ten. */}
+      {!filtersLocked && <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />}
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"
@@ -1683,17 +1691,19 @@ export function ResultsView({
             </div>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2 print:hidden">
-            <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
-              <input
-                type="search"
-                inputMode="numeric"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Line #"
-                aria-label="Find a line by number"
-                className="w-full rounded-md border border-field-edge bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
-              />
-            </div>
+            {!filtersLocked && (
+              <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
+                <input
+                  type="search"
+                  inputMode="numeric"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Line #"
+                  aria-label="Find a line by number"
+                  className="w-full rounded-md border border-field-edge bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
+                />
+              </div>
+            )}
             <SortMenu sort={lineSort} lines={listable} />
             {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
                 Their focus ring is drawn inside: the rounded box clips anything outside it. */}
@@ -1738,7 +1748,14 @@ export function ResultsView({
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
-            {filterOptions && (
+            {filtersLocked ? (
+              <p className="mt-3 text-sm text-ink-muted">
+                Filters, Ask your pack and finding a line by number come with a membership.{" "}
+                <Link href="/membership" className="font-medium text-brand underline decoration-dotted underline-offset-4 hover:text-brand-strong">
+                  See membership options
+                </Link>
+              </p>
+            ) : filterOptions && (
               <ResultsFilterBar
                 filters={filters}
                 onChange={setFilters}
