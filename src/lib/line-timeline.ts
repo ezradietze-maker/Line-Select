@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
+import { standbyPlace } from "@/lib/standby";
 import { lineByDay, tripDaysShown } from "@/lib/trip-anchor";
 import type { BidPack, Line } from "@/types/bidpack";
 
@@ -99,7 +100,8 @@ export function buildLineTimeline(line: Line, pack: Pick<BidPack, "bidPeriodStar
         out.legs.push({
           start: at(l.depTimeZulu),
           end: at(l.arrTimeZulu),
-          flight: l.isStandby ? "HSBY" : l.isDeadhead || l.equipment === "CAB" ? "D/H" : l.flightNumber,
+          // Standby as the line page prints it: "HSBY" at the hotel, "ASBY" for an hour or two at the airport (B767 MEM's "STARPT").
+          flight: l.isStandby ? (standbyPlace(l.flightNumber) === "airport" ? "ASBY" : "HSBY") : l.isDeadhead || l.equipment === "CAB" ? "D/H" : l.flightNumber,
           from: l.depAirport,
           to: l.arrAirport,
           kind: l.isStandby ? "standby" : l.isDeadhead || l.equipment === "CAB" ? "deadhead" : "flight",

@@ -577,7 +577,7 @@ function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; t
           const color = LEG_COLOR[l.kind];
           return (
             <g key={`l${i}`} stroke={color}>
-              <title>{l.kind === "standby" ? `Hotel standby at ${l.from}` : `${l.from}–${l.to}${l.kind === "deadhead" ? ", deadhead" : ""}`}</title>
+              <title>{l.kind === "standby" ? `${l.flight === "ASBY" ? "Airport" : "Hotel"} standby at ${l.from}` : `${l.from}–${l.to}${l.kind === "deadhead" ? ", deadhead" : ""}`}</title>
               <line x1={a} x2={b} y1={CT.mid} y2={CT.mid} strokeWidth={CT.bar} strokeLinecap={l.kind === "standby" ? "round" : "butt"} />
               {l.kind !== "standby" && (
                 <>
@@ -694,7 +694,9 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         )
       )}
       <div className="w-min min-w-0 grow">
-        <div className={`flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink ${view.kind === "timeline" ? "whitespace-nowrap" : ""}`}>
+        {/* On one line beside the days on a laptop; over the days on a phone it wraps as the pack view's does: kept on one
+            line at 320px and 200% text, "#342 LINE 1316" ran off the card at "LINE 13". */}
+        <div className={`flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink ${view.kind === "timeline" && !layout.stacked ? "whitespace-nowrap" : ""}`}>
           {rank !== null && (
             <span aria-hidden className="tabular-nums text-accent" data-rank={rank}>
               #{rank}

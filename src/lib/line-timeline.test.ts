@@ -68,4 +68,29 @@ describe("buildLineTimeline", () => {
   it("draws nothing it can't place without the pack's real dates", () => {
     expect(buildLineTimeline(line, { ...pack, bidPeriodStart: null }, 21).legs).toEqual([]);
   });
+
+  it("says airport standby as the line page prints it, ASBY, not hotel standby's HSBY", () => {
+    // B767 MEM pairing 171: a couple of hours on call at GDL right after landing. The Heat Map printed "HSBY" over it
+    // and the Timeline called it hotel standby, where the pack's line page prints "ASBY".
+    const gdl = tripFrom(
+      [
+        "171 MO TU WE TH REPORT AT 0831 (0331) STANDARD CREW",
+        "EFFECTIVE SEPTEMBER 28 - OCTOBER 22",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "1 0065 76 MEM 0931(0431) GDL 1246(0646) 03:15 BMI",
+        "1 STARPT GDL 1446(0846) GDL 1635(1035) 01:49 S 03:15 05:23 08:04 GDL 31:50",
+        "Hotel: F. AMERICANA 011523338253434 (GDL), +52-33-3818-1400",
+        "*3 0066 76 GDL 0125(1925) MEM 0438(2338) 03:13 03:13 03:13 04:43",
+        "LDGS: 2 BLOCK HRS: 06:28 CREDIT HRS: 11:54 T TAFB: 44:37",
+      ],
+      0,
+      "MEM"
+    );
+    const t = buildLineTimeline({ ...line, lineNumber: "1072", trips: [gdl], gridOffDays: undefined }, { ...pack, base: "MEM" }, 21);
+    expect(t.legs.map((l) => [l.flight, l.kind])).toEqual([
+      ["0065", "flight"],
+      ["ASBY", "standby"],
+      ["0066", "flight"],
+    ]);
+  });
 });
