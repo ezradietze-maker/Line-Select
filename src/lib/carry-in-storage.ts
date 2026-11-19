@@ -1,5 +1,7 @@
 import { NO_ELECTIONS, type CarryInItem, type CarryInTrip, type PhaseInElections } from "@/lib/phase-in";
-import type { VacationChoice } from "@/lib/vacation-lines";
+import type { TypedVacation } from "@/lib/my-vacation";
+import { GOAL_KINDS, type GoalAim } from "@/lib/vacation-goal";
+import type { VacationChoice, VacationPlacement } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { LoggedMonth } from "@/types/logbook";
 
@@ -9,6 +11,21 @@ export interface CarryInState {
   elections: PhaseInElections;
   /** What the pilot wants done with each vacation, by its id; "use" when it isn't here. */
   vacationChoices?: Record<string, VacationChoice>;
+  /** Vacations the pilot typed: where the pack can't say (not on its list, no schedule), or in place of it (`preferTyped`). */
+  typedVacations?: TypedVacation[];
+  /** The pilot said the pack's vacation isn't right: theirs is the one they typed. */
+  preferTyped?: boolean;
+  /** What they want from their vacation, as typed and as read (`lib/vacation-goal.ts`): every line's vacation slides for it. */
+  vacationGoal?: { text: string; aims: GoalAim[] };
+  /** Lines where the pilot placed the vacation themselves, by line id: kept over the goal. */
+  vacationOverrides?: Record<string, VacationPlacement>;
+  /** The pilot's switch: lines are ranked with their vacation where it's placed (on), or where the pack has it (off, the default). */
+  slidesRank?: boolean;
+  /**
+   * Each moved line's placement as My Rankings last placed it (goal and the pilot's own), for screens that rank without
+   * working every placement out again (`rankingAsShown`): Strategies and the Logbook rank the list the pilot bids.
+   */
+  appliedPlacements?: Record<string, VacationPlacement>;
   /**
    * The pilot said nothing carries in from last month. Without it an empty list is only "not told": Open time and View/Add
    * read the two alike, but a trade can't hand on a trip in the month's first days until it's known (`carryInToSend`).
@@ -29,6 +46,26 @@ function isItem(x: unknown): x is CarryInItem {
   return i.kind === "rdays" && typeof i.firstDay === "string" && typeof i.days === "number" && typeof i.rp === "string";
 }
 
+/** A stored goal, only as the app writes it: its text and aims of known kinds. */
+function readGoal(raw: unknown): CarryInState["vacationGoal"] | null {
+  const g = raw as { text?: unknown; aims?: unknown } | null;
+  if (!g || typeof g.text !== "string" || !Array.isArray(g.aims)) return null;
+  const aims = g.aims.filter((a): a is GoalAim => !!a && typeof a === "object" && (GOAL_KINDS as readonly string[]).includes((a as { kind?: string }).kind ?? ""));
+  return aims.length ? { text: g.text.slice(0, 300), aims } : null;
+}
+
+/** Stored placements, whole days by vacation id, each within a slide's reach. */
+function readOverrides(raw: unknown): CarryInState["vacationOverrides"] | null {
+  if (!raw || typeof raw !== "object") return null;
+  const out: Record<string, VacationPlacement> = {};
+  for (const [line, p] of Object.entries(raw as Record<string, { offsets?: Record<string, unknown>; waiveFrontBuffer?: unknown }>)) {
+    if (!p || typeof p.offsets !== "object" || !p.offsets) continue;
+    const offsets = Object.fromEntries(Object.entries(p.offsets).filter(([, o]) => Number.isInteger(o) && Math.abs(o as number) <= 5)) as Record<string, number>;
+    out[line] = { offsets, ...(p.waiveFrontBuffer === true ? { waiveFrontBuffer: true } : {}) };
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export function loadCarryIn(userId: string | null, packId: string): CarryInState {
   if (typeof window === "undefined") return NO_CARRY_IN;
   try {
@@ -39,6 +76,14 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
       items,
       elections: { ...NO_ELECTIONS, ...stored.elections },
       ...(stored.vacationChoices ? { vacationChoices: stored.vacationChoices } : {}),
+      ...(Array.isArray(stored.typedVacations)
+        ? { typedVacations: stored.typedVacations.filter((t): t is TypedVacation => !!t && typeof t.firstDay === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.firstDay) && Number.isInteger(t.days) && t.days >= 1 && t.days <= 60) }
+        : {}),
+      ...(stored.preferTyped === true ? { preferTyped: true } : {}),
+      ...(readGoal(stored.vacationGoal) ? { vacationGoal: readGoal(stored.vacationGoal)! } : {}),
+      ...(readOverrides(stored.vacationOverrides) ? { vacationOverrides: readOverrides(stored.vacationOverrides)! } : {}),
+      ...(stored.slidesRank === true ? { slidesRank: true } : {}),
+      ...(readOverrides(stored.appliedPlacements) ? { appliedPlacements: readOverrides(stored.appliedPlacements)! } : {}),
       ...(stored.none === true && !items.length ? { none: true } : {}),
     };
   } catch {
@@ -49,7 +94,9 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
 export function saveCarryIn(userId: string | null, packId: string, state: CarryInState): void {
   if (typeof window === "undefined") return;
   try {
-    if (state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
+    // Kept while it says anything: a typed vacation or a goal alone is worth keeping.
+    const says = state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length || state.typedVacations?.length || state.preferTyped || state.vacationGoal || Object.keys(state.vacationOverrides ?? {}).length || state.slidesRank;
+    if (says) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
     else window.localStorage.removeItem(key(userId, packId));
   } catch {
     // Storage unavailable: it lasts as long as the page.

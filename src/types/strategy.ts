@@ -19,6 +19,10 @@ export interface SeniorityInput {
    * (absent on one saved before that was marked — or a band from then, see `loadSeniority`).
    */
   source?: "band" | "between" | "typed";
+  /** The seniority number it was found from, when the pilot typed one: it finds them on any pack's list, not just this one. */
+  seniorityNumber?: number;
+  /** The pack it was saved on: a bid number alone means a different pilot on next month's list. */
+  packId?: string;
 }
 
 export type StrategyId =
@@ -26,7 +30,6 @@ export type StrategyId =
   | "leftovers"
   | "secondary-play"
   | "reserve-pays-more"
-  | "vacation-overlap"
   | "carry-over"
   | "pay-only"
   | "sweep-flights"

@@ -20,7 +20,7 @@ export default function ResultsPage() {
 function ResultsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { bidPack, profile, user, handleStartOver, handleStartInterview, handleUpdateProfile, handleAcknowledgeFreshBidPack, handleTrySample } =
+  const { bidPack, profile, user, seniority, handleSaveSeniority, handleStartOver, handleStartInterview, handleUpdateProfile, handleAcknowledgeFreshBidPack, handleTrySample } =
     useAppState();
   const showingResults = !!(profile && bidPack);
 
@@ -50,6 +50,8 @@ function ResultsPageContent() {
         onEditPreferences={() => router.push("/preferences")}
         onUpdateProfile={handleUpdateProfile}
         userId={user?.id ?? null}
+        seniority={seniority}
+        onSaveSeniority={handleSaveSeniority}
         initialHotelFilter={parseHotelFilter(searchParams)}
         focusLine={searchParams.get("line")}
         onFocusHandled={clearFocusLine}

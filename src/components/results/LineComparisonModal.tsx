@@ -10,6 +10,7 @@ import { monthCounts } from "@/lib/bid-month";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import type { LineScore } from "@/lib/scoring";
 import type { MonthDepartureOptions } from "@/lib/month-detail";
+import type { LineVacationMark } from "@/lib/vacation-marks";
 import type { CityMark } from "@/types/preferences";
 
 /**
@@ -27,6 +28,8 @@ interface LineComparisonModalProps {
   /** The pilot's loved/avoided layover cities, so each calendar can say how they feel about a layover. */
   cityPreferences?: Record<string, CityMark>;
   departureOptions?: MonthDepartureOptions;
+  /** The pilot's vacation on each line, where it falls there, drawn on each month as on the line's card. */
+  vacations?: [LineVacationMark | null, LineVacationMark | null];
   onClose: () => void;
 }
 
@@ -57,6 +60,7 @@ export function LineComparisonModal({
   bidPeriodDays,
   cityPreferences,
   departureOptions,
+  vacations,
   onClose,
 }: LineComparisonModalProps) {
   // Landings and duty periods in the bid month, as each line's card counts them, with what the last trip flies in the next
@@ -127,7 +131,7 @@ export function LineComparisonModal({
       </div>
 
       <div className="mt-5 grid gap-6 sm:grid-cols-2">
-        {lineScores.map((ls) =>
+        {lineScores.map((ls, i) =>
           ls.estimated ? (
             <div key={ls.line.id} className="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-xs text-warn">
               Line {ls.line.lineNumber}&rsquo;s trip shape is estimated — no verified calendar to compare visually.
@@ -142,6 +146,7 @@ export function LineComparisonModal({
                 bidPeriodDays={bidPeriodDays}
                 cityPreferences={cityPreferences}
                 departureOptions={departureOptions}
+                vacation={vacations?.[i] ?? null}
               />
             </div>
           )

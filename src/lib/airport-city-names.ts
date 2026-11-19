@@ -37,3 +37,8 @@ const AIRPORT_CITY_NAMES: Record<string, string> = {
 export function airportCityName(code: string): string | null {
   return AIRPORT_CITY_NAMES[code.trim().toUpperCase()] ?? null;
 }
+
+/** Every airport by the city a pilot calls it, lower case ("honolulu" → "HNL"): for reading a city a pilot typed. */
+export function airportsByCityName(): Map<string, string> {
+  return new Map(Object.entries(AIRPORT_CITY_NAMES).map(([code, name]) => [name.toLowerCase(), code]));
+}

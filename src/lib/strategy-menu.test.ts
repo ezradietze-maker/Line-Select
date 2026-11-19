@@ -9,7 +9,6 @@ const ALL_STRATEGIES: Record<StrategyId, true> = {
   leftovers: true,
   "secondary-play": true,
   "reserve-pays-more": true,
-  "vacation-overlap": true,
   "carry-over": true,
   "pay-only": true,
   "sweep-flights": true,
@@ -17,16 +16,16 @@ const ALL_STRATEGIES: Record<StrategyId, true> = {
 };
 
 describe("the sidebar's list of strategies", () => {
-  it("has the vacation slide tool first, then every strategy, once each", () => {
+  it("has every strategy, once each, your real number first", () => {
     const ids = STRATEGY_MENU.map((m) => m.id);
-    expect(ids[0]).toBe("vacation");
+    expect(ids[0]).toBe("true-number");
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.slice(1).sort()).toEqual(Object.keys(ALL_STRATEGIES).sort());
+    expect([...ids].sort()).toEqual(Object.keys(ALL_STRATEGIES).sort());
   });
 
   it("names each strategy as its card does", () => {
     const engine = readFileSync(new URL("./strategy-engine.ts", import.meta.url), "utf8");
-    for (const item of STRATEGY_MENU.filter((m) => m.id !== "vacation")) {
+    for (const item of STRATEGY_MENU) {
       expect(engine, item.id).toContain(`name: "${item.name}"`);
     }
   });

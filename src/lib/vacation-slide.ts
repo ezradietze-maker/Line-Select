@@ -39,7 +39,7 @@ export function frontBufferWaivable(packMonth: string): boolean {
 }
 
 /** The bid month in real instants, base day to base day. */
-function periodSpan(pack: BidPack): Span | null {
+export function periodSpan(pack: BidPack): Span | null {
   if (!pack.bidPeriodStart) return null;
   const zone = zoneOf(pack);
   const first = DateTime.fromISO(pack.bidPeriodStart, { zone }).plus({ minutes: baseDayStartMinutes(zone) });
@@ -52,7 +52,7 @@ export function vacationSpan(v: Pick<VacationPeriod, "from" | "to">): Span {
 }
 
 /** The vacation moved by whole base days: the same clock time on the base's calendar, so a clock change doesn't shift it. */
-function shifted(v: VacationPeriod, days: number, zone: string): Span {
+export function shifted(v: Pick<VacationPeriod, "from" | "to">, days: number, zone: string): Span {
   const whole = vacationSpan(v);
   const move = (ms: number) => DateTime.fromMillis(ms, { zone }).plus({ days }).toMillis();
   return { start: move(whole.start), end: move(whole.end) };

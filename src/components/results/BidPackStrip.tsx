@@ -3,6 +3,7 @@
 import { useId, type ReactNode } from "react";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { formatIndex } from "@/lib/satisfaction-index";
+import { reachSpans, type LineVacationMark } from "@/lib/vacation-marks";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { PillHighlight } from "@/components/ui/PillHighlight";
 import type { PackColumn, PackDay, PackToken } from "@/lib/bidpack-row";
@@ -122,7 +123,7 @@ function columnClass(col: PackColumn): string {
 }
 
 /** What a strip's words, lines and shading mean, once above the list — for whichever strip the pilot is reading. */
-export function StripKey({ view, hint = "Tap a line for everything about it.", className = "" }: { view: StripViewMode; hint?: string; className?: string }) {
+export function StripKey({ view, hint = "Tap a line for everything about it.", className = "", vacation = false }: { view: StripViewMode; hint?: string; className?: string; vacation?: boolean }) {
   // An item stays on one line while it fits; a long one wraps on a narrow phone rather than push the page sideways.
   const item = (swatch: ReactNode, label: string) => (
     <span className="inline-flex items-center gap-1.5 [&>:first-child]:shrink-0">
@@ -180,6 +181,19 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
           )}
           {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip and its credit")}
           {item(word("---", "text-ink-faint"), "day off")}
+        </>
+      )}
+      {/* The pilot's vacation, on every line: where it falls, how far it can slide, what it takes off. */}
+      {vacation && (
+        <>
+          {item(
+            <span aria-hidden className="relative inline-block h-3 w-7 rounded-[2px] bg-accent/15">
+              <span className="absolute inset-x-0 top-0 h-[3px] rounded-t-[2px] bg-accent" />
+            </span>,
+            "your vacation"
+          )}
+          {item(<span aria-hidden className="inline-block h-[5px] w-6 opacity-80" style={{ backgroundImage: HATCH }} />, "how far it can slide")}
+          {view !== "heat" && item(<span aria-hidden className="inline-block h-3 w-5 rounded-[3px] border border-dashed border-accent bg-surface/60" />, "a trip it takes off, paid from your bank")}
         </>
       )}
       <span>{view === "heat" ? `Point at a piece for why. ${hint}` : hint}</span>
@@ -291,7 +305,7 @@ export function creditFits(number: string, creditHours: number, labelRoom: numbe
   return (number.length + 1 + formatHoursValue(creditHours).length) * font * MONO_ADVANCE <= labelRoom * dayPx - 3.5;
 }
 
-function Days({ columns, days, layout }: { columns: PackColumn[]; days: PackDay[]; layout: StripLayout }) {
+function Days({ columns, days, layout, vacation }: { columns: PackColumn[]; days: PackDay[]; layout: StripLayout; vacation?: LineVacationMark | null }) {
   // How many columns each trip label may run over: to the next trip's label, or the strip's end.
   const room = (i: number) => {
     let n = 1;
@@ -300,13 +314,53 @@ function Days({ columns, days, layout }: { columns: PackColumn[]; days: PackDay[
   };
   const colPx = layout.mode === "fit" ? layout.daysPx / Math.max(columns.length, 1) : SCROLL_COL;
   return (
-    <div className="grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }}>
-      {columns.map((c, i) => {
-        const label = days[i]?.label;
-        const labelRoom = label ? room(i) : 1;
-        // A week's first day has its line inside it, a pixel off the room.
-        const credit = !!label && labelRoom > 1 && creditFits(label.number ?? "—", label.creditHours, labelRoom, colPx - (c.groupStart ? 1 : 0), layout.font);
-        return <DayCell key={i} col={c} day={days[i] ?? { trip: null, label: null, tokens: [] }} font={layout.font} labelRoom={labelRoom} credit={credit} />;
+    <div className="relative">
+      <div className="grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }}>
+        {columns.map((c, i) => {
+          const label = days[i]?.label;
+          const labelRoom = label ? room(i) : 1;
+          // A week's first day has its line inside it, a pixel off the room.
+          const credit = !!label && labelRoom > 1 && creditFits(label.number ?? "—", label.creditHours, labelRoom, colPx - (c.groupStart ? 1 : 0), layout.font);
+          return <DayCell key={i} col={c} day={days[i] ?? { trip: null, label: null, tokens: [] }} font={layout.font} labelRoom={labelRoom} credit={credit} />;
+        })}
+      </div>
+      {vacation && <VacationDays mark={vacation} columns={columns.length} layout={layout} />}
+    </div>
+  );
+}
+
+/** A hatch in the vacation's colour: the days it could slide over. */
+const HATCH = "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)";
+
+/**
+ * The vacation over the pack view's days: each of its days washed gold, a gold bar along their top, the
+ * days it could slide to hatched either side, and where the pack had it outlined when it's slid. Over the days, but
+ * clear of taps: the strip opens as before.
+ */
+function VacationDays({ mark, columns, layout }: { mark: LineVacationMark; columns: number; layout: StripLayout }) {
+  const col = (d: number) => Math.min(Math.max(d, 0), columns - 1) + 1;
+  const inView = (a: number, b: number) => b >= 0 && a <= columns - 1;
+  return (
+    <div className="pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: gridColumns(columns, layout) }} aria-hidden>
+      {mark.pieces.flatMap((p) => {
+        const reach = reachSpans(p);
+        const before = reach.before ? [p.firstDay - Math.round((reach.before[1] - reach.before[0]) / 1440), p.firstDay - 1] : null;
+        const after = reach.after ? [p.lastDay + 1, p.lastDay + Math.round((reach.after[1] - reach.after[0]) / 1440)] : null;
+        const slid = p.firstDay !== p.awardedFirstDay;
+        const out = [];
+        if (slid && inView(p.awardedFirstDay, p.awardedLastDay))
+          out.push(<div key={`${p.id}a`} className="rounded-[3px] border border-dashed border-accent/70" style={{ gridColumn: `${col(p.awardedFirstDay)} / ${col(p.awardedLastDay) + 1}`, gridRow: 1 }} />);
+        if (inView(p.firstDay, p.lastDay))
+          out.push(
+            // No "VAC 7" here: the pack's own words fill every cell, and the key says what gold is.
+            <div key={`${p.id}v`} className="relative rounded-[3px] bg-accent/12" style={{ gridColumn: `${col(p.firstDay)} / ${col(p.lastDay) + 1}`, gridRow: 1 }} title={`Your vacation, ${p.days} days`}>
+              <div className="absolute inset-x-0 top-0 h-[3px] rounded-t-[3px] bg-accent" />
+            </div>
+          );
+        for (const [k, r] of [["b", before], ["f", after]] as const)
+          if (r && inView(r[0], r[1]))
+            out.push(<div key={`${p.id}${k}`} className="h-[5px] self-start opacity-80" style={{ gridColumn: `${col(r[0])} / ${col(r[1]) + 1}`, gridRow: 1, backgroundImage: HATCH }} />);
+        return out;
       })}
     </div>
   );
@@ -384,7 +438,8 @@ const MONO_ADVANCE = 0.616;
  * layover a green stretch as long as it lasts with its city under it, each wait at an airport between legs a thin line.
  * The pack's "---" on each day off. Words sit in lanes and never touch (`laneLabels`).
  */
-function RouteDays({ columns, timeline, layout, heat }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout; heat?: LineHeat }) {
+function RouteDays({ columns, timeline, layout, heat, vacation }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout; heat?: LineHeat; vacation?: LineVacationMark | null }) {
+  const hatchId = useId().replace(/:/g, "");
   const G = heat ? HT : RT;
   const width = layout.daysPx;
   const total = columns.length * DAY_MIN;
@@ -425,6 +480,8 @@ function RouteDays({ columns, timeline, layout, heat }: { columns: PackColumn[];
         ))}
       </div>
       <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={G.height} aria-hidden>
+        {/* On the Heat Map the vacation is its bar, hashes and outline only: the colours belong to the heat. */}
+        {vacation && <VacationLayer mark={vacation} x={x} height={G.height} wash={!heat} id={hatchId} />}
         {offDays.map((d) => {
           const cx = (d + 0.5) * colPx;
           if (cards.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
@@ -491,6 +548,50 @@ function RouteDays({ columns, timeline, layout, heat }: { columns: PackColumn[];
 }
 
 /**
+ * The vacation on a Timeline or Heat Map strip, in its own minutes (`x`): a gold wash over it (`wash`: not on the Heat
+ * Map, whose colours are heat), a gold bar along the top, the days it could slide to hatched either side of that bar,
+ * and where the pack had it outlined when it's slid.
+ */
+function VacationLayer({ mark, x, height, wash, id }: { mark: LineVacationMark; x: (m: number) => number; height: number; wash: boolean; id: string }) {
+  const hatch = `vh-${id}`;
+  return (
+    <g aria-hidden>
+      <defs>
+        <pattern id={hatch} width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="4" stroke="var(--color-accent)" strokeWidth="1.5" />
+        </pattern>
+      </defs>
+      {mark.pieces.map((p) => {
+        const { before, after } = reachSpans(p);
+        const slid = p.start !== p.awardedStart;
+        return (
+          <g key={p.id}>
+            {wash && <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={height} fill="var(--color-accent)" opacity={0.13} />}
+            {slid && <rect x={x(p.awardedStart) + 0.5} y={0.5} width={Math.max(1, x(p.awardedEnd) - x(p.awardedStart) - 1)} height={height - 1} rx={3} fill="none" stroke="var(--color-accent)" strokeOpacity={0.7} strokeDasharray="3 2" />}
+            {[before, after].map((r, k) => (r ? <rect key={k} x={x(r[0])} y={0} width={Math.max(1, x(r[1]) - x(r[0]))} height={5} fill={`url(#${hatch})`} opacity={0.85} /> : null))}
+            <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={3} rx={1.5} fill="var(--color-accent)">
+              <title>{`Your vacation, ${p.days} days${slid ? ", slid" : ""}`}</title>
+            </rect>
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** "VAC 7" where it has room on the strip: in the first free text row over the vacation, else left off (the gold says it). */
+function vacationLabelSpot(p: { start: number; end: number; days: number }, x: (m: number) => number, rows: number[], taken: { x: number; w: number; y: number }[], charPx: number): { x: number; y: number; text: string } | null {
+  const text = `VAC ${p.days}`;
+  const w = text.length * charPx;
+  const left = x(p.start);
+  const right = x(p.end);
+  if (right - left < w + 2) return null;
+  const at = (left + right) / 2 - w / 2;
+  for (const y of rows) if (!taken.some((t) => t.y === y && t.x < at + w + 3 && at < t.x + t.w + 3)) return { x: at, y, text };
+  return null;
+}
+
+/**
  * The Timeline's rows, px from its top, as the month calendar stacks a day: the trips' numbers, their cards, two lanes of
  * routes over the flying, the flying in its duty band, the layover's own line under it, and two lanes of layover words.
  */
@@ -504,7 +605,7 @@ const CT = { height: 74, header: 9, card: 11, routeLanes: [31, 22], mid: 41, dut
  * report to release with its number and credit over it, and the pack's "---" marks each day off. Words that don't fit
  * near their place say less (`routeTextVariants`), and are left off before they'd touch another or drift from it.
  */
-function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
+function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout; vacation?: LineVacationMark | null }) {
   const width = layout.daysPx;
   const total = columns.length * DAY_MIN;
   const x = (m: number) => (Math.min(Math.max(m, 0), total) / total) * width;
@@ -539,6 +640,19 @@ function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; t
   const headerSpots = laneLabels(trips.map((c, i) => ({ at: c.left + 1 + headerWidths[i] / 2, width: headerWidths[i] })), 1, Infinity, 6);
   const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
   const half = CT.duty / 2;
+  const hatchId = useId().replace(/:/g, "");
+  // The trips the vacation takes off: faded, still there, so the pilot sees what it gives up.
+  const removed = new Set(vacation ? trips.flatMap((c, i) => (vacation.removedStarts.some((m) => m >= c.trip.start - 1 && m <= c.trip.end) ? [i] : [])) : []);
+  const taken = [
+    ...routeWords.flatMap((w, i) => (routeSpots[i] ? [{ x: routeSpots[i]!.x, w: w.widths[routeSpots[i]!.variant], y: CT.routeLanes[routeSpots[i]!.lane] }] : [])),
+    ...stayWords.flatMap((w, i) => (staySpots[i] ? [{ x: staySpots[i]!.x, w: w.widths[staySpots[i]!.variant], y: CT.stayLanes[staySpots[i]!.lane] }] : [])),
+  ];
+  // Only in the layover rows at the foot: squeezed between route words, "VAC 7" read as one more stop.
+  const vacLabels = (vacation?.pieces ?? []).flatMap((p) => {
+    const spot = vacationLabelSpot(p, x, [CT.stayLanes[1], CT.stayLanes[0]], taken, charPx);
+    if (spot) taken.push({ x: spot.x, w: spot.text.length * charPx, y: spot.y });
+    return spot ? [spot] : [];
+  });
 
   return (
     <div className="relative" style={{ height: CT.height, width: layout.mode === "fit" ? undefined : width }}>
@@ -548,6 +662,7 @@ function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; t
         ))}
       </div>
       <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={CT.height} aria-hidden>
+        {vacation && <VacationLayer mark={vacation} x={x} height={CT.height} wash id={hatchId} />}
         {offDays.map((d) => {
           const cx = (d + 0.5) * colPx;
           if (trips.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
@@ -620,6 +735,19 @@ function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; t
             {h.credit && <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>}
           </text>
         ))}
+        {/* Over a trip the vacation takes off: the card faded under the gold, its edge dashed. */}
+        {trips.map((c, i) =>
+          removed.has(i) ? (
+            <rect key={`x${i}`} x={c.left} y={CT.card} width={c.right - c.left} height={CT.height - CT.card - 1} rx={5} fill="var(--color-surface)" fillOpacity={0.62} stroke="var(--color-accent)" strokeDasharray="3 2">
+              <title>{`Trip ${c.trip.number ?? ""}: your vacation takes it off, paid from your bank`}</title>
+            </rect>
+          ) : null
+        )}
+        {vacLabels.map((l, i) => (
+          <text key={`v${i}`} x={l.x} y={l.y} fontSize={font} fontWeight={700} fill="var(--color-accent)">
+            {l.text}
+          </text>
+        ))}
       </svg>
     </div>
   );
@@ -670,9 +798,11 @@ interface BidPackStripProps {
   top?: boolean;
   /** Its place in the pilot's order, 1 first; absent where the list isn't ranked (the interview). */
   rank?: number | null;
+  /** The pilot's vacation on this line (`lib/vacation-marks.ts`): drawn over its days, with how far it can slide. */
+  vacation?: LineVacationMark | null;
 }
 
-export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false, rank = null }: BidPackStripProps) {
+export function BidPackStrip({ line, score, tag, capped, columns, view, layout, grip, open, onToggle, placedByYou = false, top = false, rank = null, vacation = null }: BidPackStripProps) {
   const heatSaid = view.kind === "heat" ? sharePercents(view.heat.share) : null;
   const label = `${rank ? `Number ${rank}, ` : ""}Line ${line.lineNumber}${score !== null ? `, Satisfaction Index ${formatIndex(score)}` : tag ? `, option ${tag}` : ""}${placedByYou ? ", placed here by you" : ""}${
     heatSaid && heatSaid.hot + heatSaid.mild + heatSaid.cold ? `, trips ${heatSaid.hot}% hot, ${heatSaid.mild}% mild, ${heatSaid.cold}% cold` : ""
@@ -720,11 +850,11 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   );
   const drawn =
     view.kind === "pack" ? (
-      <Days columns={columns} days={view.days} layout={layout} />
+      <Days columns={columns} days={view.days} layout={layout} vacation={vacation} />
     ) : view.kind === "timeline" ? (
-      <CalendarRoute columns={columns} timeline={view.timeline} layout={layout} />
+      <CalendarRoute columns={columns} timeline={view.timeline} layout={layout} vacation={vacation} />
     ) : (
-      <RouteDays columns={columns} timeline={view.timeline} layout={layout} heat={view.heat} />
+      <RouteDays columns={columns} timeline={view.timeline} layout={layout} heat={view.heat} vacation={vacation} />
     );
   const chevron = <ChevronDownIcon className={`h-4 w-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />;
 

@@ -76,6 +76,29 @@ const POINTS: Point[] = [
   {
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
+        <rect x="4" y="5" width="16" height="15" rx="1.5" />
+        <path strokeLinecap="round" d="M4 9.5h16M8 3v4m8-4v4" />
+        <path strokeLinecap="round" d="M9 14.5h6" />
+      </svg>
+    ),
+    title: "Your vacation, on every line",
+    body: (
+      <>
+        Give your seniority number and your vacation is read from the
+        pack&rsquo;s vacation schedule (or type it in), then drawn on every
+        line: where it falls, the trips it takes off, and hashes for how far
+        it can slide. Say what you want from it &mdash; most credit, a date
+        off, a city to skip &mdash; and it slides to its best legal spot on
+        each line, up to 5 days either way (CBA 2026 7.E.2.a). Removed trips
+        are paid from your vacation bank (7.G.1). You choose whether slides
+        change your ranking. Ask for the slide in the Conflict Input Window
+        after the award.
+      </>
+    ),
+  },
+  {
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
         <rect x="5" y="11" width="14" height="9" rx="1.5" />
         <path strokeLinecap="round" d="M8 11V7a4 4 0 018 0v4" />
       </svg>

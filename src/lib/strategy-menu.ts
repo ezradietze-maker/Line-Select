@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from "react";
 import type { StrategyId } from "@/types/strategy";
 
-/** What the Strategies page can show: the vacation slide tool, or one strategy. */
-export type StrategyMenuId = "vacation" | StrategyId;
+/** What the Strategies page can show: one strategy. (The vacation slide is on every line of My Rankings now.) */
+export type StrategyMenuId = StrategyId;
 
 export interface StrategyMenuItem {
   id: StrategyMenuId;
@@ -13,25 +13,23 @@ export interface StrategyMenuItem {
 }
 
 /**
- * Every strategy, in the order the sidebar lists them: the vacation slide tool first, then the moves. The same list
+ * Every strategy, in the order the sidebar lists them. The same list
  * whatever the month: one that doesn't apply to this pack says so on the page, rather than the sidebar changing under
  * the pilot from month to month.
  */
 export const STRATEGY_MENU: StrategyMenuItem[] = [
-  { id: "vacation", label: "Vacation slide", name: "Vacation slide — test it on each line" },
   { id: "true-number", label: "Your real number", name: "Your real number this month" },
   { id: "leftovers", label: "Lines seniors leave", name: "Bid the lines senior pilots leave behind" },
   { id: "secondary-play", label: "Aim for a secondary", name: "Aim for a secondary line" },
   { id: "reserve-pays-more", label: "When reserve pays more", name: "When reserve pays more than a line" },
-  { id: "vacation-overlap", label: "Vacation under big trips", name: "Put your vacation under a line's biggest trips" },
   { id: "carry-over", label: "Credit into next month", name: "Start next month with credit in the bank" },
   { id: "pay-only", label: "Pay-only month", name: "Bid a pay-only month" },
   { id: "sweep-flights", label: "Trips that get rerouted", name: "Know which trips can be rerouted" },
   { id: "after-award", label: "After the award", name: "Work every window after the award" },
 ];
 
-/** What the page shows with nothing picked: the slide tool, as it always has. */
-export const DEFAULT_STRATEGY: StrategyMenuId = "vacation";
+/** What the page shows with nothing picked: the first move, your real number. */
+export const DEFAULT_STRATEGY: StrategyMenuId = "true-number";
 
 /** The strategy an address points at (`/strategies#leftovers`), or the default for none or one this list doesn't know. */
 export function strategyFromHash(hash: string): StrategyMenuId {

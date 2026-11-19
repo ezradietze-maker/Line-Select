@@ -1,5 +1,7 @@
 "use client";
 
+import { DateTime } from "luxon";
+import { slideWhere } from "@/lib/vacation-slide";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
@@ -63,6 +65,11 @@ export interface PresendContext {
    * and those paying at least a reserve line's RLG (null: no RLG printed), so the catch-alls go where they pay as much.
    */
   payOnly?: { aboveAverage: Set<string>; aboveReserve: Set<string> | null } | null;
+  /**
+   * Lines where the pilot's vacation is slid from where the pack has it, by line number, how far: the bid can't ask for
+   * a slide, so this reminds them to ask in the Conflict Input Window after the award.
+   */
+  vacationSlides?: Map<string, number> | null;
 }
 
 const CHECK_TONE: Record<PresendCheck["level"], string> = {
@@ -307,6 +314,8 @@ export function SendToVipsDialog({
           )}
         </section>
 
+        {presend.vacationSlides && presend.vacationSlides.size > 0 && <VacationSlideReminder pack={bidPack} slides={presend.vacationSlides} order={lineNumbers} />}
+
         <fieldset>
           <legend className="font-medium">{splits ? "Secondary and reserve lines" : "If none of these are left"}</legend>
           {splits && (
@@ -453,5 +462,31 @@ export function SendToVipsDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Your vacation slid on lines in this order: the bid itself can't ask for that, so after the award the pilot asks for the
+ * awarded line's slide in the Conflict Input Window (CBA 2026 7.E.2.a, 25.E.2), when it opens.
+ */
+export function VacationSlideReminder({ pack, slides, order }: { pack: BidPack; slides: Map<string, number>; order: string[] }) {
+  const where = slideWhere(pack);
+  const top = order.slice(0, 10);
+  const slidTop = top.filter((n) => slides.has(n));
+  const said = (offset: number) => `${Math.abs(offset)} day${Math.abs(offset) === 1 ? "" : "s"} ${offset > 0 ? "later" : "earlier"}`;
+  const opens = where.opens ? DateTime.fromISO(where.opens, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'") : null;
+  return (
+    <section className="rounded-md border border-accent/50 bg-accent/5 px-3 py-2 text-xs leading-relaxed text-ink" data-vacation-reminder>
+      <p className="font-medium">After your award: ask for your vacation&rsquo;s slide</p>
+      <p className="mt-0.5 text-ink-muted">
+        Your vacation is slid on {slidTop.length ? `${slidTop.length} of your top ${top.length} lines` : `${slides.size} of your lines`}. VIPS&rsquo;s bid can&rsquo;t ask for that: once
+        you know your line, ask for its slide in the Conflict Input Window{opens ? `, which opens ${opens}` : ""}. {where.rule}
+      </p>
+      {slidTop.length > 0 && (
+        <p className="mt-1 font-mono text-2xs text-ink">
+          {slidTop.map((n) => `${n}: ${said(slides.get(n)!)}`).join(" · ")}
+        </p>
+      )}
+    </section>
   );
 }
