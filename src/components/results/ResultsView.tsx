@@ -124,7 +124,7 @@ import { PillHighlight } from "@/components/ui/PillHighlight";
 import { setRankingSnapshot } from "@/lib/ranking-snapshot";
 import { withSatisfactionIndex } from "@/lib/satisfaction-index";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
-import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
+import { lineTotalsAsFlown, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
 import { PayOrderBanner, TotalChLineNote } from "@/components/results/TotalChNote";
 import { settleScrollTo } from "@/lib/settle-scroll";
@@ -186,7 +186,7 @@ function describeLearn(updates: DimensionUpdate[]): string {
 function DragPreview({ lineScore }: { lineScore: LineScore }) {
   return (
     <div className="flex w-64 cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
-      <ScoreRing score={lineScore.score} />
+      <ScoreRing score={lineScore.score} index />
       <span className="text-sm font-semibold text-ink">Line {lineScore.line.lineNumber}</span>
     </div>
   );
@@ -487,10 +487,7 @@ export function ResultsView({
 
   const carry = useCarryIn(bidPack, userId, profile);
   // What each line pays as the pilot will fly it (Total CH), and whether they've put the list in pay-only order.
-  const totals = useMemo(
-    () => new Map(bidPack.lines.map((l) => [l.id, lineTotal(bidPack, l, carry.flown.lines.get(l.id)?.line, carry.flown.vacationLines.get(l.id)?.chargedCH)])),
-    [bidPack, carry.flown]
-  );
+  const totals = useMemo(() => lineTotalsAsFlown(bidPack, carry.flown), [bidPack, carry.flown]);
   const totalCH = useMemo(() => new Map([...totals].map(([id, t]) => [id, t.total])), [totals]);
   const payOrderOn = usePayOrder(bidPack.id);
   const payPlan = useMemo(() => payOnlyOrder(bidPack, totals), [bidPack, totals]);

@@ -72,7 +72,7 @@ export function PayOrderBanner({ packId, averageBlg, rlg }: { packId: string; av
           {rlg !== null ? `, a reserve line ${hm(rlg)}` : ""}. Your own ranking is kept as it was.
         </p>
       </div>
-      <Button variant="secondary" className="shrink-0 px-3 py-1.5 text-xs" onClick={() => setPayOrder(packId, false)}>
+      <Button variant="secondary" className="max-w-full px-3 py-1.5 text-xs" onClick={() => setPayOrder(packId, false)}>
         Back to your ranking
       </Button>
     </section>

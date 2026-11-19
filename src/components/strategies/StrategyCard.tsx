@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { formatHoursValue } from "@/lib/interview-config";
+import { formatIndex } from "@/lib/satisfaction-index";
 import type { FeasibilityTier, Strategy, StrategyFit, StrategyLineRecommendation } from "@/types/strategy";
 
 const FIT_STYLE: Record<StrategyFit, { label: string; cls: string }> = {
@@ -21,14 +22,14 @@ function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommen
   if (isTopPick || deltaFromTopPick === 0) {
     return (
       <p className="mt-2 text-xs font-medium text-good">
-        Scores {score} on your Satisfaction Index — {isTopPick ? "already your current top pick" : "the same as your current top pick"}.
+        Scores {formatIndex(score)} on your Satisfaction Index — {isTopPick ? "already your current top pick" : "the same as your current top pick"}.
       </p>
     );
   }
   const isAhead = deltaFromTopPick > 0;
   return (
     <p className={`mt-2 text-xs font-medium ${isAhead ? "text-good" : "text-ink-faint"}`}>
-      Scores {score} on your Satisfaction Index — {Math.abs(deltaFromTopPick)} point
+      Scores {formatIndex(score)} on your Satisfaction Index — {Math.abs(deltaFromTopPick)} point
       {Math.abs(deltaFromTopPick) === 1 ? "" : "s"} {isAhead ? "above" : "below"} your current top
       pick.
     </p>

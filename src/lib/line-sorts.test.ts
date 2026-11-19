@@ -178,6 +178,8 @@ describe("formatSortValue", () => {
     expect(f("totalCredit", 84.03 + 8.38)).toBe("92:25");
     expect(f("blockHours", 34.62)).toBe("34:37");
     expect(f("tafbHours", 288.87)).toBe("288:52");
+    // Sorted by Total CH, a card read "120.3 hrs" under a note saying "Total CH 120:15".
+    expect(f("totalCH", 120.25)).toBe("120:15");
   });
 });
 

@@ -402,7 +402,7 @@ function LineDetails({
         <div className="min-w-0 p-4 sm:p-5">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="flex items-baseline gap-2">
+              <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-mono text-xs font-semibold text-ink-faint">#{rank}</span>
                 <span className="font-display text-lg font-semibold tracking-tight text-ink">Line {line.lineNumber}</span>
               </div>
