@@ -76,3 +76,100 @@ export function laneLabels(items: { at: number; width: number }[], lanes: number
   }
   return out;
 }
+
+// ---- The Timeline as the month calendar draws it: each duty's route over its flying ----
+
+/** An airport in a duty's route, magenta on the calendar when only deadheads touch it there. */
+export interface RouteCity {
+  code: string;
+  deadhead: boolean;
+}
+
+/** One duty period as the Timeline labels it: where it flies ("MEM-IND-DFW"), over the flying it holds. */
+export interface DutyRoute extends TimelineSpan {
+  /** The flying inside it, first takeoff to last landing. */
+  flyStart: number;
+  flyEnd: number;
+  cities: RouteCity[];
+  /** Hotel standby and nothing else: the calendar's violet line, labelled as the pack prints it. */
+  standby: boolean;
+}
+
+/** Each duty period with legs, in time order, and the airports it flies through, each once where the route passes it. */
+export function dutyRoutes(timeline: LineTimeline): DutyRoute[] {
+  return timeline.duties.flatMap((duty) => {
+    const legs = timeline.legs.filter((l) => l.start >= duty.start - 1 && l.end <= duty.end + 1).sort((a, b) => a.start - b.start);
+    if (!legs.length) return [];
+    const standby = legs.every((l) => l.kind === "standby");
+    const cities: RouteCity[] = [];
+    // Every leg that touches each stop: a stop only deadheads touch is a deadhead's.
+    const touched: TimelineLeg["kind"][][] = [];
+    const visit = (code: string, kind: TimelineLeg["kind"], fresh: boolean) => {
+      if (fresh || cities.at(-1)?.code !== code) {
+        cities.push({ code, deadhead: false });
+        touched.push([]);
+      }
+      touched.at(-1)!.push(kind);
+    };
+    legs.forEach((l, i) => {
+      visit(l.from, l.kind, i === 0);
+      visit(l.to, l.kind, false);
+    });
+    cities.forEach((c, i) => (c.deadhead = touched[i].every((k) => k === "deadhead")));
+    return [{ start: duty.start, end: duty.end, flyStart: legs[0].start, flyEnd: Math.max(...legs.map((l) => l.end)), cities: standby ? cities.slice(0, 1) : cities, standby }];
+  });
+}
+
+/**
+ * A duty's route said in less room, longest first: every stop ("MEM-IND-DFW"), where it starts and ends ("MEM-DFW"),
+ * where it ends ("DFW"). A duty back where it started ("DFW-IND-DFW", a hub turn) says where it turns ("IND") instead.
+ * Hotel standby is "HSBY" and its airport.
+ */
+export function routeTextVariants(route: Pick<DutyRoute, "cities" | "standby">): RouteCity[][] {
+  if (route.standby) return [[{ code: "HSBY", deadhead: false }, ...route.cities], [{ code: "HSBY", deadhead: false }]];
+  const { cities } = route;
+  const first = cities[0];
+  const last = cities[cities.length - 1];
+  const out: RouteCity[][] = [cities];
+  if (cities.length > 2 && first.code === last.code) out.push([cities[1]]);
+  else {
+    if (cities.length > 2) out.push([first, last]);
+    if (cities.length > 1) out.push([last]);
+  }
+  return out;
+}
+
+/** "MEM-IND-DFW". */
+export const routeText = (cities: RouteCity[]) => cities.map((c) => c.code).join("-");
+
+export interface VariantSpot extends LabelSpot {
+  /** Which of the item's words it got, 0 the longest. */
+  variant: number;
+}
+
+/**
+ * Words laid in `lanes` rows, as `laneLabels`, but each item says less rather than move far from where it belongs: it
+ * takes its longest words that fit within `maxShift` px of their place in any lane, nearest lane first, and is left
+ * off (null) when even its shortest don't — as the calendar leaves off a city it has no room for.
+ */
+export function placeVariants(items: { at: number; widths: number[] }[], lanes: number, maxRight: number, maxShift: number, gap = 4): (VariantSpot | null)[] {
+  const right = Array<number>(lanes).fill(-Infinity);
+  const out: (VariantSpot | null)[] = new Array(items.length).fill(null);
+  const order = items.map((_, i) => i).sort((a, b) => items[a].at - items[b].at);
+  for (const i of order) {
+    const { at, widths } = items[i];
+    placing: for (let v = 0; v < widths.length; v++) {
+      const width = widths[v];
+      const want = Math.min(Math.max(at - width / 2, 0), Math.max(maxRight - width, 0));
+      for (let lane = 0; lane < lanes; lane++) {
+        const x = Math.max(want, right[lane] + gap);
+        if (x - want <= maxShift && x + width <= maxRight + 0.5) {
+          right[lane] = x + width;
+          out[i] = { x, lane, variant: v };
+          break placing;
+        }
+      }
+    }
+  }
+  return out;
+}

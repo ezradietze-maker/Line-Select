@@ -11,7 +11,7 @@ import { HEAT_GRADIENT, heatColor } from "@/lib/heat-scale";
 import { formatHoursValue } from "@/lib/interview-config";
 import { heatPieceText, sharePercents, type HeatPiece, type LineHeat } from "@/lib/line-heat";
 import { HeatShareLine } from "@/components/results/HeatReasons";
-import { laneLabels, routesOf } from "@/lib/line-route";
+import { dutyRoutes, laneLabels, placeVariants, routesOf, routeText, routeTextVariants } from "@/lib/line-route";
 import type { LineTimeline, TimelineLeg } from "@/lib/line-timeline";
 import type { StripViewMode } from "@/lib/strip-view-storage";
 import type { Line } from "@/types/bidpack";
@@ -39,6 +39,8 @@ const GRIP_W = 24;
 // Room for the ring and the spelled-out numbers on one line each ("C/O blk 0:00 Days off 15" needs 174px): at 204 they
 // wrapped, and the last column ran under the line's first trip. 16 more for the Satisfaction Index's decimal.
 const LEFT_W = 240;
+/** The Timeline's: only the score, its place and the line's number beside the days, so the days have the room. */
+export const TIMELINE_LEFT_W = 172;
 const CHEVRON_W = 22;
 /** The strip's padding each side, inside its panel. */
 const PAD_X = 8;
@@ -63,6 +65,8 @@ export interface StripLayout {
    * the chevron are that much wider, so their words fit as they grow; the days are px and keep their size.
    */
   textScale: number;
+  /** The block beside the days (score, line number and, but for the Timeline, its numbers), px before `textScale`. */
+  leftW: number;
 }
 
 /**
@@ -74,15 +78,15 @@ export function fitFont(col: number): number {
   return Math.max(7, Math.min(9, Math.floor((col - 3) / (4 * 0.6))));
 }
 
-export function stripLayout(listWidth: number, columns: number, textScale = 1): StripLayout {
+export function stripLayout(listWidth: number, columns: number, textScale = 1, leftW = LEFT_W): StripLayout {
   // At 200% text the numbers beside the days need twice the room, and the list stacks where a phone's would: given
   // 224px, "Credit", "Block", "C/O cr" ran over each other and the last column ran under the line's first trip.
   const k = Math.max(1, textScale);
   const stacked = listWidth < 640 * k;
-  const fitPx = listWidth - 2 - (GRIP_W + LEFT_W + CHEVRON_W + 2 * PAD_X) * k;
+  const fitPx = listWidth - 2 - (GRIP_W + leftW + CHEVRON_W + 2 * PAD_X) * k;
   const col = fitPx / Math.max(columns, 1);
-  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: fitFont(col), daysPx: fitPx, textScale: k };
-  return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL, textScale: k };
+  if (!stacked && col >= MIN_FIT_COL) return { mode: "fit", stacked, font: fitFont(col), daysPx: fitPx, textScale: k, leftW };
+  return { mode: "scroll", stacked, font: 9, daysPx: columns * SCROLL_COL, textScale: k, leftW };
 }
 
 /** How wide the list prints: an A4 or Letter sheet's width inside its 12mm margins (globals.css `@page`), a little to spare. */
@@ -98,7 +102,7 @@ export function printStripLayout(columns: number): StripLayout {
   const col = daysPx / Math.max(columns, 1);
   // Narrower than a laptop ever lays them out, with five weeks of a pack across: a size smaller, so a day's four
   // letters don't run into the next day's.
-  return { mode: "fit", stacked: true, font: col >= 23 ? 9 : col >= MIN_FIT_COL ? 8 : 7, daysPx, textScale: 1 };
+  return { mode: "fit", stacked: true, font: col >= 23 ? 9 : col >= MIN_FIT_COL ? 8 : 7, daysPx, textScale: 1, leftW: LEFT_W };
 }
 
 const TOKEN_TONE: Record<PackToken["kind"], string> = {
@@ -156,21 +160,25 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
       ) : (
         <>
           {item(
-            <svg aria-hidden width="30" height="8" className="overflow-visible">
-              <line x1="1" x2="29" y1="4" y2="4" stroke="var(--color-leg)" strokeWidth="2" />
-              <line x1="1" x2="1" y1="1" y2="7" stroke="var(--color-leg)" strokeWidth="1.5" />
-              <line x1="29" x2="29" y1="1" y2="7" stroke="var(--color-leg)" strokeWidth="1.5" />
+            <svg aria-hidden width="30" height="9" className="overflow-visible">
+              <rect x="-2" y="0" width="34" height="9" rx="2" fill="var(--color-trip-band)" />
+              <line x1="1" x2="29" y1="4.5" y2="4.5" stroke="var(--color-leg)" strokeWidth="3" />
+              <line x1="1.75" x2="1.75" y1="0.5" y2="8.5" stroke="var(--color-leg)" strokeWidth="1.5" />
+              <line x1="28.25" x2="28.25" y1="0.5" y2="8.5" stroke="var(--color-leg)" strokeWidth="1.5" />
             </svg>,
-            "flight, takeoff to landing, its number over it"
+            "flight, takeoff to landing, in its duty period"
           )}
+          {item(word("MEM-PVG", "text-ink"), "where it flies")}
+          {item(<span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-deadhead" />, "deadhead")}
+          {item(<span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-standby" />, "hotel standby")}
           {item(
-            <svg aria-hidden width="20" height="8">
-              <line x1="0" x2="20" y1="4" y2="4" stroke="var(--color-deadhead)" strokeWidth="2" strokeDasharray="3 2" />
-            </svg>,
-            "D/H, deadhead"
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden className="inline-block h-[3px] w-6 rounded-full bg-layover" />
+              {word("PVG 28h", "text-layover")}
+            </span>,
+            "layover, as long as it lasts"
           )}
-          {item(<span aria-hidden className="inline-block h-1 w-6 rounded-full bg-layover/85" />, "layover, as long as it lasts, its city under it")}
-          {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip, report to the end of its last duty period, and its credit")}
+          {item(<span className="rounded-[4px] border border-border-strong bg-surface-raised px-1">{trip}</span>, "trip and its credit")}
           {item(word("---", "text-ink-faint"), "day off")}
         </>
       )}
@@ -228,7 +236,7 @@ export function BidPackHeader({ columns, layout, label = "Line · score", sticky
   const k = layout.textScale;
   return (
     <div className={`${sticky ? "sticky top-0 z-20" : ""} -mx-px rounded-t-lg border border-hairline bg-canvas/95 backdrop-blur print:static`} style={{ paddingLeft: (PAD_X + GRIP_W) * k, paddingRight: PAD_X * k }}>
-      <div className="grid" style={{ gridTemplateColumns: `${LEFT_W * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}>
+      <div className="grid" style={{ gridTemplateColumns: `${layout.leftW * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}>
         <div className="self-end pb-0.5 text-2xs text-ink-faint font-medium">{label}</div>
         <DateRows columns={columns} layout={layout} />
         <div />
@@ -483,6 +491,141 @@ function RouteDays({ columns, timeline, layout, heat }: { columns: PackColumn[];
 }
 
 /**
+ * The Timeline's rows, px from its top, as the month calendar stacks a day: the trips' numbers, their cards, two lanes of
+ * routes over the flying, the flying in its duty band, the layover's own line under it, and two lanes of layover words.
+ */
+const CT = { height: 74, header: 9, card: 11, routeLanes: [31, 22], mid: 41, duty: 12, tick: 9, bar: 3, lane: 51, stayLanes: [63, 72] };
+
+/**
+ * The Timeline, drawn as the month calendar draws a day (`CalendarDayBars`), on the base's clock across the month: each
+ * duty period a grey band, inside it each leg a bold line with tick ends — blue flown, magenta deadheaded, violet hotel
+ * standby — and over it where the duty flies ("MEM-IND-DFW"; a stop only a deadhead touches in magenta). Each layover is a
+ * green line of its own under the flying with its city and length under that ("PVG 28h"). Each trip is a card from
+ * report to release with its number and credit over it, and the pack's "---" marks each day off. Words that don't fit
+ * near their place say less (`routeTextVariants`), and are left off before they'd touch another or drift from it.
+ */
+function CalendarRoute({ columns, timeline, layout }: { columns: PackColumn[]; timeline: LineTimeline; layout: StripLayout }) {
+  const width = layout.daysPx;
+  const total = columns.length * DAY_MIN;
+  const x = (m: number) => (Math.min(Math.max(m, 0), total) / total) * width;
+  const colPx = width / columns.length;
+  const font = layout.font;
+  const charPx = font * MONO_ADVANCE;
+  const headerFont = font + 0.5;
+  const maxShift = Math.max(10, colPx * 0.6);
+
+  const trips = timeline.trips.map((t) => ({ left: x(t.start), right: Math.max(x(t.end), x(t.start) + 6), trip: t }));
+  const duties = dutyRoutes(timeline);
+  const routeWords = duties.map((d) => {
+    const variants = routeTextVariants(d);
+    return { d, variants, at: (x(d.flyStart) + x(d.flyEnd)) / 2, widths: variants.map((v) => routeText(v).length * charPx) };
+  });
+  const routeSpots = placeVariants(routeWords, CT.routeLanes.length, width, maxShift);
+  const stayWords = timeline.stays.map((st) => {
+    const variants = [`${st.city} ${Math.round(st.hours)}h`, st.city];
+    return { st, variants, at: (x(st.start) + x(st.end)) / 2, widths: variants.map((v) => v.length * charPx) };
+  });
+  const staySpots = placeVariants(stayWords, CT.stayLanes.length, width, maxShift);
+
+  // Each trip's number and credit from its card's left edge, the credit only where there's room before the next card.
+  const fullWidth = (number: string, credit: string) => (number.length + 1 + credit.length) * headerFont * MONO_ADVANCE;
+  const headerText = trips.map((c, i) => {
+    const number = c.trip.number ?? "—";
+    const credit = formatHoursValue(c.trip.creditHours);
+    const next = trips[i + 1];
+    return { number, credit: !next || c.left + 1 + fullWidth(number, credit) + 6 <= next.left ? credit : "" };
+  });
+  const headerWidths = headerText.map((h) => (h.credit ? fullWidth(h.number, h.credit) : h.number.length * headerFont * MONO_ADVANCE));
+  const headerSpots = laneLabels(trips.map((c, i) => ({ at: c.left + 1 + headerWidths[i] / 2, width: headerWidths[i] })), 1, Infinity, 6);
+  const offDays = timeline.offRuns.flatMap((r) => Array.from({ length: r.length }, (_, k) => r.day + k));
+  const half = CT.duty / 2;
+
+  return (
+    <div className="relative" style={{ height: CT.height, width: layout.mode === "fit" ? undefined : width }}>
+      <div className="absolute inset-0 grid" style={{ gridTemplateColumns: gridColumns(columns.length, layout) }} aria-hidden>
+        {columns.map((c, i) => (
+          <div key={i} className={columnClass(c)} />
+        ))}
+      </div>
+      <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={CT.height} aria-hidden>
+        {offDays.map((d) => {
+          const cx = (d + 0.5) * colPx;
+          if (trips.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
+          return (
+            <text key={`o${d}`} x={cx} y={CT.mid + 3} textAnchor="middle" fontSize={font} fill="var(--color-ink-faint)">
+              ---
+            </text>
+          );
+        })}
+        {trips.map((c, i) => (
+          <rect key={`c${i}`} x={c.left} y={CT.card} width={c.right - c.left} height={CT.height - CT.card - 1} rx={5} fill="var(--color-surface-raised)" stroke="var(--color-border-strong)">
+            <title>{`Trip ${c.trip.number ?? ""} · ${formatHoursValue(c.trip.creditHours)} credit · ${c.trip.days} days`}</title>
+          </rect>
+        ))}
+        {/* Each duty period, report to release: the calendar's grey band around the flying. */}
+        {timeline.duties.map((d, i) => (
+          <rect key={`d${i}`} x={x(d.start)} y={CT.mid - half} width={Math.max(2, x(d.end) - x(d.start))} height={CT.duty} rx={2.5} fill="var(--color-trip-band)" />
+        ))}
+        {timeline.stays.map((st, i) => (
+          <line key={`s${i}`} x1={x(st.start) + 1} x2={Math.max(x(st.start) + 2, x(st.end) - 1)} y1={CT.lane} y2={CT.lane} stroke="var(--color-layover)" strokeWidth={CT.bar} strokeLinecap="round">
+            <title>{`Layover in ${st.city}, ${Math.round(st.hours)}h`}</title>
+          </line>
+        ))}
+        {timeline.legs.map((l, i) => {
+          const a = x(l.start);
+          const b = Math.max(x(l.end), a + 2.5);
+          const color = LEG_COLOR[l.kind];
+          return (
+            <g key={`l${i}`} stroke={color}>
+              <title>{l.kind === "standby" ? `Hotel standby at ${l.from}` : `${l.from}–${l.to}${l.kind === "deadhead" ? ", deadhead" : ""}`}</title>
+              <line x1={a} x2={b} y1={CT.mid} y2={CT.mid} strokeWidth={CT.bar} strokeLinecap={l.kind === "standby" ? "round" : "butt"} />
+              {l.kind !== "standby" && (
+                <>
+                  <line x1={a + 0.75} x2={a + 0.75} y1={CT.mid - CT.tick / 2} y2={CT.mid + CT.tick / 2} strokeWidth={1.5} />
+                  <line x1={b - 0.75} x2={b - 0.75} y1={CT.mid - CT.tick / 2} y2={CT.mid + CT.tick / 2} strokeWidth={1.5} />
+                </>
+              )}
+            </g>
+          );
+        })}
+        {routeWords.map((w, i) => {
+          const spot = routeSpots[i];
+          if (!spot) return null;
+          const cities = w.variants[spot.variant];
+          return (
+            <text key={`r${i}`} x={spot.x} y={CT.routeLanes[spot.lane]} fontSize={font} fontWeight={600}>
+              {cities.map((c, k) => (
+                <tspan key={k} fill={w.d.standby ? "var(--color-standby)" : c.deadhead ? "var(--color-deadhead)" : "var(--color-ink)"}>
+                  {k > 0 ? "-" : ""}
+                  {c.code}
+                </tspan>
+              ))}
+            </text>
+          );
+        })}
+        {stayWords.map((w, i) => {
+          const spot = staySpots[i];
+          if (!spot) return null;
+          return (
+            <text key={`t${i}`} x={spot.x} y={CT.stayLanes[spot.lane]} fontSize={font} fontWeight={600} fill="var(--color-layover)">
+              {w.variants[spot.variant]}
+            </text>
+          );
+        })}
+        {headerText.map((h, i) => (
+          <text key={`h${i}`} x={headerSpots[i].x} y={CT.header} fontSize={headerFont}>
+            <tspan fontWeight={600} fill="var(--color-ink)">
+              {h.number}
+            </tspan>
+            {h.credit && <tspan fill="var(--color-ink-muted)"> {h.credit}</tspan>}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+/**
  * The Heat Map's band: each duty period and layover a block of its heat colour, as long as it lasts, a hairline of the
  * card between them so two the same colour still read as two. Pointing at one says why.
  */
@@ -551,7 +694,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         )
       )}
       <div className="w-min min-w-0 grow">
-        <div className="flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink">
+        <div className={`flex items-center gap-1.5 font-mono text-xs font-semibold leading-[0.875rem] tracking-wide text-ink ${view.kind === "timeline" ? "whitespace-nowrap" : ""}`}>
           {rank !== null && (
             <span aria-hidden className="tabular-nums text-accent" data-rank={rank}>
               #{rank}
@@ -567,7 +710,8 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
             </span>
           )}
         </div>
-        {view.kind === "pack" ? <Numbers line={line} /> : <SpelledNumbers line={line} />}
+        {/* The Timeline gives the days the room: its numbers are the pack view's to show. */}
+        {view.kind === "pack" ? <Numbers line={line} /> : view.kind === "heat" ? <SpelledNumbers line={line} /> : null}
       </div>
       {view.kind === "heat" && <HeatShareLine share={view.heat.share} label="Trips" className="mt-1 basis-full" />}
     </div>
@@ -575,8 +719,10 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
   const drawn =
     view.kind === "pack" ? (
       <Days columns={columns} days={view.days} layout={layout} />
+    ) : view.kind === "timeline" ? (
+      <CalendarRoute columns={columns} timeline={view.timeline} layout={layout} />
     ) : (
-      <RouteDays columns={columns} timeline={view.timeline} layout={layout} heat={view.kind === "heat" ? view.heat : undefined} />
+      <RouteDays columns={columns} timeline={view.timeline} layout={layout} heat={view.heat} />
     );
   const chevron = <ChevronDownIcon className={`h-4 w-4 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />;
 
@@ -608,7 +754,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         <div className="flex shrink-0 items-center justify-center" style={{ width: (GRIP_W + PAD_X) * k }}>
           {grip}
         </div>
-        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} className="flex shrink-0 items-center py-1.5 text-left" style={{ width: LEFT_W * k }}>
+        <button type="button" onClick={onToggle} aria-expanded={open} aria-label={label} className="flex shrink-0 items-center py-1.5 text-left" style={{ width: layout.leftW * k }}>
           {title}
         </button>
         <div className="min-w-0 flex-1 py-1">{scroller}</div>
@@ -630,7 +776,7 @@ export function BidPackStrip({ line, score, tag, capped, columns, view, layout, 
         aria-expanded={open}
         aria-label={label}
         className="grid min-w-0 flex-1 items-center py-1 text-left"
-        style={{ gridTemplateColumns: `${LEFT_W * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}
+        style={{ gridTemplateColumns: `${layout.leftW * k}px minmax(0, 1fr) ${CHEVRON_W * k}px` }}
       >
         {title}
         {drawn}

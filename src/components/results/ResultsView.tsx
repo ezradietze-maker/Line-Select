@@ -41,7 +41,8 @@ import { FirstVisitTour } from "@/components/results/FirstVisitTour";
 import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
-import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
+import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, TIMELINE_LEFT_W, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
+import { setRailCollapsed } from "@/lib/rail";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { heatModelOf } from "@/lib/line-heat";
 import { cityGradesOf } from "@/lib/ask-pack-run";
@@ -858,11 +859,30 @@ export function ResultsView({
   // Printed, the strips are laid out for the paper, not the screen: laid out at a laptop's width, a sheet cut each one
   // off at about the 16th.
   const textScale = useTextScale();
-  const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length, textScale)), [printing, listWidth, columns.length, textScale]);
   const [chosenStripView, setStripView] = useStripView();
   // What's drawn: the pilot's choice, or the Bid pack row on a pack with no dates to lay a timeline on. Said so when
   // they pick Timeline there, so the switch doesn't look broken.
   const stripView = stripViewFor(chosenStripView, bidPack);
+  // The Timeline keeps only the score, its place and the line's number beside the days, so the days have the room. The
+  // page takes the width the folded sidebar leaves too (below: its usual 72rem and the 10.5rem the sidebar gives up), so
+  // its right edge, and the view switch on it, stay put: held to the usual width, folding the sidebar only moved the list
+  // across, the switch with it.
+  const leftW = stripView === "timeline" ? TIMELINE_LEFT_W : undefined;
+  const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length, textScale, leftW)), [printing, listWidth, columns.length, textScale, leftW]);
+  // The sidebar folds while the Timeline shows, for the days' room, and comes back as it was when the Timeline goes (or
+  // this page does). Opened again by the pilot while it shows, it stays open.
+  const railFoldedHere = useRef(false);
+  useEffect(() => {
+    if (stripView !== "timeline" || printing) return;
+    if (document.documentElement.getAttribute("data-rail") !== "collapsed") {
+      setRailCollapsed(true);
+      railFoldedHere.current = true;
+    }
+    return () => {
+      if (railFoldedHere.current && document.documentElement.getAttribute("data-rail") === "collapsed") setRailCollapsed(false);
+      railFoldedHere.current = false;
+    };
+  }, [stripView, printing]);
   // The pilot's own heat reading, worked out once the Heat Map is picked (it measures every line in the pack).
   const heatModel = useMemo(
     () => (stripView === "heat" ? heatModelOf(bidPack, pilotModel ?? null, cityGradesOf(pilotModel, profile.cityRatings)) : null),
@@ -1408,7 +1428,7 @@ export function ResultsView({
   const empty = emptyListSaying({ view, starred: validMarks.starred.length, search, hotelName: hotelFilter?.hotelName ?? null, filtersOn: filtersActive(filters) });
 
   return (
-    <div ref={screenRef} className="mx-auto w-full max-w-3xl xl:max-w-6xl">
+    <div ref={screenRef} className={`mx-auto w-full max-w-3xl ${stripView === "timeline" ? "lg:max-w-[82.5rem]" : "xl:max-w-6xl"}`}>
       <div className="flex items-start justify-between gap-3 sm:items-end">
         <div className="min-w-0">
           <div className="text-2xs text-accent font-medium">
@@ -1666,9 +1686,15 @@ export function ResultsView({
             </div>
           )}
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-            <StripKey view={stripView} />
-            <StripViewToggle view={stripView} onChange={chooseStripView} />
+          {/* The switch keeps its place whichever strip is picked: in a row that wraps, a key that grew or shrank with the view
+              took it from the right edge to under the key and back. Its own column on the right (on top on a phone). */}
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
+            <div className="order-2 min-w-0 flex-1 sm:order-1">
+              <StripKey view={stripView} />
+            </div>
+            <div className="order-1 shrink-0 self-end sm:order-2 sm:self-start">
+              <StripViewToggle view={stripView} onChange={chooseStripView} />
+            </div>
           </div>
           <SatisfactionIndexKey model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />
           {noTimelineSaid && stripView !== chosenStripView && (

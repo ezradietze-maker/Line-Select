@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildLineTimeline } from "@/lib/line-timeline";
-import { laneLabels, routesOf } from "@/lib/line-route";
+import { dutyRoutes, laneLabels, placeVariants, routesOf, routeText, routeTextVariants } from "@/lib/line-route";
 import { pairingToTrip } from "@/lib/pdf-parser/build-bidpack";
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
 import { anchorTripToItsDate } from "@/lib/trip-anchor";
@@ -42,7 +42,8 @@ const turns = tripFrom(
   0
 );
 const line: Line = { id: "l", lineNumber: "1039", trips: [turns, short], daysOff: 20, totalCreditHours: 27.55, totalTafbHours: 98.7, totalLandings: 5, totalDepartures: 5 };
-const routes = routesOf(buildLineTimeline(line, { bidPeriodStart: start, bidPeriodDays: 28, base: "MEM" }, 35));
+const timeline = buildLineTimeline(line, { bidPeriodStart: start, bidPeriodDays: 28, base: "MEM" }, 35);
+const routes = routesOf(timeline);
 
 describe("routesOf", () => {
   it("keeps each trip's own legs, layovers and number together, in time order", () => {
@@ -91,5 +92,82 @@ describe("laneLabels", () => {
 
   it("keeps words inside the strip's left edge", () => {
     expect(laneLabels([{ at: 2, width: 30 }], 1, 300)[0].x).toBe(0);
+  });
+});
+
+describe("dutyRoutes: each duty's route, as the calendar says it", () => {
+  const duties = dutyRoutes(timeline);
+
+  it("says where each duty flies, every stop once, in time order", () => {
+    // The trip home's deadhead is a duty of its own after the last DFW layover, as the pack prints it.
+    expect(duties.map((d) => routeText(d.cities))).toEqual(["MEM-DFW", "DFW-IND-DFW", "DFW-IND-DFW", "DFW-MEM", "MEM-DFW", "DFW-MEM"]);
+  });
+
+  it("marks the stops only a deadhead touches, as the calendar draws them magenta", () => {
+    expect(duties[0].cities.map((c) => c.deadhead)).toEqual([true, true]);
+    expect(duties[1].cities.map((c) => c.deadhead)).toEqual([false, false, false]);
+    expect(duties[3].cities.map((c) => c.deadhead)).toEqual([true, true]);
+    // A duty that deadheads in and flies out: the stop both touch is a flown one.
+    const mixed = dutyRoutes({
+      ...timeline,
+      duties: [{ start: 0, end: 600 }],
+      legs: [
+        { start: 60, end: 120, flight: "DH", from: "MEM", to: "DFW", kind: "deadhead" },
+        { start: 200, end: 300, flight: "1601", from: "DFW", to: "IND", kind: "flight" },
+      ],
+    });
+    expect(mixed[0].cities).toEqual([
+      { code: "MEM", deadhead: true },
+      { code: "DFW", deadhead: false },
+      { code: "IND", deadhead: false },
+    ]);
+  });
+
+  it("holds the flying inside its duty, report to release", () => {
+    for (const d of duties) {
+      expect(d.flyStart).toBeGreaterThanOrEqual(d.start - 1);
+      expect(d.flyEnd).toBeLessThanOrEqual(d.end + 1);
+    }
+  });
+
+  it("says less when there's less room: every stop, then the ends, then where it ends", () => {
+    expect(routeTextVariants({ cities: ["MEM", "IND", "DFW"].map((code) => ({ code, deadhead: false })), standby: false }).map(routeText)).toEqual(["MEM-IND-DFW", "MEM-DFW", "DFW"]);
+    // A hub turn, back where it began: where it turns.
+    expect(routeTextVariants(duties[1]).map(routeText)).toEqual(["DFW-IND-DFW", "IND"]);
+    expect(routeTextVariants({ cities: [{ code: "IND", deadhead: false }], standby: true }).map(routeText)).toEqual(["HSBY-IND", "HSBY"]);
+  });
+});
+
+describe("placeVariants", () => {
+  it("keeps the longest words that fit near their place, and says less rather than drift", () => {
+    const spots = placeVariants(
+      [
+        { at: 50, widths: [60, 30, 15] },
+        { at: 60, widths: [60, 30, 15] },
+        { at: 66, widths: [60, 30, 15] },
+      ],
+      2,
+      400,
+      10
+    );
+    expect(spots[0]).toMatchObject({ lane: 0, variant: 0 });
+    expect(spots[1]).toMatchObject({ lane: 1, variant: 0 });
+    // Both lanes are taken around 66: its shortest words don't fit within 10px either, so it's left off.
+    expect(spots[2]).toBeNull();
+  });
+
+  it("never lets two words in one lane touch, and keeps them inside the strip", () => {
+    let seed = 11;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let run = 0; run < 50; run++) {
+      const items = Array.from({ length: 25 }, () => ({ at: rand() * 500, widths: [40 + rand() * 20, 25, 12] }));
+      const spots = placeVariants(items, 2, 500, 12);
+      const placed = spots.flatMap((s, i) => (s ? [{ ...s, w: items[i].widths[s.variant] }] : []));
+      for (const a of placed) {
+        expect(a.x).toBeGreaterThanOrEqual(0);
+        expect(a.x + a.w).toBeLessThanOrEqual(500.5);
+        for (const b of placed) if (a !== b && a.lane === b.lane) expect(a.x + a.w <= b.x || b.x + b.w <= a.x).toBe(true);
+      }
+    }
   });
 });
