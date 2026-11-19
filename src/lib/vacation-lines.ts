@@ -1,10 +1,10 @@
 import { longestDaysOffBlock } from "@/lib/days-off-pattern";
-import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
+import { carriedDaysOf, dayIndices, flyPack, lineAsFlown, withPrintedLines, zoneOf, type CarryInItem, type FlownLine, type PhaseInElections, type Span } from "@/lib/phase-in";
 import { formatHoursValue } from "@/lib/interview-config";
 import type { CarryInState } from "@/lib/carry-in-storage";
 import { findMyVacation, type MyVacation } from "@/lib/my-vacation";
 import { namedWithHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import { CH_PER_VACATION_DAY, chargedToBank, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, chargedToBank, shifted, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -49,14 +49,26 @@ export interface VacationLine {
   daysOffAfter: number;
   longestOff: number | null;
   reason: string | null;
+  /** Where each vacation (that's being taken) lands on this line: as awarded, or where `placement` slid it. */
+  spans: Span[];
+}
+
+/**
+ * Where a line has the pilot's vacations: each slid whole days from where it was awarded (negative earlier), by
+ * `vacationId`; absent, as awarded. `waiveFrontBuffer`: the pilot waives the 24 hours before a long international trip,
+ * from December 2026 (CBA 2026 7.G.1, 12.D.1.d.i).
+ */
+export interface VacationPlacement {
+  offsets: Record<string, number>;
+  waiveFrontBuffer?: boolean;
 }
 
 const name = (t: Trip) => (t.pairingNumber ? `trip ${t.pairingNumber}` : "a trip");
 
 /** One line with the pilot's vacations on it. `carriedDays`: days a carry-in is still flying, which a vacation can't make free here. */
-export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenVacation[], carriedDays: Set<number> = new Set()): VacationLine {
+export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenVacation[], carriedDays: Set<number> = new Set(), placement?: VacationPlacement): VacationLine {
   const active = vacations.filter((v) => v.choice !== "not-taking");
-  const blank = { line, removed: [], chargedCH: 0, overCH: 0, keepFlyingLoss: 0, daysOffBefore: line.daysOff, daysOffAfter: line.daysOff, longestOff: longestDaysOffBlock(line), reason: null };
+  const blank = { line, removed: [], chargedCH: 0, overCH: 0, keepFlyingLoss: 0, daysOffBefore: line.daysOff, daysOffAfter: line.daysOff, longestOff: longestDaysOffBlock(line), reason: null, spans: [] };
   if (!active.length) return { ...blank, unchecked: false };
   const reports = line.trips.map((t) => tripReportUtc(pack, t));
   if (line.estimated || reports.some((r) => r === null)) return { ...blank, unchecked: true };
@@ -64,12 +76,19 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   const spans = new Map<Trip, Span>(line.trips.map((t, i) => [t, { start: reports[i]!, end: reports[i]! + tripReleaseHours(t) * 3_600_000 }]));
   let flown = line;
   const removed: RemovedTrip[] = [];
+  const placed: Span[] = [];
   let keepFlyingCH = 0;
+  const zone = zoneOf(pack);
   for (const { vacation, choice } of active) {
-    const hit = vacationRemovals(flown, pack, vacationSpan(vacation), { slid: false });
+    // Where this line has it: as awarded, or slid whole days (CBA 2026 7.E.2.a, 7.G.1: "slides as a whole"). A slide brings
+    // in 7.E.2.c's 48 hours after an international trip; the front buffer is waived only where the pilot can (`placement`).
+    const offset = placement?.offsets[vacationId(vacation)] ?? 0;
+    const span = offset ? shifted(vacation, offset, zone) : vacationSpan(vacation);
+    placed.push(span);
+    const hit = vacationRemovals(flown, pack, span, { slid: offset !== 0, waiveFrontBuffer: placement?.waiveFrontBuffer });
     removed.push(...hit);
     if (choice === "keep-flying") keepFlyingCH += chargedToBank(hit);
-    flown = lineAsFlown(flown, pack, hit.map((r) => r.trip), spans, carriedDays, { creditPaid: choice === "use", alsoOff: daysOf(vacation, pack) });
+    flown = lineAsFlown(flown, pack, hit.map((r) => r.trip), spans, carriedDays, { creditPaid: choice === "use", alsoOff: new Set(dayIndices(span, pack)) });
   }
 
   const chargedCH = chargedToBank(removed);
@@ -78,35 +97,41 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   const longestOff = longestDaysOffBlock(flown);
   const off = `${flown.daysOff} days off${longestOff ? `, ${longestOff} in a row` : ""}`;
   let reason: string;
+  const moved = active.map(({ vacation }) => placement?.offsets[vacationId(vacation)] ?? 0).find((o) => o !== 0);
+  const slid = moved ? `Slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}, y` : "Y";
   if (!removed.length) {
-    reason = `Your vacation sits on days this line already has off, so your bank isn't charged: ${off}.`;
+    reason = `${slid}our vacation sits on days this line already has off, so your bank isn't charged: ${off}.`;
   } else {
     const trips = namedWithHours(removed.map((r) => ({ trip: r.trip, creditHours: r.trip.creditHours })), name);
     const pay = active.every((v) => v.choice === "keep-flying") ? "still paid from your bank, but this line ranks lower since you want to keep your flying" : "paid from your bank";
-    reason = `Your vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${formatHoursValue(overCH)} CH more than this vacation's ${formatHoursValue(value)} CH.` : ""}`;
+    reason = `${slid}our vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${formatHoursValue(overCH)} CH more than this vacation's ${formatHoursValue(value)} CH.` : ""}`;
   }
   const printedCredit = line.totalCreditHours + (line.carryOverCreditHours ?? 0);
   const keepFlyingLoss = printedCredit > 0 ? Math.min(1, keepFlyingCH / printedCredit) : 0;
-  return { line: flown, unchecked: false, removed, chargedCH, overCH, keepFlyingLoss, daysOffBefore: line.daysOff, daysOffAfter: flown.daysOff, longestOff, reason };
-}
-
-function daysOf(v: VacationPeriod, pack: BidPack): Set<number> {
-  return new Set(dayIndices(vacationSpan(v), pack));
+  return { line: flown, unchecked: false, removed, chargedCH, overCH, keepFlyingLoss, daysOffBefore: line.daysOff, daysOffAfter: flown.daysOff, longestOff, reason, spans: placed };
 }
 
 /** The whole pack with the pilot's vacations on it, and what happened to each line (by line id). The same pack back when nothing's in play. */
-export function flyVacations(pack: BidPack, vacations: ChosenVacation[], carriedDays: Set<number> = new Set()): { pack: BidPack; lines: Map<string, VacationLine> } {
+export function flyVacations(pack: BidPack, vacations: ChosenVacation[], carriedDays: Set<number> = new Set(), placements?: ReadonlyMap<string, VacationPlacement>): { pack: BidPack; lines: Map<string, VacationLine> } {
   const lines = new Map<string, VacationLine>();
   if (!vacations.some((v) => v.choice !== "not-taking")) return { pack, lines };
-  for (const line of pack.lines) lines.set(line.id, flyVacationsOnLine(line, pack, vacations, carriedDays));
+  for (const line of pack.lines) lines.set(line.id, flyVacationsOnLine(line, pack, vacations, carriedDays, placements?.get(line.id)));
   return { pack: { ...pack, lines: pack.lines.map((l) => lines.get(l.id)!.line) }, lines };
 }
 
 /** The pack as this pilot will really fly it: carry-in first, then the vacation over what's left. The same pack back when neither applies. */
-export function flySchedule(pack: BidPack, carry: { items: CarryInItem[]; elections: PhaseInElections }, vacations: ChosenVacation[]): { pack: BidPack; lines: Map<string, FlownLine>; vacationLines: Map<string, VacationLine> } {
+export function flySchedule(
+  pack: BidPack,
+  carry: { items: CarryInItem[]; elections: PhaseInElections },
+  vacations: ChosenVacation[],
+  placements?: ReadonlyMap<string, VacationPlacement>
+): { pack: BidPack; lines: Map<string, FlownLine>; vacationLines: Map<string, VacationLine>; carriedPack: BidPack; carriedDays: Set<number> } {
   const carried = flyPack(pack, carry.items, carry.elections);
-  const onVacation = flyVacations(carried.pack, vacations, carriedDaysOf(pack, carry.items));
-  return { pack: onVacation.pack, lines: carried.lines, vacationLines: onVacation.lines };
+  const carriedDays = carriedDaysOf(pack, carry.items);
+  const onVacation = flyVacations(carried.pack, vacations, carriedDays, placements);
+  // The pack after the carry-in and before the vacation, and the days the carry-in still flies: where every placement of
+  // the vacation is tried from (`lib/vacation-engine.ts`).
+  return { pack: onVacation.pack, lines: carried.lines, vacationLines: onVacation.lines, carriedPack: carried.pack, carriedDays };
 }
 
 /**

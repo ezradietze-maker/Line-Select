@@ -110,7 +110,7 @@ export function warmUpTasks(bidPack: BidPack, flown: BidPack, model: PilotModel 
 }
 
 /** Runs the pieces between frames; `onShare` hears how far along it is. Returns a stop. */
-function runInSlices(tasks: Task[], onShare: (share: number) => void, onDone: () => void): () => void {
+export function runInSlices(tasks: Task[], onShare: (share: number) => void, onDone: () => void): () => void {
   const queue = [...tasks];
   let ran = 0;
   let stopped = false;
