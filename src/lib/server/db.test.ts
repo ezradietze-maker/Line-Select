@@ -1029,7 +1029,10 @@ describe.skipIf(!hasDb)("Postgres-backed store", () => {
     // with them, would only ever wait, and keep the pilots on them from any other trade meanwhile.
     async function pilots(tag: string) {
       const after = new Date(Date.parse(MEMBERSHIP_CUTOVER) + 86_400_000);
+      // Made "now" was before the cutover only until it came (Nov 18, 2026): dated before it, whenever the test runs.
+      const before = new Date(Date.parse(MEMBERSHIP_CUTOVER) - 86_400_000);
       const [grandfathered, pro, free, locked] = [await makeUser(`${tag}-old`), await makeUser(`${tag}-pro`), await makeUser(`${tag}-free`), await makeUser(`${tag}-locked`)];
+      await db.update(users).set({ createdAt: before }).where(eq(users.id, grandfathered.id));
       await db.update(users).set({ createdAt: after }).where(inArray(users.id, [pro.id, free.id, locked.id]));
       await db.update(users).set({ plan: "pro" }).where(eq(users.id, pro.id));
       await db.update(users).set({ freeMemberAt: new Date() }).where(eq(users.id, free.id));
