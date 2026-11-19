@@ -81,7 +81,7 @@ export function BlockLimitsPanel({
             {over.length
               ? `${over.length} of your top ${TOP} lines would go over a federal limit.`
               : top.length
-                ? `${top.length} of your top ${TOP} lines come close to a federal limit.`
+                ? `${top.length} of your top ${TOP} lines ${top.length === 1 ? "comes" : "come"} close to a federal limit.`
                 : before.monthHours === undefined
                   ? `Add what you've flown in ${monthName} before ${startWords}, and your lines are checked against the 100-hour month.`
                   : `None of your top ${TOP} lines comes near a limit we can check.`}

@@ -251,9 +251,18 @@ function StrategiesGroup({
       })}
     </ul>
   );
+  const flyoutRef = useRef<HTMLDivElement>(null);
   // The pop-out sits at the row's top, beside the rail (`fixed`, as the tips are, so the rail's scroll can't cut it off).
+  // In a short window (a phone on its side) it rises as far as it must for the last strategy to stay on screen.
   const placeFlyout = (e: SyntheticEvent<HTMLDivElement>) => {
-    e.currentTarget.style.setProperty("--flyout-y", `${e.currentTarget.getBoundingClientRect().top}px`);
+    const group = e.currentTarget;
+    const top = group.getBoundingClientRect().top;
+    const place = () => {
+      const height = flyoutRef.current?.offsetHeight ?? 0;
+      group.style.setProperty("--flyout-y", `${height ? Math.max(8, Math.min(top, window.innerHeight - height - 8)) : top}px`);
+      return height > 0;
+    };
+    if (!place()) requestAnimationFrame(place);
   };
   return (
     <div className="group/strat relative" onPointerEnter={placeFlyout} onFocus={placeFlyout}>
@@ -277,9 +286,10 @@ function StrategiesGroup({
       )}
       {!disabled && (
         <div
+          ref={flyoutRef}
           role="group"
           aria-label="Strategies"
-          className="fixed left-[var(--shell-left)] top-[var(--flyout-y)] z-40 hidden w-60 rounded-md border border-hairline bg-surface-raised p-1.5 shadow-elevated rail-collapsed:group-hover/strat:block rail-collapsed:group-focus-within/strat:block"
+          className="fixed left-[var(--shell-left)] top-[var(--flyout-y)] z-40 hidden max-h-[calc(100dvh-1rem)] w-60 overflow-y-auto rounded-md border border-hairline bg-surface-raised p-1.5 shadow-elevated rail-collapsed:group-hover/strat:block rail-collapsed:group-focus-within/strat:block"
         >
           <p className="px-2.5 pb-1 pt-0.5 text-2xs font-medium text-ink-faint">Strategies</p>
           {items(true)}
