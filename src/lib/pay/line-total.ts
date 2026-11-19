@@ -99,6 +99,17 @@ export function lineTotal(
   };
 }
 
+/**
+ * Every line's Total CH, by line id, as the pilot will fly it: `flown` is `flySchedule`'s, with each line their carry-in
+ * changed and what their vacation charges the bank. My Rankings and Strategies both say these.
+ */
+export function lineTotalsAsFlown(
+  pack: Pick<BidPack, "bidPeriodDays" | "lines">,
+  flown: { lines: Map<string, { line: Line }>; vacationLines: Map<string, { chargedCH: number }> }
+): Map<string, LineTotal> {
+  return new Map(pack.lines.map((l) => [l.id, lineTotal(pack, l, flown.lines.get(l.id)?.line, flown.vacationLines.get(l.id)?.chargedCH)]));
+}
+
 /** Total CH differs from what the pack prints (CR. plus C/O): the only time a line needs it said. */
 export function totalDiffers(line: Pick<Line, "totalCreditHours" | "carryOverCreditHours">, total: LineTotal): boolean {
   return Math.abs(total.total - toMinute(line.totalCreditHours + (line.carryOverCreditHours ?? 0))) >= 1 / 60;

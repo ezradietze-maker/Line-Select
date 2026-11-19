@@ -1,4 +1,5 @@
 import type { BidPeriodChangeSummary } from "@/lib/bid-period-history";
+import { formatIndex } from "@/lib/satisfaction-index";
 
 interface BidPeriodChangeBannerProps {
   summary: BidPeriodChangeSummary | null;
@@ -15,13 +16,12 @@ export function BidPeriodChangeBanner({ summary, bare = false }: BidPeriodChange
       {!bare && <div className="text-xs font-semibold text-ink-faint">Since {summary.previousMonth}</div>}
       {summary.sameTopLine ? (
         <p className="mt-1 text-sm leading-relaxed text-ink">
-          Line {summary.currentTopLine} is your top pick again this month &mdash; scored {summary.currentTopScore} now,
-          {" "}
-          {summary.previousTopScore} last time.
+          Line {summary.currentTopLine} is your top pick again this month &mdash; scored {formatIndex(summary.currentTopScore)} now
+          {summary.previousTopScore !== null ? `, ${formatIndex(summary.previousTopScore)} last time` : ""}.
         </p>
       ) : (
         <p className="mt-1 text-sm leading-relaxed text-ink">
-          Your top pick changed: Line {summary.currentTopLine} is #1 now (scored {summary.currentTopScore}).{" "}
+          Your top pick changed: Line {summary.currentTopLine} is #1 now (scored {formatIndex(summary.currentTopScore)}).{" "}
           {summary.previousMonth}&rsquo;s top line, Line {summary.previousTopLine},{" "}
           {summary.previousTopLineNowRank
             ? `is #${summary.previousTopLineNowRank} this time.`

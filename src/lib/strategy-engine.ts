@@ -3,7 +3,7 @@ import { timezoneForAirport } from "@/lib/airport-timezones";
 import type { AwardHistorySummary } from "@/lib/award-history";
 import { forecastBid, seatSize } from "@/lib/forecast/forecast";
 import { formatHoursValue } from "@/lib/interview-config";
-import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
+import { lineTotal, payOnlyOrder, type LineTotal } from "@/lib/pay/line-total";
 import { tripFactsOf } from "@/lib/metrics/trip-facts";
 import type { LineScore } from "@/lib/scoring";
 import type { BidPack, Line, SeniorityEntry, VacationPeriod } from "@/types/bidpack";
@@ -182,6 +182,8 @@ export interface StrategyOptions {
   payPurposes?: boolean;
   /** Chance each line is still open at the pilot's turn, by line id. Worked out here from the pack's seniority list when not given. */
   pAvailable?: Record<string, number> | null;
+  /** Each line's Total CH by line id, with the pilot's carry-in and vacation, as My Rankings counts it (`lineTotalsAsShown`). Worked out from the pack as printed when not given. */
+  lineTotals?: Map<string, LineTotal> | null;
 }
 
 /**
@@ -501,9 +503,10 @@ export function generateStrategies(
 
   // ---- Pay only ----
   {
-    // What the pack prints, as a line pays it (`lib/pay/line-total.ts`); My Rankings works it out with the pilot's
-    // carry-in and vacation too.
-    const totals = new Map(lines.map((l) => [l.id, lineTotal(bidPack, l)]));
+    // What each line pays (`lib/pay/line-total.ts`) with the pilot's carry-in and vacation, as My Rankings says it and
+    // orders the list; from the pack as printed when not given. Worked out here alone, a line whose first trip the
+    // carry-in drops read its printed pay here and far less on My Rankings.
+    const totals = options.lineTotals ?? new Map(lines.map((l) => [l.id, lineTotal(bidPack, l)]));
     const plan = payOnlyOrder(bidPack, totals);
     const byId = new Map(lines.map((l) => [l.id, l]));
     const ordered = plan.order.map((id) => byId.get(id)!);

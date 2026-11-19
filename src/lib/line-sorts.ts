@@ -405,8 +405,11 @@ export function applySort(list: LineScore[], choice: SortChoice, ctx: SortContex
 
 const oneDecimal = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
-/** The line's own hours, as its strip prints them to the minute: in tenths, a card sorted by credit read "84.0 hrs" over "CR. 84:02". */
-const PRINTED_HOURS = new Set(["creditHours", "carryOverCredit", "totalCredit", "blockHours", "tafbHours"]);
+/**
+ * The line's own hours, as its strip prints them to the minute: in tenths, a card sorted by credit read "84.0 hrs" over
+ * "CR. 84:02". Total CH too, as its note under the line and Strategies say it.
+ */
+const PRINTED_HOURS = new Set(["creditHours", "carryOverCredit", "totalCredit", "blockHours", "tafbHours", "totalCH"]);
 
 /** A sort's value in words: "85.3 hrs", "62%", "05:30", "4 of 5 dates". */
 export function formatSortValue(def: SortDef, value: number | null, ctx: Pick<SortContext, "dates">): string {

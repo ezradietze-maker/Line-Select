@@ -1,6 +1,7 @@
 import { cachedFlightAnswers } from "@/lib/flights/client";
 import { computeImplicitLineValues } from "@/lib/implicit-dimensions";
 import { loadCarryIn } from "@/lib/carry-in-storage";
+import { lineTotalsAsFlown, type LineTotal } from "@/lib/pay/line-total";
 import { applyPlacements, loadPlacements, prunePlacements } from "@/lib/line-placements";
 import { applyTiers, loadTiers, pruneTiers } from "@/lib/line-tiers";
 import { rankLines, type LineScore } from "@/lib/scoring";
@@ -19,13 +20,23 @@ import type { PreferenceProfile } from "@/types/preferences";
  */
 export function rankingAsShown(bidPack: BidPack, profile: PreferenceProfile, userId: string | null): LineScore[] {
   const flights = profile.pilotModel ? cachedFlightAnswers(bidPack, profile.pilotModel) : null;
-  // Scored as it will fly with the pilot's carry-in and vacation, the way My Rankings does (`useCarryIn`).
-  const carry = loadCarryIn(userId, bidPack.id);
-  const vacations = pilotVacations(bidPack, profile, loadSeniority(userId)).vacations;
-  const flown = flySchedule(bidPack, carry, withChoices(vacations, carry.vacationChoices));
+  // Scored as it will fly with the pilot's carry-in and vacation, the way My Rankings does.
+  const flown = flownAsShown(bidPack, profile, userId);
   // Scores as My Rankings shows them: the Satisfaction Index (`lib/satisfaction-index.ts`).
   const ranked = withSatisfactionIndex(rankedAsFlown(rankLines(flown.pack, profile, {}, computeImplicitLineValues(bidPack), undefined, undefined, flights ?? undefined), bidPack, flown));
   const valid = new Set(bidPack.lines.map((l) => l.id));
   const placed = applyPlacements(ranked, prunePlacements(loadPlacements(userId, bidPack.id), valid), (r) => r.line.id);
   return applyTiers(placed, pruneTiers(loadTiers(userId, bidPack.id), valid), (r) => r.line.id);
+}
+
+/** The pack as the pilot will fly it, with their carry-in and vacation, as My Rankings works it out (`useCarryIn`). */
+function flownAsShown(bidPack: BidPack, profile: Pick<PreferenceProfile, "seniorityNumber"> | null, userId: string | null) {
+  const carry = loadCarryIn(userId, bidPack.id);
+  const vacations = pilotVacations(bidPack, profile, loadSeniority(userId)).vacations;
+  return flySchedule(bidPack, carry, withChoices(vacations, carry.vacationChoices));
+}
+
+/** Each line's Total CH as My Rankings says it: with the pilot's carry-in and vacation (`lineTotalsAsFlown`). */
+export function lineTotalsAsShown(bidPack: BidPack, profile: Pick<PreferenceProfile, "seniorityNumber"> | null, userId: string | null): Map<string, LineTotal> {
+  return lineTotalsAsFlown(bidPack, flownAsShown(bidPack, profile, userId));
 }
