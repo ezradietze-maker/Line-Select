@@ -2046,6 +2046,7 @@ export function ResultsView({
           bidPeriodDays={bidPack.bidPeriodDays}
           cityPreferences={cityMarks(profile.cityRatings, profile.cityPreferences, bidMonthOf(bidPack))}
           departureOptions={monthDepartureOptions(bidPack.base, profile, flights)}
+          vacations={[vacationMarks.get(compareLineScores[0].line.id) ?? null, vacationMarks.get(compareLineScores[1].line.id) ?? null]}
           onClose={() => setCompareIds([])}
         />
       )}

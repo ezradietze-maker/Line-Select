@@ -28,7 +28,6 @@ const STRATEGY_TRAIT_HINTS: Partial<Record<StrategyId, { key: "riskTolerance" | 
   // Ranking the lines likely to be left over is the safe play.
   leftovers: [{ key: "riskTolerance", favorsHigh: false }],
   "reserve-pays-more": [{ key: "riskTolerance", favorsHigh: true }],
-  "vacation-overlap": [{ key: "adminEffortAppetite", favorsHigh: true }],
   "carry-over": [{ key: "adminEffortAppetite", favorsHigh: true }],
   "sweep-flights": [{ key: "riskTolerance", favorsHigh: true }],
   "after-award": [{ key: "adminEffortAppetite", favorsHigh: true }],

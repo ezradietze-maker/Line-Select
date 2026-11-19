@@ -183,33 +183,6 @@ describe("generateStrategies", () => {
     for (const l of reserve.lines) expect(l.totalCreditHours).toBeLessThan(rlg);
   });
 
-  it("applies the vacation move only to a pilot the pack shows on vacation", () => {
-    expect(generateStrategies(pack({}, 4), at(4)).find((m) => m.id === "vacation-overlap")!.fit).toBe("now");
-    expect(generateStrategies(pack(), at(4)).find((m) => m.id === "vacation-overlap")!.fit).toBe("later");
-  });
-
-  it("puts vacation only under lines the pilot can hold at their number", () => {
-    const vacationMove = (bid: number, open: (i: number) => number) => {
-      const p = pack({}, bid);
-      const pAvailable = Object.fromEntries(p.lines.map((l, i) => [l.id, open(i)]));
-      return generateStrategies(p, at(bid), null, { pAvailable }).find((m) => m.id === "vacation-overlap")!;
-    };
-    // Every line open: the move lists lines, as before.
-    const all = vacationMove(4, () => 0.9);
-    expect(all.lines.length).toBeGreaterThan(1);
-    // The line with the most under the vacation gone before this pilot's turn: it isn't offered, the others still are.
-    const gone = all.lines[0].lineNumber;
-    const lineNumbers = pack().lines.map((l) => l.lineNumber);
-    const rest = vacationMove(4, (i) => (lineNumbers[i] === gone ? 0 : 0.9));
-    expect(rest.lines.map((l) => l.lineNumber)).toEqual(all.lines.map((l) => l.lineNumber).filter((n) => n !== gone));
-    // Past the regular lines: no regular line is theirs to bid around, and the move doesn't say it's for this month.
-    const reserveBid = pack().seniorityList!.filter((e) => !e.pay)[REGULAR + SECONDARY].bidNumber;
-    const reserve = vacationMove(reserveBid, () => 0);
-    expect(reserve.lines).toEqual([]);
-    expect(reserve.fit).not.toBe("now");
-    expect(reserve.steps.join(" ")).not.toContain("the lines below");
-  });
-
   it("leaves out the sweep move when no line flies a sweep aircraft", () => {
     const moves = generateStrategies(pack({ sweepFlights: [{ flightNumber: "9999", from: "ZZZ" }] }), at(12));
     expect(moves.some((m) => m.id === "sweep-flights")).toBe(false);

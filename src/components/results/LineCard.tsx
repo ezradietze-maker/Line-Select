@@ -593,7 +593,7 @@ function LineDetails({
                     bid pack&rsquo;s own line totals.
                   </div>
                 ) : (
-                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} heat={heat} />
+                  <TripList trips={lineByDay(line).trips} homeBaseOffsetMinutes={homeBaseOffsetMinutes} bidPeriodStart={bidPeriodStart} cityPreferences={marks} flights={flights} base={homeBase} tripScores={tripScores} carryOver={carryOver} bidPeriodDays={bidPeriodDays} heat={heat} vacationOffDays={vacation?.removedDays} />
                 ))}
 
               {activeTab === "breakdown" && (

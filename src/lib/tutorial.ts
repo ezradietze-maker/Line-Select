@@ -31,7 +31,7 @@ export const TUTORIAL_CHAPTERS: TutorialChapter[] = [
   { id: "swaps-and-tiers", title: "Putting your order right: swaps and tiers", summary: "Swapping lines, what each swap teaches, tiers, and the right-click menu.", seconds: 54, ...files(8) },
   { id: "this-months-bid", title: "This month's bid: deadline, carry-in, vacation and your chances", summary: "The countdown and checklist, carry-in, your vacation, and which lines you could hold.", seconds: 65, ...files(9) },
   { id: "sending-to-vips", title: "Sending your bid to VIPS", summary: "Copying your order, Send to VIPS, the bid questions and the checks before you send.", seconds: 60, ...files(10) },
-  { id: "strategies", title: "Strategies", summary: "Your real place, the moves that fit it, the vacation slide finder and what pilots held.", seconds: 59, ...files(11) },
+  { id: "strategies", title: "Strategies", summary: "Your real place, the moves that fit it and what pilots held.", seconds: 59, ...files(11) },
   { id: "cities-and-hotels", title: "Cities and hotels", summary: "Every layover city at a glance, and the hotel your pack assigns, with reviews.", seconds: 42, ...files(12) },
   { id: "logbook-and-calendar", title: "Logbook and your calendar", summary: "Logging your award and how the month flew, sharing it, and the calendar link.", seconds: 53, ...files(13) },
   { id: "tools-and-pay", title: "Tools and Pay check", summary: "The world clock, the commute planner, and what each trip and line guarantee.", seconds: 51, ...files(14) },

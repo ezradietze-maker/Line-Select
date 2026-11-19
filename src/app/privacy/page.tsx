@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Heading } from "@/components/ui/Heading";
 
-const LAST_UPDATED = "November 17, 2026";
+const LAST_UPDATED = "November 19, 2026";
 
 /**
  * A real Privacy Policy describing what this app actually does with data —
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
             bid order, their seniority number, and whether the list marks them as paid without bidding a
             line. From the Vacation Schedule we keep each vacation block&rsquo;s seniority number, number of
             days, and start and end dates. Those numbers tell the bid forecast (Section 7) how many pilots
-            bid ahead of you, and let the Strategies page find and allow for your own vacation. They
+            bid ahead of you, and let My Rankings find your own vacation and allow for it on every line. They
             stay part of your parsed pack (Section 2).
           </p>
           <p className="mt-3">
@@ -128,10 +128,10 @@ export default function PrivacyPage() {
         <Section title="3. The AI features use a third-party provider">
           <p>
             These features use Anthropic&rsquo;s Claude API: the interview, Ask your pack, Ask the contract, reading the reason you
-            type for swapping or correcting lines, and the plain-language summaries on the Hotel Ratings page.
+            type for swapping or correcting lines, reading what you want from your vacation, and the plain-language summaries on the Hotel Ratings page.
             Each one sends Anthropic only what that turn needs: your interview answers and relevant bid pack
             context (for the interview); your question and a short summary of the pack (for Ask your pack); your question, the last few questions and answers in that chat, which bid month, domicile, aircraft and seat your pack is for and how long its bid month runs, and, if it names a line, that line&rsquo;s figures and carry-in conflicts (for Ask the contract); what
-            you typed, the lines involved and your list of priorities (for a reason); or a hotel&rsquo;s public
+            you typed, the lines involved and your list of priorities (for a reason); what you typed about your vacation, its dates, the bid month&rsquo;s dates and the pack&rsquo;s layover cities, only when it isn&rsquo;t one of the usual goals read on your device (for your vacation); or a hotel&rsquo;s public
             review text (for hotel summaries). We do not attach your name, email, or account identity to these
             requests, though anything you type goes as you wrote it. Anthropic processes this data under its own
             API terms; as of this writing, Anthropic does not use API inputs to train its models by default. Your

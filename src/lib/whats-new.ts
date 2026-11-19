@@ -13,6 +13,12 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-19",
+    title: "Your vacation, slid to its best spot on every line",
+    body: "Give your seniority number and the site finds your vacation in the pack, or type it in. It's drawn on every line in the Bid Pack, Timeline, Heat Map and calendar views, with hashes for how far it can slide. Tell it what you want, like most credit or a day off, and it slides to its best legal spot on each line, up to 5 days either way. Step it a day at a time on any line. You choose whether slides change your ranking. The old Vacation slide on Strategies is now part of My Rankings.",
+    href: "/results",
+  },
+  {
     date: "2026-11-08",
     title: "Trades that help everyone on them",
     body: "Confirm what you hold on the Trade Board, and each day the site looks for trades that leave you and other pilots better off by your own priorities: a straight swap, or a chain of up to 5 pilots. Everyone says yes first, then you each submit your part in VIPS. Opens when your seat has enough pilots.",

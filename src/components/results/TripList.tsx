@@ -347,6 +347,8 @@ interface TripListProps {
   /** What the line carries into the next bid month (`lineCarryOver`) — shown on the trip that carries it. Needs `bidPeriodDays` and `base`. */
   carryOver?: LineCarryOver | null;
   bidPeriodDays?: number;
+  /** The grid days (`Trip.startDayIndex`) of the trips the pilot's vacation takes off this line (`LineVacationMark.removedDays`). */
+  vacationOffDays?: number[];
 }
 
 function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
@@ -354,7 +356,7 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays, heat = null }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays, heat = null, vacationOffDays = [] }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   // The same Local/Zulu choice as the month calendar's, shared page-wide: switching either switches both.
@@ -416,8 +418,18 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
           const days = tripPictureDays(trip, mode);
           // A day of a run of day trips (`lineByDay`) shows the run's score: it's scored as the one trip.
           const tripScore = tripScores?.get(tripKey(runOfDay(trip)?.run ?? trip));
+          const offForVacation = trip.startDayIndex !== null && vacationOffDays.includes(trip.startDayIndex);
           return (
-            <li key={key} className="rounded-[var(--radius-panel)] border border-hairline bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)]">
+            <li
+              key={key}
+              className={`rounded-[var(--radius-panel)] border bg-surface/60 p-3 shadow-[inset_0_1px_0_var(--panel-highlight)] ${offForVacation ? "border-dashed border-accent/60" : "border-hairline"}`}
+              data-vacation-off={offForVacation || undefined}
+            >
+              {offForVacation && (
+                <p className="mb-1.5 text-xs font-medium text-accent">
+                  Off for your vacation: you don&rsquo;t fly it, and its hours are paid from your vacation bank (CBA 2026 7.G.1).
+                </p>
+              )}
               <TripHeader
                 trip={trip}
                 days={days}

@@ -647,8 +647,9 @@ function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackC
     ...routeWords.flatMap((w, i) => (routeSpots[i] ? [{ x: routeSpots[i]!.x, w: w.widths[routeSpots[i]!.variant], y: CT.routeLanes[routeSpots[i]!.lane] }] : [])),
     ...stayWords.flatMap((w, i) => (staySpots[i] ? [{ x: staySpots[i]!.x, w: w.widths[staySpots[i]!.variant], y: CT.stayLanes[staySpots[i]!.lane] }] : [])),
   ];
+  // Only in the layover rows at the foot: squeezed between route words, "VAC 7" read as one more stop.
   const vacLabels = (vacation?.pieces ?? []).flatMap((p) => {
-    const spot = vacationLabelSpot(p, x, [CT.stayLanes[1], CT.stayLanes[0], CT.routeLanes[1], CT.routeLanes[0]], taken, charPx);
+    const spot = vacationLabelSpot(p, x, [CT.stayLanes[1], CT.stayLanes[0]], taken, charPx);
     if (spot) taken.push({ x: spot.x, w: spot.text.length * charPx, y: spot.y });
     return spot ? [spot] : [];
   });

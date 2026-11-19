@@ -297,7 +297,8 @@ Approved Nov 15 2026. The narration and what's on screen for each chapter; the r
 - **Your place:** "Your strategies", with the standing bar showing the little plane taxiing to your place.
 - **A strategy:** one strategy card, with "Your move" and its recommended lines ("Likely open").
 - **Vacation slide:** the slide finder. The vacation slider is dragged across the calendar, and suggestion chips
-  appear.
+  appear. *(Re-record: Nov 19 the slide finder left Strategies. The vacation is on every line of My Rankings now,
+  with a "What do you want from your vacation?" box at the top; chapter 9 should show it, and this beat comes out.)*
 - **What pilots held:** the "What pilots near you actually held" panel.
 
 **Narration.**

@@ -34,6 +34,8 @@ export interface LineVacationMark {
   pieces: VacationMarkPiece[];
   /** The report minute of each trip (or day of a run) the vacation takes off, to fade where it's drawn. */
   removedStarts: number[];
+  /** The grid day each of those trips starts on (`Trip.startDayIndex`), to mark it in the line's trip list. */
+  removedDays: number[];
 }
 
 /** The day column a minute falls in, base day to base day (a day starts at 0130 at a US base, CBA 2026 25.A.2). */
@@ -80,7 +82,8 @@ export function lineVacationMark(pack: BidPack, vl: VacationLine | undefined, va
     const report = tripReportUtc(pack, r.trip);
     return report === null ? [] : [minute(report)];
   });
-  return { pieces, removedStarts };
+  const removedDays = vl.removed.flatMap((r) => (r.trip.startDayIndex === null ? [] : [r.trip.startDayIndex]));
+  return { pieces, removedStarts, removedDays };
 }
 
 /**

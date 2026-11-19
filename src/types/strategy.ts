@@ -30,7 +30,6 @@ export type StrategyId =
   | "leftovers"
   | "secondary-play"
   | "reserve-pays-more"
-  | "vacation-overlap"
   | "carry-over"
   | "pay-only"
   | "sweep-flights"

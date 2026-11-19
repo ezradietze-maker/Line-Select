@@ -109,8 +109,8 @@ export function VacationChoicePanel({
     body = (
       <>
         <p className="text-xs text-ink-muted">
-          {status === "typed" ? "As you typed it." : `From the pack's vacation schedule, at seniority #${number}.`} Every line is scored with it where it falls; to move it,
-          see the slide finder on Strategies.{" "}
+          {status === "typed" ? "As you typed it." : `From the pack's vacation schedule, at seniority #${number}.`} Every line is scored with it where it falls; to slide it,
+          say what you want from it above, or step it on any opened line.{" "}
           <button type="button" className="font-medium text-brand underline underline-offset-2" onClick={() => setTyping(true)}>
             {status === "typed" ? "Change" : "Not right?"}
           </button>

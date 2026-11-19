@@ -6,7 +6,6 @@ import { parseSeniorityInput } from "@/components/interview/SeniorityStep";
 import { BidWeek } from "@/components/results/BidWeek";
 import { AwardHistoryPanel } from "@/components/strategies/AwardHistoryPanel";
 import { StrategyCard } from "@/components/strategies/StrategyCard";
-import { VacationSlidePanel } from "@/components/strategies/VacationSlidePanel";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FIELD } from "@/components/ui/field";
@@ -309,7 +308,6 @@ function StrategyResults({
   const userId = user?.id ?? null;
   const ranked = useMemo(() => (profile ? rankingAsShown(bidPack, profile, userId) : null), [bidPack, profile, userId]);
   const rankedLineIds = useMemo(() => ranked?.map((r) => r.line.id), [ranked]);
-  const order = useMemo(() => ranked?.map((r) => r.line.lineNumber) ?? [], [ranked]);
 
   // Real self-reported hold outcomes for this exact base/aircraft/seat —
   // fetched here (a second copy of what AwardHistoryPanel below also
@@ -340,7 +338,7 @@ function StrategyResults({
   }, [bidPack, seniority, profile, ranked, awardSummary]);
   const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
-  // What's showing: "vacation" for the interactive slide tool, or a strategy's id. It's the page's address
+  // What's showing: a strategy's id. It's the page's address
   // (`/strategies#leftovers`), so the sidebar's list, a link, Back and a reload all show the same one.
   const selected = useStrategyId();
   const shownRef = useRef<HTMLDivElement>(null);
@@ -437,9 +435,6 @@ function StrategyResults({
         <label className="block">
           <span className="text-xs font-medium text-ink-muted">Pick a strategy to see</span>
           <select className={`${FIELD} mt-1 w-full`} value={selected} onChange={(e) => openStrategy(e.target.value as StrategyMenuId)}>
-            <optgroup label="Tools">
-              <option value="vacation">Vacation slide — test it on each line</option>
-            </optgroup>
             {groups.map((g) => {
               const items = strategies.filter((st) => st.fit === g.fit);
               if (!items.length) return null;
@@ -456,7 +451,7 @@ function StrategyResults({
             })}
             {/* Ones that don't apply this month can still be in the address (from the sidebar or a link): listed, so the
                 picker never shows a different strategy from the one on screen. */}
-            {STRATEGY_MENU.some((m) => m.id === selected && selected !== "vacation" && !strategies.some((st) => st.id === selected)) && (
+            {STRATEGY_MENU.some((m) => m.id === selected && !strategies.some((st) => st.id === selected)) && (
               <option value={selected}>{STRATEGY_MENU.find((m) => m.id === selected)?.name}</option>
             )}
           </select>
@@ -464,13 +459,15 @@ function StrategyResults({
       </div>
 
       <div ref={shownRef} className="scroll-mt-6 md:pt-6" />
-      {/* Kept while another strategy is shown: unmounted, the vacations typed in and the slides found were gone on
-          coming back to it. */}
-      <div hidden={selected !== "vacation"}>
-        <VacationSlidePanel bidPack={bidPack} seniority={seniority} profile={profile} userId={user?.id ?? null} order={order} />
-      </div>
-      {selected === "vacation" ? null : (
-        (() => {
+      {/* The vacation slide lives on every line of My Rankings now: one pointer, for a pilot who looks for it here. */}
+      <p className="mt-6 text-xs text-ink-muted" data-vacation-pointer>
+        Your vacation, and where it slides best, is on every line in{" "}
+        <Link href="/results" className="font-medium text-accent underline-offset-2 hover:underline">
+          My Rankings
+        </Link>
+        .
+      </p>
+      {(() => {
           const st = strategies.find((s) => s.id === selected);
           if (!st) {
             const name = STRATEGY_MENU.find((m) => m.id === selected)?.name ?? "That strategy";
@@ -488,8 +485,7 @@ function StrategyResults({
               {card(st)}
             </section>
           );
-        })()
-      )}
+        })()}
 
       <div className="mt-10">
         <AwardHistoryPanel bidPack={bidPack} seniority={seniority} user={user} rankedLineIds={rankedLineIds} />

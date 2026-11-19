@@ -35,6 +35,7 @@ describe("the vacation as a line's pictures draw it", () => {
     expect(mark.pieces[0].start).toBe(10 * 1440 + 90);
     // Trip 202 (day 14) is under it: its report is marked to fade.
     expect(mark.removedStarts).toEqual([14 * 1440 + 8 * 60]);
+    expect(mark.removedDays).toEqual([14]);
   });
 
   it("slid, it's drawn where it's slid to, with where the pack had it, and its reach still counted from there", () => {

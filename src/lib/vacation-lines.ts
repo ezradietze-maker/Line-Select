@@ -13,7 +13,7 @@ import type { SeniorityInput } from "@/types/strategy";
  * A regular-line holder's vacation, as awarded, on every line of the bid month, so the line is scored as it will fly.
  * CBA 2026 7.G.1, every bid period: "A regular line holder shall be removed from a trip(s) in conflict with the pilot's
  * vacation period", and "The SCH value of the removed trip(s) shall be deducted from the pilot's vacation credit hour
- * bank". So a removed trip is off the line but still paid. Slides are the slide finder's job (`vacation-slide.ts`); this
+ * bank". So a removed trip is off the line but still paid. Slides are placed by `vacation-engine.ts`, passed here as a `placement`; this
  * takes the vacation where it stands. Secondary and reserve lines are charged another way (7.G.2, 7.G.3) and aren't ranked.
  *
  * What the pilot wants done with it is theirs to say:
