@@ -43,7 +43,7 @@ import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, TIMELINE_LEFT_W, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
-import { setRailCollapsed } from "@/lib/rail";
+import { railFoldKept, setRailCollapsed } from "@/lib/rail";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { heatModelOf } from "@/lib/line-heat";
 import { cityGradesOf } from "@/lib/ask-pack-run";
@@ -874,16 +874,17 @@ export function ResultsView({
   const leftW = stripView === "timeline" ? TIMELINE_LEFT_W : undefined;
   const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length, textScale, leftW)), [printing, listWidth, columns.length, textScale, leftW]);
   // The sidebar folds while the Timeline shows, for the days' room, and comes back as it was when the Timeline goes (or
-  // this page does). Opened again by the pilot while it shows, it stays open.
+  // this page does). Opened again by the pilot while it shows, it stays open; folded again by them, it stays folded. Not
+  // kept as their choice: kept, a reload on the Timeline left the sidebar folded on every page after, and on the Bid pack.
   const railFoldedHere = useRef(false);
   useEffect(() => {
     if (stripView !== "timeline" || printing) return;
     if (document.documentElement.getAttribute("data-rail") !== "collapsed") {
-      setRailCollapsed(true);
+      setRailCollapsed(true, { keep: false });
       railFoldedHere.current = true;
     }
     return () => {
-      if (railFoldedHere.current && document.documentElement.getAttribute("data-rail") === "collapsed") setRailCollapsed(false);
+      if (railFoldedHere.current && document.documentElement.getAttribute("data-rail") === "collapsed" && !railFoldKept()) setRailCollapsed(false, { keep: false });
       railFoldedHere.current = false;
     };
   }, [stripView, printing]);
