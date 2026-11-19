@@ -674,10 +674,21 @@ export function ResultsView({
   // shows its true position in the full ranking, not a renumbered index into
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
+  // A non-member's ten are taken from the pilot's own order before tiers and pay-only order: taken after them, each line
+  // moved to Backup or Not bid brought the next one in, and the whole ranking could be walked ten at a time.
+  const previewRankById = useMemo(() => new Map(placed.map((r, i) => [r.line.id, i + 1] as const)), [placed]);
+  const isPreviewed = useCallback((id: string) => inPreview(previewRankById.get(id), previewLimit), [previewRankById, previewLimit]);
+  // The panels above the list name lines by their place: for a non-member, only the top of the ranking they can see.
+  const panelOrder = useMemo(() => {
+    const end = ranked.findIndex((r) => !isPreviewed(r.line.id));
+    return (end === -1 ? ranked : ranked.slice(0, end)).map((r) => r.line.lineNumber);
+  }, [ranked, isPreviewed]);
   useEffect(() => {
     if (!listReady) return;
-    setRankingSnapshot({ bidPackId: bidPack.id, byLineId: new Map(ranked.map((r, i) => [r.line.id, { rank: i + 1, score: r.score }])) });
-  }, [ranked, listReady, bidPack.id]);
+    // The ⌘K palette shows each line's place and Satisfaction Index from this: a non-member's, for their ten only.
+    const byLineId = new Map(ranked.flatMap((r, i) => (isPreviewed(r.line.id) ? [[r.line.id, { rank: i + 1, score: r.score }] as const] : [])));
+    setRankingSnapshot({ bidPackId: bidPack.id, byLineId });
+  }, [ranked, listReady, bidPack.id, isPreviewed]);
 
   // The pilot's chance at every line, given where their seniority number puts them in bid order — held until the ranking has settled, since it's a forecast of *this* ranking.
   const rankingLineIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
@@ -702,12 +713,12 @@ export function ResultsView({
     () =>
       ranked.filter(
         (r) =>
-          inPreview(rankById.get(r.line.id), previewLimit) &&
+          isPreviewed(r.line.id) &&
           lineMatchesFilters(r.line, filters, filterCtx) &&
           matchesLineSearch(r.line, search) &&
           (!hotelFilter || lineHasHotel(r.line, hotelFilter))
       ),
-    [ranked, filters, filterCtx, search, hotelFilter, previewLimit, rankById]
+    [ranked, filters, filterCtx, search, hotelFilter, isPreviewed]
   );
   // "Show the N lines you hid" counts only those it would bring into this view (`listedLines`).
   const { lines: listable, hiddenInView: hiddenMatchingCount } = useMemo(
@@ -1467,7 +1478,8 @@ export function ResultsView({
           response: forecast.result,
           loading: forecast.loading,
           failed: forecast.failed,
-          realisticCount: realisticIds.size,
+          // A non-member's view lists only their ten: the count is of those, not of the whole pack.
+          realisticCount: previewLimit === null ? realisticIds.size : [...realisticIds].filter(isPreviewed).length,
           showingRealistic: view === "realistic",
           onToggleRealistic: () => setView((v) => (v === "realistic" ? "all" : "realistic")),
           canShare: forecast.canShare,
@@ -1475,9 +1487,9 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
-      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
+      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} />
+      <VacationChoicePanel bidPack={bidPack} carry={carry} order={panelOrder} />
+      <BlockLimitsPanel pack={bidPack} flownPack={carry.flown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
