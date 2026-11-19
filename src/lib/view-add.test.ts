@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { NO_ELECTIONS, type CarryInTrip } from "@/lib/phase-in";
-import { MAX_CHOICES, buildViewAdd, busyFromCarry, busyFromTrip, claimTrips, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, tripKey, twoTripDutyLimitHours, viewAddCopyText, workStretches, type Busy } from "@/lib/view-add";
+import { MAX_CHOICES, buildViewAdd, pairingDate, busyFromCarry, busyFromTrip, claimTrips, fitCheck, lineWithAdded, overageCH, parseOpenTimeList, tripKey, twoTripDutyLimitHours, viewAddCopyText, workStretches, type Busy } from "@/lib/view-add";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -295,8 +295,30 @@ describe("buildViewAdd", () => {
     // With no combination there's nothing for a trip to fall back from: each said "A fallback if those go to someone senior".
     for (const c of plan.choices) expect(c.why).not.toMatch(/if those go/);
   });
-  it("copies as a numbered list", () => {
-    const text = viewAddCopyText({ choices: [{ text: "213 14OCT" }, { text: "214 15OCT" }] as never });
-    expect(text).toBe("1. 213 14OCT\n2. 214 15OCT");
+  it("copies as a numbered list, each preference as VIPS's make-up page takes it", () => {
+    const text = viewAddCopyText({ preferences: [{ vips: "501/09Dec,502/19Dec" }, { vips: "RES BLOCK A12" }] as never });
+    expect(text).toBe("1. 501/09Dec,502/19Dec\n2. RES BLOCK A12");
+  });
+  it("CBA 2026 25.E.4.a.v: bids the combinations whole first, then each trip alone, then the labels", () => {
+    const plan = build({ labels: "SIM 4" });
+    const combos = plan.combos.filter((c) => c.trips.length > 1);
+    expect(combos.length).toBeGreaterThan(0);
+    // Each combination is one preference, its trips written TRIP/DDMon and joined by commas.
+    plan.preferences.slice(0, combos.length).forEach((p, i) => {
+      expect(p.trips.map((t) => t.pairingNumber).sort()).toEqual(combos[i].trips.map((t) => t.pairingNumber).sort());
+      // In date order.
+      expect(p.trips.map((t) => t.startDayIndex)).toEqual([...p.trips.map((t) => t.startDayIndex)].sort((a, b) => (a ?? 0) - (b ?? 0)));
+      expect(p.vips).toMatch(/^\d+\/\d{2}[A-Z][a-z]{2}(,\d+\/\d{2}[A-Z][a-z]{2})+$/);
+      expect(p.why).toContain("All or none");
+    });
+    const singles = plan.preferences.slice(combos.length, -1);
+    expect(singles.every((p) => p.trips.length === 1 && p.choice !== null)).toBe(true);
+    expect(singles.map((p) => p.trips[0].pairingNumber)).toEqual(plan.choices.filter((c) => c.trip).map((c) => c.trip!.pairingNumber));
+    expect(plan.preferences.at(-1)).toMatchObject({ trips: [], vips: "SIM 4" });
+  });
+  it("writes a trip's date two digits, as the pairing pages date it", () => {
+    const plan = build();
+    const p501 = plan.preferences.find((p) => p.trips.length === 1 && p.trips[0].pairingNumber === "501")!;
+    expect(p501.vips).toBe(`501/${pairingDate(p501.trips[0], p)!.slice(8, 10)}Dec`);
   });
 });

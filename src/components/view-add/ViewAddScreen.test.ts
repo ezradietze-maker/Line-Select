@@ -6,8 +6,24 @@ import type { ViewAddChoice, ViewAddPlan } from "@/lib/view-add";
 import type { BidPack } from "@/types/bidpack";
 
 const choice = (n: number): ViewAddChoice => ({ trip: null, text: `${100 + n} 14OCT`, creditHours: 6, daysOffAfter: 14, why: "Fits.", check: [], inBest: false, score: null }) as ViewAddChoice;
-const plan = (choices: number): ViewAddPlan =>
-  ({ flown: { dropped: [] }, targetCH: 0, overCH: 0, combos: [], choices: Array.from({ length: choices }, (_, i) => choice(i)), ruledOut: [], notRead: [], notInPack: [], dateChecks: [], fromPackOnly: false, byModel: false }) as unknown as ViewAddPlan;
+const plan = (choices: number): ViewAddPlan => {
+  const all = Array.from({ length: choices }, (_, i) => choice(i));
+  return {
+    flown: { dropped: [] },
+    makeUp: { cia: 0, muv: 0 },
+    targetCH: 0,
+    overCH: 0,
+    combos: [],
+    choices: all,
+    preferences: all.map((c) => ({ trips: [], vips: c.text, totalCH: c.creditHours, why: c.why, choice: c })),
+    ruledOut: [],
+    notRead: [],
+    notInPack: [],
+    dateChecks: [],
+    fromPackOnly: false,
+    byModel: false,
+  } as unknown as ViewAddPlan;
+};
 
 describe("View/Add, printed", () => {
   it("prints the list it built, not a page with only the notes on it", () => {

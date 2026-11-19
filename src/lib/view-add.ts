@@ -17,8 +17,9 @@ import { prepareMetrics } from "@/lib/metrics/compute";
  * trip number (including date); (b) Reserve block label; and/or (c) Base simulator support event label", every bid period,
  * and they're "awarded in seniority order", so the list is a set of first choices and what to fall back on.
  *
- * We never send it. VIPS's make-up form (`webmmu`) needs its field names confirmed by a current pilot first, so the
- * pilot copies the list. Student make-up (SMU) joins View/Add from October 2027 (25.E.4.a.iii, Phase 4) and isn't handled.
+ * The list is preferences, each a set of trips awarded whole: the combinations first, then each trip alone to fall back
+ * on. Send to VIPS posts it to VIPS's make-up form (`vips-view-add.ts`), or the pilot copies it. Student make-up (SMU)
+ * joins View/Add from October 2027 (25.E.4.a.iii, Phase 4) and isn't handled.
  * Questions the text leaves open are in private/ex-pilot/step4-what-we-need-from-you.md.
  */
 
@@ -408,6 +409,27 @@ export function pairingDate(trip: Trip, pack: BidPack): string | null {
   return new Date(report + leg.startMinutes * 60_000).toISOString().slice(0, 10);
 }
 
+const VIPS_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * One trip as VIPS's make-up page takes it: its number and the date it's printed under, "2192/05Nov" — the day two
+ * digits, the month in three letters, the GMT date of its first departure as the pairing pages print it. Null without
+ * a number or a date.
+ */
+export function vipsTripText(trip: Trip, pack: BidPack): string | null {
+  const date = pairingDate(trip, pack);
+  if (!trip.pairingNumber || !date) return null;
+  const [, month, day] = date.split("-");
+  return `${trip.pairingNumber}/${day}${VIPS_MONTHS[Number(month) - 1]}`;
+}
+
+/** A set of trips as one preference, "2192/05Nov,2210/12Nov"; null if any of them can't be written. */
+export function vipsPreferenceText(trips: Trip[], pack: BidPack): string | null {
+  const parts = trips.map((t) => vipsTripText(t, pack));
+  return parts.length && parts.every((p) => p !== null) ? parts.join(",") : null;
+}
+
+
 export interface PastedEntry {
   raw: string;
   tripNumber: string;
@@ -532,6 +554,19 @@ export interface ViewAddChoice {
   score: number | null;
 }
 
+/** One preference as VIPS takes it: a set of trips awarded whole, or a label as the pilot typed it. */
+export interface ViewAddPreference {
+  /** Empty for a label. */
+  trips: Trip[];
+  /** What VIPS's make-up page takes ("2192/05Nov,2210/12Nov"), or the label; null when a trip has no number or date. */
+  vips: string | null;
+  totalCH: number;
+  /** One line on why it's here. */
+  why: string;
+  /** For one trip alone, the choice it is, with its checks. */
+  choice: ViewAddChoice | null;
+}
+
 export interface ViewAddCombo {
   trips: Trip[];
   totalCH: number;
@@ -545,11 +580,15 @@ export interface ViewAddCombo {
 
 export interface ViewAddPlan {
   flown: FlownLine;
+  /** What's owed of each kind: VIPS takes one kind a submission. */
+  makeUp: MakeUpHours;
   /** Make-up the pilot bids for, and how far past it a trip can go (25.L.6.e). */
   targetCH: number;
   overCH: number;
   combos: ViewAddCombo[];
   choices: ViewAddChoice[];
+  /** What to bid, in order: each combination whole, then each trip alone, then the labels; within VIPS's limit. */
+  preferences: ViewAddPreference[];
   /** Trips looked at and ruled out, with why. */
   ruledOut: { trip: Trip; why: string }[];
   /** Pasted lines we couldn't read or find in the pack. */
@@ -744,11 +783,32 @@ export function buildViewAdd(input: ViewAddInput): ViewAddPlan {
     choices.push({ trip: null, text: label, creditHours: 0, daysOffAfter: flown.line.daysOff, why: "As you typed it: we can't see reserve blocks or simulator events in the pack (CBA 2026 25.E.4.a.iv).", check: [], inBest: false, score: null });
   }
 
-  return { flown, targetCH: target, overCH: over, combos, choices, ruledOut, notRead: [...pasted.notRead, ...unclear], notInPack, dateChecks, fromPackOnly, byModel: !!model };
+  // VIPS works each pilot's list top-down and awards a preference whole (25.E.4.a.v: "awarded in seniority order"): a combination
+  // first, so its trips come together, then each trip alone if a senior pilot took part of it.
+  const preferences: ViewAddPreference[] = [];
+  const seen = new Set<string>();
+  const add = (p: ViewAddPreference) => {
+    const key = p.trips.length ? p.trips.map(tripKey).sort().join("+") : `label:${p.vips}`;
+    if (seen.has(key) || preferences.length >= MAX_CHOICES) return;
+    seen.add(key);
+    preferences.push(p);
+  };
+  combos.forEach((c, i) => {
+    if (c.trips.length < 2) return;
+    // In date order, as the pilot reads a month: the search finds them best-first.
+    const trips = [...c.trips].sort((a, b) => (a.startDayIndex ?? 0) - (b.startDayIndex ?? 0));
+    add({ trips, vips: vipsPreferenceText(trips, pack), totalCH: c.totalCH, why: `${i === 0 ? "Your best combination" : "A close alternative"}: ${hm(c.totalCH)} CH together, leaving ${c.daysOffAfter} days off. All or none.`, choice: null });
+  });
+  for (const c of choices) {
+    if (c.trip) add({ trips: [c.trip], vips: vipsTripText(c.trip, pack), totalCH: c.creditHours, why: c.why, choice: c });
+    else add({ trips: [], vips: c.text, totalCH: 0, why: c.why, choice: c });
+  }
+
+  return { flown, makeUp: { cia, muv }, targetCH: target, overCH: over, combos, choices, preferences, ruledOut, notRead: [...pasted.notRead, ...unclear], notInPack, dateChecks, fromPackOnly, byModel: !!model };
 }
 
-/** The list as plain text, for pasting into VIPS. */
-export function viewAddCopyText(plan: Pick<ViewAddPlan, "choices">): string {
-  return plan.choices.map((c, i) => `${i + 1}. ${c.text}`).join("\n");
+/** The list as plain text, for entering in VIPS by hand: each preference as the make-up page takes it. */
+export function viewAddCopyText(plan: Pick<ViewAddPlan, "preferences">): string {
+  return plan.preferences.map((p, i) => `${i + 1}. ${p.vips ?? p.trips.map((t) => `Trip ${t.pairingNumber ?? "?"}`).join(", ")}`).join("\n");
 }
 

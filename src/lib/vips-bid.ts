@@ -14,7 +14,7 @@
  * address on it; it is kept in this browser and goes nowhere but FedEx.
  */
 
-const VIPS_CGI = "https://pilot.fedex.com/vips-bin/vipscgi";
+export const VIPS_CGI = "https://pilot.fedex.com/vips-bin/vipscgi";
 
 /** VIPS's own review of the bid it currently holds — what the pilot checks after sending. */
 export const VIPS_BID_REVIEW_URL = `${VIPS_CGI}?webmbd`;
