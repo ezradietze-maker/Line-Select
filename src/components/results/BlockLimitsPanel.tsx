@@ -61,6 +61,8 @@ export function BlockLimitsPanel({
   const startWords = start.toFormat("LLL d");
 
   const byNumber = new Map(flownPack.lines.map((l) => [l.lineNumber, l]));
+  // A non-member's order is their ten (or a small pack's every line): "your top 20" would count lines it never checked.
+  const topCount = order.length ? Math.min(TOP, order.length) : TOP;
   const top = order.slice(0, TOP).flatMap((n) => {
     const line = byNumber.get(n);
     const fs = line ? findings.get(line.id) ?? [] : [];
@@ -79,12 +81,12 @@ export function BlockLimitsPanel({
           <h2 className="text-sm font-semibold text-ink">Flight-time limits</h2>
           <p className="mt-0.5 text-xs text-ink-muted">
             {over.length
-              ? `${over.length} of your top ${TOP} lines would go over a federal limit.`
+              ? `${over.length} of your top ${topCount} lines would go over a federal limit.`
               : top.length
-                ? `${top.length} of your top ${TOP} lines come close to a federal limit.`
+                ? `${top.length} of your top ${topCount} lines come close to a federal limit.`
                 : before.monthHours === undefined
                   ? `Add what you've flown in ${monthName} before ${startWords}, and your lines are checked against the 100-hour month.`
-                  : `None of your top ${TOP} lines comes near a limit we can check.`}
+                  : `None of your top ${topCount} lines comes near a limit we can check.`}
           </p>
         </div>
         <Button variant="ghost" className="shrink-0 px-2 py-1 text-xs" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
