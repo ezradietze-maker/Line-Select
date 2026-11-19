@@ -13,7 +13,8 @@ import { eventInstant } from "@/lib/bid-calendar";
 import { isSamplePack } from "@/lib/fake-trade-offers";
 import { formatHoursValue as hm } from "@/lib/interview-config";
 import { loadCarryIn } from "@/lib/carry-in-storage";
-import { buildViewAdd, pairingDate, viewAddCopyText, type ViewAddChoice, type ViewAddPlan } from "@/lib/view-add";
+import { buildViewAdd, pairingDate, viewAddCopyText, type ViewAddChoice, type ViewAddPlan, type ViewAddPreference } from "@/lib/view-add";
+import { SendViewAdd } from "@/components/view-add/SendViewAdd";
 import { placeInPack } from "@/lib/strategy-engine";
 import { vacationId } from "@/lib/vacation-lines";
 import { vacationsInReach } from "@/lib/vacation-slide";
@@ -40,6 +41,19 @@ function ChoiceRow({ choice, index, byModel, className = "" }: { choice: ViewAdd
           Check: {c}
         </span>
       ))}
+    </li>
+  );
+}
+
+/** A combination, bid whole; a single trip or a label reads as its choice does. */
+function PreferenceRow({ pref, index, byModel, dated, className = "" }: { pref: ViewAddPreference; index: number; byModel: boolean; dated: (t: Trip) => string; className?: string }) {
+  if (pref.choice) return <ChoiceRow choice={pref.choice} index={index} byModel={byModel} className={className} />;
+  return (
+    <li className={`text-xs text-ink-muted ${className}`}>
+      <span className="font-medium text-ink">
+        {index + 1}. {pref.trips.map(dated).join(" + ")}.
+      </span>{" "}
+      {pref.why}
     </li>
   );
 }
@@ -84,27 +98,48 @@ export function Plan({ plan, pack }: { plan: ViewAddPlan; pack?: BidPack }) {
           Also close: {plan.combos.slice(1).map((c) => `${c.trips.map(name).join(" and ")} (${hm(c.totalCH)} CH, ${c.daysOffAfter} days off)`).join("; ")}.
         </p>
       )}
+      {plan.targetCH > 0 && (
+        <div className="space-y-1 rounded-md border border-hairline p-3 text-xs leading-relaxed text-ink-muted" data-view-add-rules>
+          <p>
+            <span className="font-medium text-ink">What you can win back:</span> you&rsquo;re owed {hm(plan.targetCH)} CH, and a trip can take you up to{" "}
+            {plan.overCH} CH past it, so up to {hm(plan.targetCH + plan.overCH)} (CBA 2026 25.L.6.e).
+          </p>
+          <p>
+            <span className="font-medium text-ink">Why the order matters:</span> VIPS goes down the seniority list and tries each pilot&rsquo;s
+            choices in the order entered (25.E.4.a.v). So your best combination is tried first, whole; if someone senior took one of its trips, the
+            next one is, and then each trip on its own.
+          </p>
+          <p>
+            <span className="font-medium text-ink">Pay:</span>
+            {plan.makeUp.cia > 0 ? " a phase-in make-up (CIA) trip pays its trip guarantee once it's awarded (4.P.1)." : ""}
+            {plan.makeUp.muv > 0
+              ? " A vacation make-up (MUV) trip pays only if you fly it; dropped through VIPS more than 3 hours before show, it pays nothing (4.P.2)."
+              : ""}
+          </p>
+        </div>
+      )}
 
-      {plan.choices.length > 0 && (
+      {plan.preferences.length > 0 && (
         <>
           <ol className="space-y-1.5">
             {/* Printed whole: the sheet has no "Show all", and a list cut at 15 read as the whole of it. */}
-            {plan.choices.map((c, i) => (
-              <ChoiceRow key={`${c.text}-${i}`} choice={c} index={i} byModel={plan.byModel} className={!all && i >= CHOICES_SHOWN ? "hidden print:block" : ""} />
+            {plan.preferences.map((p, i) => (
+              <PreferenceRow key={`${p.vips}-${i}`} pref={p} index={i} byModel={plan.byModel} dated={dated} className={!all && i >= CHOICES_SHOWN ? "hidden print:block" : ""} />
             ))}
           </ol>
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={copy}>
               Copy my list
             </Button>
-            {plan.choices.length > CHOICES_SHOWN && (
+            {plan.preferences.length > CHOICES_SHOWN && (
               <Button variant="ghost" className="px-2 py-1 text-xs" onClick={() => setAll((v) => !v)}>
-                {all ? "Show fewer" : `Show all ${plan.choices.length}`}
+                {all ? "Show fewer" : `Show all ${plan.preferences.length}`}
               </Button>
             )}
             {copied === "yes" && <span className="text-xs text-ink-muted">Copied.</span>}
           </div>
           {copied === "no" && <textarea readOnly aria-label="Your list, to copy" className={`${FIELD} h-32 w-full text-xs print:hidden`} value={viewAddCopyText(plan)} />}
+          {pack && <SendViewAdd plan={plan} pack={pack} />}
         </>
       )}
 
@@ -162,7 +197,7 @@ export function ViewAddScreen({ bidPack, seniority, profile, userId, onGoToUploa
   return <ViewAddBuilder key={bidPack.id} bidPack={bidPack} seniority={seniority} profile={profile} userId={userId} />;
 }
 
-/** What to bid in View/Add once the award's in: the open trips legal on the pilot's line, the combination that wins back the hours, and the list to copy. Nothing is sent to VIPS from here. */
+/** What to bid in View/Add once the award's in: the open trips legal on the pilot's line, the combination that wins back the hours, and the list to send or copy. */
 function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidPack; seniority: SeniorityInput | null; profile: PreferenceProfile | null; userId: string | null }) {
   const logged = useMemo(() => (profile?.logbook ?? []).find((m) => m.month === bidPack.month && m.outcome === "line")?.lineNumber ?? "", [profile?.logbook, bidPack.month]);
   const [lineNumber, setLineNumber] = useState(logged);
@@ -270,10 +305,10 @@ function ViewAddBuilder({ bidPack, seniority, profile, userId }: { bidPack: BidP
               </a>{" "}
               during the View/Add window{opensAt ? ` (it opens ${DateTime.fromISO(opensAt, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'")})` : ""}, and go to your make-up bids.
             </li>
-            <li>Enter each choice in order: by trip number with its date, reserve block label or simulator event label (CBA 2026 25.E.4).</li>
+            <li>Enter each choice in order: by trip number with its date, reserve block label or simulator event label (CBA 2026 25.E.4). Or use Send to VIPS above, which fills them in.</li>
             <li>Check the trip&rsquo;s date against VIPS: we show the pairing page&rsquo;s date, which can be a day off the line grid&rsquo;s.</li>
           </ol>
-          <p className="mt-1 text-ink-faint">We don&rsquo;t send this for you yet: a current pilot has to confirm VIPS&rsquo;s form first. Our reading of the contract, not an official award.</p>
+          <p className="mt-1 text-ink-faint">Our reading of the contract, not an official award.</p>
         </div>
       </section>
 
