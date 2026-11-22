@@ -3,7 +3,7 @@ import { mealWords } from "./meals";
 
 describe("mealWords", () => {
   it("says each code the ex-pilot explained", () => {
-    expect(["S", "DS", "BS", "DH", "BH"].map(mealWords)).toEqual(["Snack", "Dinner snack", "Breakfast snack", "Dinner hot", "Breakfast hot"]);
+    expect(["DS", "BS", "DH", "BH"].map(mealWords)).toEqual(["Dinner snack", "Breakfast snack", "Dinner hot", "Breakfast hot"]);
   });
 
   it("reads two meals in order, and leaves the trailing I aside", () => {

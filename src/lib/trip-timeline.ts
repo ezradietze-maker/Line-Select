@@ -143,6 +143,11 @@ export interface TimelineDay {
    * has no segments to anchor a zone to.
    */
   zuluRulerLabel?: string;
+  /**
+   * The trip view's days in the order they're lived (`buildLivedDays`): set on the row that starts just after a flight
+   * east across the date line, the same date again on the arrival side's clock — with how far the clock went back.
+   */
+  again?: { jumpMinutes: number };
 }
 
 function formatHHMM(hhmm: string): string {
@@ -802,6 +807,89 @@ export function buildDateLineDays(trip: Trip): TimelineDay[] {
       segments.push(before !== null && start < before ? { ...piece, secondPass: true } : piece);
     }
     days.push({ dayNumber: d, segments, date: base.plus({ days: d - 1 }).toISODate() ?? undefined });
+  }
+  return days;
+}
+
+/**
+ * A trip across the date line for the trip view, one row per day in the order the pilot lives them — never running
+ * back up the page. Each piece is on its own airport's local date and clock, as on the month calendar
+ * (`buildDateLineDays`), and west across the line it's the same: the flight bold for its real length, the clock's jump
+ * a squiggle (`dateLineJump`).
+ *
+ * East across the line the calendar draws a diagonal back to the earlier date; here the flight is simply cut where it
+ * crosses (`dateLineLeg: "before"`) and carries on, on the next row, from that same moment on the arrival side's clock
+ * (`"after"`) — a row for the date lived a second time (`again`), "Thu 8" after "Fri 9". Everything after the crossing
+ * follows on from there.
+ */
+export function buildLivedDays(trip: Trip): TimelineDay[] {
+  const raw = buildRawSegments(trip, "local").filter((s) => s.kind !== "sleep");
+  const home = trip.schedule[0]?.legs[0]?.depAirport;
+  if (raw.length === 0 || !home) return [];
+  const base = localDayStart(raw[0].zuluStart, home);
+  if (!base) return [];
+  const abs = (p: LocalInstant) => (p.dayIndex - 1) * MINUTES_PER_DAY + p.minuteOfDay;
+
+  /** A stretch of the trip between two eastbound crossings: its pieces, laid out on the local clocks. */
+  interface Piece {
+    seg: RawSegment;
+    start: number;
+    end: number;
+    leg?: "before" | "after";
+  }
+  const sheets: { pieces: Piece[]; again: number | null }[] = [{ pieces: [], again: null }];
+  for (const seg of [...raw].sort((a, b) => Date.parse(a.zuluStart) - Date.parse(b.zuluStart) || Date.parse(a.zuluEnd) - Date.parse(b.zuluEnd))) {
+    const startAt = toLocalInstant(seg.zuluStart, seg.startAirport, base);
+    const endAt = toLocalInstant(seg.zuluEnd, seg.endAirport, base);
+    if (!startAt || !endAt) continue;
+    const start = abs(startAt);
+    const end = abs(endAt);
+    const flight = seg.kind === "flying" || seg.kind === "deadhead";
+    if (flight && end < start) {
+      // Minutes into the flight it crosses 180°, on the departure side's clock; then the same moment on the arrival side's.
+      const length = (Date.parse(seg.zuluEnd) - Date.parse(seg.zuluStart)) / 60_000;
+      const into = seg.dateLine ? Math.min(Math.max((Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000, 0), length) : 0;
+      const dep = start + into;
+      const arr = end - (length - into);
+      sheets.at(-1)!.pieces.push({ seg, start, end: dep, leg: "before" });
+      sheets.push({ pieces: [{ seg, start: arr, end, leg: "after" }], again: seg.dateLine?.jumpMinutes ?? arr - dep });
+      continue;
+    }
+    sheets.at(-1)!.pieces.push({ seg, start, end });
+  }
+
+  const dayOf = (m: number) => Math.floor(m / MINUTES_PER_DAY) + 1;
+  const days: TimelineDay[] = [];
+  for (const sheet of sheets) {
+    if (sheet.pieces.length === 0) continue;
+    const first = dayOf(Math.min(...sheet.pieces.map((p) => p.start)));
+    const last = Math.max(first, ...sheet.pieces.map((p) => dayOf(Math.max(p.start, p.end - 1e-9))));
+    for (let d = first; d <= last; d++) {
+      const dayStart = (d - 1) * MINUTES_PER_DAY;
+      const dayEnd = dayStart + MINUTES_PER_DAY;
+      const segments: TimelineSegment[] = [];
+      for (const { seg, start, end, leg } of sheet.pieces) {
+        // The piece of [start, end] on this day, if any — one ending at midnight belongs to the day before.
+        if (dayOf(start) > d || dayOf(Math.max(start, end - 1e-9)) < d) continue;
+        if (leg && end <= start) continue;
+        const piece = toTimelineSegment(seg, Math.max(start, dayStart) - dayStart, Math.min(end, dayEnd) - dayStart, start < dayStart, end > dayEnd);
+        if (leg) piece.dateLineLeg = leg;
+        // West across the date line: bold up to where it crosses, the clock's jump a squiggle, then the rest of the flight.
+        if (!leg && seg.dateLine?.direction === "west" && seg.dateLine.jumpMinutes > 0) {
+          const jumpFrom = start + (Date.parse(seg.dateLine.crossesAt) - Date.parse(seg.zuluStart)) / 60_000 - dayStart;
+          const a = Math.max(piece.startMinuteOfDay, jumpFrom);
+          const b = Math.min(piece.endMinuteOfDay, jumpFrom + seg.dateLine.jumpMinutes);
+          if (b > a) piece.dateLineJump = { start: a, end: b };
+        }
+        segments.push(piece);
+      }
+      days.push({
+        dayNumber: days.length + 1,
+        segments,
+        date: base.plus({ days: d - 1 }).toISODate() ?? undefined,
+        ...(sheet.again !== null && d === first ? { again: { jumpMinutes: sheet.again } } : {}),
+      });
+    }
   }
   return days;
 }

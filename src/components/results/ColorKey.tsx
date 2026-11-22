@@ -35,7 +35,8 @@ function Item({ swatch, label }: { swatch: ReactNode; label: string }) {
   );
 }
 
-export function ColorKey({ variant, className = "" }: { variant: "calendar" | "trip"; className?: string }) {
+/** `dateLine`: on a trip's key, whether the trip crosses the date line — its two marks are explained only then. */
+export function ColorKey({ variant, className = "", dateLine = false }: { variant: "calendar" | "trip"; className?: string; dateLine?: boolean }) {
   const trip = variant === "trip";
   return (
     <div className={`flex flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="What the colors mean">
@@ -54,9 +55,21 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
         />
       )}
       <Item swatch={<Line tone="bg-rest" />} label="Crew-rest hotel at a hub" />
-      {!trip && (
+      {trip && dateLine && (
+        <Item
+          swatch={
+            <svg aria-hidden width="30" height="12" className="shrink-0 overflow-visible text-leg">
+              <line x1="1" y1="6" x2="11" y2="6" stroke="currentColor" strokeWidth="3" />
+              <polyline points="11,1 13,11 15,1 17,11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+              <line x1="17" y1="6" x2="29" y2="6" stroke="currentColor" strokeWidth="3" />
+            </svg>
+          }
+          label="Date line eastbound (−h: the next row is the same date again)"
+        />
+      )}
+      {(!trip || dateLine) && (
         <>
-          <Item
+          {!trip && <Item
             swatch={
               <svg aria-hidden width="26" height="12" className="shrink-0 overflow-visible text-leg">
                 <line x1="17" y1="2" x2="25" y2="2" stroke="currentColor" strokeWidth="3" />
@@ -65,7 +78,7 @@ export function ColorKey({ variant, className = "" }: { variant: "calendar" | "t
               </svg>
             }
             label="Date line eastbound (−h: clock goes back)"
-          />
+          />}
           <Item
             swatch={
               <svg aria-hidden width="26" height="10" className="shrink-0 overflow-visible text-leg">

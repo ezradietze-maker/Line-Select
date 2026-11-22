@@ -142,6 +142,9 @@ export function pairingToTrip(pairing: ParsedPairing, bidPackMonth: string): Tri
     schedule: anchorSchedule(pairing.schedule, anchor),
     zuluAnchor: anchor,
     startDayIndex: null,
+    ...(pairing.crew ? { crew: pairing.crew } : {}),
+    ...(pairing.effectiveText ? { effectiveText: pairing.effectiveText } : {}),
+    ...(pairing.operatesOn?.length ? { operatesOn: pairing.operatesOn } : {}),
   };
   return { ...trip, days: realCalendarDaySpan(trip, pairing.days) };
 }

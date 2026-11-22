@@ -5,10 +5,12 @@ import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
 import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { mealWords } from "@/lib/meals";
+import { legColumns } from "@/lib/pairing-header";
+import { jumpLabel } from "@/components/results/LegBars";
 import { standbyPlace } from "@/lib/standby";
 import { reportsFromHome } from "@/lib/trip-anchor";
 import { equipmentLabel, hm } from "@/lib/trip-day-stats";
-import type { TimeMode, TimelineDay } from "@/lib/trip-timeline";
+import type { TimeMode, TimelineDay, TimelineSegment } from "@/lib/trip-timeline";
 import type { Trip, TripDutyPeriod, TripLeg } from "@/types/bidpack";
 import type { HotelResult } from "@/types/hotel";
 
@@ -82,7 +84,8 @@ export function dutyStart(trip: Trip, index: number, mode: TimeMode): { kind: "R
   return printed ? { kind: "Pickup", text: `${clock(printed)}${mode === "zulu" ? "Z" : "L"}` } : null;
 }
 
-function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripLeg | undefined }) {
+function LegRow({ leg, mode, next, dateLine }: { leg: TripLeg; mode: TimeMode; next: TripLeg | undefined; dateLine?: TimelineSegment["dateLine"] }) {
+  const { meal, supplemental } = legColumns(leg);
   if (leg.isStandby) {
     return (
       <li className="text-ink">
@@ -106,9 +109,14 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
             <span className="font-mono text-readout">{hm(leg.blockHours * 60)}</span> block
           </span>
         )}
-        {leg.meal && (
-          <span className="text-ink-muted" title={`Meal code ${leg.meal}`}>
-            {mealWords(leg.meal)} <span className="font-mono text-2xs text-ink-faint">({leg.meal})</span>
+        {meal && (
+          <span className="text-ink-muted" title={`Meal code ${meal}`}>
+            {mealWords(meal)} <span className="font-mono text-2xs text-ink-faint">({meal})</span>
+          </span>
+        )}
+        {supplemental && (
+          <span className="rounded bg-ink/10 px-1 font-mono text-2xs font-semibold text-ink-muted" title="The pairing's S column: this leg is flown under Supplemental rules">
+            SUPP
           </span>
         )}
       </div>
@@ -116,6 +124,14 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
         <span className="font-semibold text-ink">{leg.depAirport}</span> <LegTime local={leg.depTimeLocal} gmt={leg.depTimeGmt} mode={mode} /> <span className="text-ink-faint">→</span>{" "}
         <span className="font-semibold text-ink">{leg.arrAirport}</span> <LegTime local={leg.arrTimeLocal} gmt={leg.arrTimeGmt} mode={mode} />
       </div>
+      {dateLine && (
+        <div className="mt-0.5 font-mono font-semibold text-leg">
+          IDL {dateLine.direction === "east" ? "eastbound" : "westbound"} {jumpLabel(dateLine.jumpMinutes)}
+          <span className="font-sans font-normal text-ink-muted">
+            {dateLine.direction === "east" ? " · the local clock goes back: you land on an earlier date than the takeoff's" : " · the local clock jumps ahead: you land on a later date than the hours flown"}
+          </span>
+        </div>
+      )}
       {leg.dayRoomHotel && next && (
         <div className="mt-0.5 text-ink-muted">
           <span className="font-mono font-semibold text-rest">Rest HTL {leg.arrAirport}</span> <span className="font-mono text-readout">{hm(next.startMinutes - leg.endMinutes)}</span>{" "}
@@ -231,8 +247,18 @@ export function TripDayDetail({ trip, day, mode, ratings }: { trip: Trip; day: T
         const departs = (leg: TripLeg) =>
           leg.isStandby
             ? pieces.some((s) => s.kind === "standby" && !s.continuesFromPreviousDay)
-            : pieces.some((s) => s.leg && s.leg.flightNumber === leg.flightNumber && s.leg.dep === leg.depAirport && !s.continuesFromPreviousDay);
-        const touches = (leg: TripLeg) => pieces.some((s) => s.leg && s.leg.flightNumber === leg.flightNumber && s.leg.dep === leg.depAirport);
+            : pieces.some(
+                (s) =>
+                  s.leg &&
+                  s.leg.flightNumber === leg.flightNumber &&
+                  s.leg.dep === leg.depAirport &&
+                  !s.continuesFromPreviousDay &&
+                  // East across the date line a flight is drawn in pieces, the landing's back on an earlier day: it's read on the day it takes off.
+                  s.dateLineLeg !== "after" &&
+                  s.dateLineBack?.part !== "arrival"
+              );
+        const touches = (leg: TripLeg) =>
+          pieces.some((s) => s.leg && s.leg.flightNumber === leg.flightNumber && s.leg.dep === leg.depAirport && s.dateLineBack?.part !== "arrival");
         const stay = pieces.find((s) => s.kind === "layover");
         let shown = duty.legs.map((leg, i) => (departs(leg) ? i : -1)).filter((i) => i >= 0);
         if (shown.length === 0 && !stay) shown = duty.legs.map((leg, i) => (touches(leg) ? i : -1)).filter((i) => i >= 0);
@@ -271,7 +297,13 @@ export function TripDayDetail({ trip, day, mode, ratings }: { trip: Trip; day: T
                 </div>
                 <ul className="mt-1 space-y-1.5">
                   {shown.map((i) => (
-                    <LegRow key={i} leg={duty.legs[i]} mode={mode} next={duty.legs[i + 1]} />
+                    <LegRow
+                      key={i}
+                      leg={duty.legs[i]}
+                      mode={mode}
+                      next={duty.legs[i + 1]}
+                      dateLine={pieces.find((s) => s.dateLine && s.leg?.flightNumber === duty.legs[i].flightNumber && s.leg.dep === duty.legs[i].depAirport)?.dateLine}
+                    />
                   ))}
                 </ul>
               </>

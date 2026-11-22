@@ -62,8 +62,10 @@ export interface ScheduledLeg {
   endMinutes: number;
   /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
   dayRoomHotel?: string;
-  /** The MEAL column as printed ("S", "DH/BH", "BSI"…) — absent when the column is blank. See `lib/meals.ts`. */
+  /** The MEAL column as printed ("DH/BH", "BSI"…) — absent when the column is blank. See `lib/meals.ts`. */
   meal?: string;
+  /** The S column: flown under Supplemental rules, as the pairing pages' legend says. Absent when not printed. */
+  supplemental?: boolean;
 }
 
 /** A duty's own totals, as the pairing prints them on its last row: BLOCK, CREDIT and DUTY, in hours. */
