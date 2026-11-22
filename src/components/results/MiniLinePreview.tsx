@@ -551,13 +551,17 @@ export function fmtRuns(runs: number[]): string {
   return `${runs.slice(0, -1).join(", ")} and ${runs[runs.length - 1]}`;
 }
 
-/** One fact: its name on the left, the value beside it, every row on the same two columns so the box reads as one list. */
+/**
+ * One fact: its name on the left, the value beside it, every row on the same two columns so the box reads as one list.
+ * Where both won't fit side by side (a phone with its text set larger) the value goes under its name: a fixed name column
+ * left the value a few pixels at 200% text, one letter a row.
+ */
 function Row({ label, children, tone = "", labelTone = "text-ink-faint", full = false }: { label: ReactNode; children: ReactNode; tone?: string; labelTone?: string; full?: boolean }) {
   return (
-    <div className={`grid min-w-0 grid-cols-[7.25rem_minmax(0,1fr)] items-baseline gap-x-2 ${full ? "sm:col-span-2" : ""}`}>
+    <div className={`flex min-w-0 flex-wrap items-baseline gap-x-2 ${full ? "sm:col-span-2" : ""}`}>
       {/* Wraps rather than cutting off: at 200% text "Days off in a row" lost its last words. */}
-      <dt className={`text-2xs font-medium ${labelTone}`}>{label}</dt>
-      <dd className={`min-w-0 break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{children}</dd>
+      <dt className={`w-[7.25rem] max-w-full shrink-0 text-2xs font-medium ${labelTone}`}>{label}</dt>
+      <dd className={`min-w-0 flex-1 basis-24 break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{children}</dd>
     </div>
   );
 }
@@ -751,8 +755,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   return (
     <div>
       {!compact && (
-        <div className="mb-1.5 flex items-center justify-between gap-2 print:hidden">
-          <span className="min-w-0 text-2xs leading-tight text-ink-faint">
+        // Zulu/Local goes under the words where both won't fit: at 200% text on a 320 px phone it ran off the side.
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <span className="min-w-0 flex-1 basis-24 text-2xs leading-tight text-ink-faint">
             {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The domicile's"} calendar days · times local`}
           </span>
           <TimeModeToggle mode={mode} onChange={setMode} />

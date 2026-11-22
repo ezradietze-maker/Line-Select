@@ -854,10 +854,12 @@ function LinePartToggle({ label, hint, open, onClick, part }: { label: string; h
       onClick={onClick}
       aria-expanded={open}
       data-line-part={part}
-      className={`flex w-full items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors print:hidden ${open ? "border-accent/60 bg-accent/5" : "border-hairline bg-canvas/40 hover:border-border-strong"}`}
+      className={`flex w-full flex-wrap items-center gap-x-2 rounded-md border px-3 py-2 text-left text-sm transition-colors print:hidden ${open ? "border-accent/60 bg-accent/5" : "border-hairline bg-canvas/40 hover:border-border-strong"}`}
     >
-      <span className="font-medium text-ink">{label}</span>
-      <span className="min-w-0 truncate text-ink-muted">{hint}</span>
+      <span className="shrink-0 font-medium text-ink">{label}</span>
+      {/* Wraps rather than cutting off: on a phone the vacation's "takes off 1 trip" was lost behind "…". Too narrow even
+          for that (large text), it goes under the name. */}
+      <span className="min-w-0 flex-1 basis-24 text-ink-muted">{hint}</span>
       <ChevronDownIcon className={`ml-auto h-4 w-4 shrink-0 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
     </button>
   );

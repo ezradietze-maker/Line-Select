@@ -68,8 +68,9 @@ export function CarryInPanel({ bidPack, profile, carry, order, bare = false }: {
 
   return (
     <section aria-label="Carry-in from last month" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      {/* Close goes under the words where both won't fit (a phone with large text), as Flight-time limits' does. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-40">
           <h2 className="text-sm font-semibold text-ink">Carry-in from last month</h2>
           <p className="mt-0.5 text-xs text-ink-muted">
             {state.items.length
