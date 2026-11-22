@@ -18,3 +18,13 @@ export function setRankingSnapshot(snapshot: RankingSnapshot): void {
 export function rankingSnapshotFor(bidPackId: string): RankingSnapshot | null {
   return latest && latest.bidPackId === bidPackId ? latest : null;
 }
+
+/**
+ * The lines ⌘K may offer by number: all of them to a member; to a pilot without a membership (`rankedOnly`), only the
+ * ones their snapshot holds, their top ten, and none before the rankings have been worked out. Every line was listed,
+ * though picking one past the ten opened nothing.
+ */
+export function linesToOffer<L extends { id: string }>(lines: L[], snapshot: RankingSnapshot | null, rankedOnly: boolean): L[] {
+  if (!rankedOnly) return lines;
+  return snapshot ? lines.filter((l) => snapshot.byLineId.has(l.id)) : [];
+}
