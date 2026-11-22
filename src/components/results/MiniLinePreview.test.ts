@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chainSentence } from "@/components/results/MiniLinePreview";
+import { chainSentence, fmtRuns } from "@/components/results/MiniLinePreview";
 import { buildDetailedMonth } from "@/lib/month-detail";
 import { SAMPLE_BID_PACK, sampleLineOn } from "@/lib/sample-bidpack";
 
@@ -22,5 +22,14 @@ describe("why two trips are one departure", () => {
     const chain = { fromTripNumber: "101", city: "MEM", turnMinutes: 9 * 60, landed: "06:00", reports: "15:00", homeHours: null };
     expect(chainSentence(chain)).toBe("Follows trip #101 after 9h00 in MEM: lands MEM 06:00, reports again 15:00 (L). Under 12 hours between them, so the two count as one departure.");
     expect(chainSentence({ ...chain, homeHours: undefined })).toContain("have 24 hours there");
+  });
+});
+
+describe("days off in a row, said", () => {
+  it("names each stretch in words, not dots: '7 · 7' read as a typo", () => {
+    expect(fmtRuns([])).toBe("none");
+    expect(fmtRuns([12])).toBe("12");
+    expect(fmtRuns([7, 7])).toBe("7 and 7");
+    expect(fmtRuns([10, 3, 5])).toBe("10, 3 and 5");
   });
 });
