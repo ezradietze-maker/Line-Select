@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-21",
+    title: "A tidier My Rankings",
+    body: "Your lines now start near the top. This month's bid is one line (open Details for the countdown and steps), your vacation, carry-in and flight time sit under \"Your month\" with a mark when one needs you, and one toolbar holds the search (ask your pack, or type a line number), sort, views and the strip switch. Tiers, the colour key, how scores work and swap settings are under ⋯.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-21",
     title: "Swap two lines, and the rest stay put",
     body: "Swap two lines and only those two move: the rest of your list stays where you left it, while each swap still teaches your ranking. When what you've taught would move other lines, a note says how many, and \"Re-sort with what I've taught\" lets them move, your swaps kept, with Undo. Rather have the list re-sort after every swap? Turn off \"Keep the rest of my list where it is\" above your lines.",
     href: "/results",

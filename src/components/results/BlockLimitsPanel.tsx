@@ -33,6 +33,23 @@ export function useBlockFindings(pack: BidPack, before: FlownSoFar): Map<string,
 }
 
 /**
+ * The flight-time limits in a few words, for "Your month"'s tab: lines in the pilot's top that go over (said as needing
+ * them) or come close, else whether they've told us what they've flown.
+ */
+export function limitSummary(flownPack: BidPack, order: string[], before: FlownSoFar, findings: Map<string, LimitFinding[]>): { text: string; attention: boolean } {
+  const byNumber = new Map(flownPack.lines.map((l) => [l.lineNumber, l]));
+  const top = order.slice(0, TOP).flatMap((n) => {
+    const line = byNumber.get(n);
+    const fs = line ? findings.get(line.id) ?? [] : [];
+    return fs.length ? [fs[0]] : [];
+  });
+  const over = top.filter((f) => f.level === "over").length;
+  if (over) return { text: `${over} top line${over === 1 ? "" : "s"} over a limit`, attention: true };
+  if (top.length) return { text: `${top.length} top line${top.length === 1 ? "" : "s"} close to a limit`, attention: false };
+  return { text: before.monthHours === undefined ? "Not set" : "All clear", attention: false };
+}
+
+/**
  * The federal flight-time limits (14 CFR 121.471, 121.481) against each line, with what the pilot has flown before the
  * bid period: the 100 hours in a calendar month the period starts in needs their own count. Says only where a line goes
  * over or comes close; a line that stays clear isn't promised to, since only this pack's flying is known.
@@ -43,7 +60,10 @@ export function BlockLimitsPanel({
   order,
   before,
   findings,
+  bare = false,
 }: {
+  /** Inside "Your month"'s drawer: its frame, and opened, since the drawer was the click to see it. */
+  bare?: boolean;
   pack: BidPack;
   /** The pack as the pilot will fly it, carry-in and vacations out: what the findings were worked from. */
   flownPack: BidPack;
@@ -51,7 +71,7 @@ export function BlockLimitsPanel({
   before: FlownSoFar;
   findings: Map<string, LimitFinding[]>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(bare);
   const [monthText, setMonthText] = useState(() => (before.monthHours !== undefined ? hhmm(before.monthHours) : ""));
   const [yearText, setYearText] = useState(() => (before.yearHours !== undefined ? hhmm(before.yearHours) : ""));
   if (!pack.bidPeriodStart) return null;
@@ -75,7 +95,7 @@ export function BlockLimitsPanel({
   };
 
   return (
-    <section aria-label="Flight-time limits" className="panel-glass mt-4 p-4 sm:p-5 print:hidden">
+    <section aria-label="Flight-time limits" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ink">Flight-time limits</h2>

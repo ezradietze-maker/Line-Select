@@ -2,7 +2,7 @@
 
 import { apiFetch } from "@/lib/shown-account";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { SearchIcon } from "@/components/ui/icons";
 import { askPackExamples } from "@/lib/ask-pack-examples";
@@ -23,8 +23,28 @@ const SHOWN = 12;
  * use — the question is only read into conditions (`/api/brain/ask`); every line is measured here, and each answer
  * shows the figures it was kept on.
  */
-export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bidPack: BidPack; profile: PreferenceProfile; rankedIds: string[]; packMetrics: PackMetrics | null }) {
+export function AskPackPanel({
+  bidPack,
+  profile,
+  rankedIds,
+  packMetrics,
+  bare = false,
+  trailing,
+  onLineNumber,
+}: {
+  bidPack: BidPack;
+  profile: PreferenceProfile;
+  rankedIds: string[];
+  packMetrics: PackMetrics | null;
+  /** In the list's toolbar: no frame or heading, the list's other controls (`trailing`) beside the box. */
+  bare?: boolean;
+  trailing?: ReactNode;
+  /** A line number typed in the box finds that line in the list as it's typed (the old "Line #" box), rather than asking. */
+  onLineNumber?: (digits: string) => void;
+}) {
   const [question, setQuestion] = useState("");
+  const [focused, setFocused] = useState(false);
+  const isNumber = (t: string) => !!onLineNumber && /^\d{1,5}$/.test(t.trim());
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [found, setFound] = useState<{ query: AskQuery; lines: AskResultLine[] } | null>(null);
@@ -47,7 +67,7 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
 
   async function ask(q: string) {
     const text = q.trim();
-    if (!text) return;
+    if (!text || isNumber(text)) return;
     const id = ++latest.current;
     setAsking(true);
     setError(null);
@@ -81,42 +101,62 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
     return v === null || !def ? "—" : formatValue(v, { ...def, id: metric });
   };
 
-  return (
-    <section aria-label="Ask your pack" className="panel-glass mt-4 p-4 sm:p-5 print:hidden">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void ask(question);
-        }}
-        className="flex flex-col gap-2 sm:flex-row sm:items-center"
-      >
-        <label htmlFor="ask-pack" className="shrink-0 font-display text-base font-semibold text-ink">
-          Ask your pack
-        </label>
-        <div className="relative min-w-0 flex-1">
-          {asking ? (
-            // Reading the question: the search glass becomes a small radar, sweeping.
-            <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 overflow-hidden rounded-full border border-accent/50">
-              <span className="absolute inset-0 animate-[spin_1.6s_linear_infinite] rounded-[3px] motion-reduce:animate-none" style={{ background: "conic-gradient(from 0deg, transparent 0deg 270deg, var(--color-accent) 360deg)" }} />
-            </span>
-          ) : (
-            <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
-          )}
-          <input
-            id="ask-pack"
-            value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            maxLength={400}
-            placeholder={examples[0]}
-            className="w-full rounded-md border border-field-edge bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint"
-          />
-        </div>
+  const form = (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        void ask(question);
+      }}
+      className={bare ? "flex min-w-0 flex-1 basis-64 items-center gap-2" : "flex flex-col gap-2 sm:flex-row sm:items-center"}
+    >
+      <label htmlFor="ask-pack" className={bare ? "sr-only" : "shrink-0 font-display text-base font-semibold text-ink"}>
+        Ask your pack{onLineNumber ? ", or find a line by number" : ""}
+      </label>
+      <div className="relative min-w-0 flex-1">
+        {asking ? (
+          // Reading the question: the search glass becomes a small radar, sweeping.
+          <span aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 overflow-hidden rounded-full border border-accent/50">
+            <span className="absolute inset-0 animate-[spin_1.6s_linear_infinite] rounded-[3px] motion-reduce:animate-none" style={{ background: "conic-gradient(from 0deg, transparent 0deg 270deg, var(--color-accent) 360deg)" }} />
+          </span>
+        ) : (
+          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-faint" />
+        )}
+        <input
+          id="ask-pack"
+          value={question}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuestion(v);
+            // A number finds its line as it's typed; anything else leaves the list as it is until it's asked.
+            if (onLineNumber) onLineNumber(isNumber(v) ? v.trim() : "");
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          maxLength={400}
+          placeholder={bare ? (onLineNumber ? "Ask your pack, or type a line #" : "Ask your pack") : examples[0]}
+          className="w-full rounded-md border border-field-edge bg-surface py-2 pl-9 pr-3 text-sm text-ink placeholder:text-ink-faint"
+        />
+      </div>
+      {(!bare || (question.trim() && !isNumber(question))) && (
         <Button type="submit" disabled={asking || !question.trim()} className="shrink-0">
           {asking ? "Reading your pack…" : "Ask"}
         </Button>
-      </form>
+      )}
+    </form>
+  );
 
-      {!answer && !error && (
+  return (
+    <section aria-label="Ask your pack" className={bare ? "print:hidden" : "panel-glass mt-4 p-4 sm:p-5 print:hidden"}>
+      {bare ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {form}
+          {trailing}
+        </div>
+      ) : (
+        form
+      )}
+
+      {!answer && !error && (!bare || (focused && !question.trim())) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-ink-faint">
           Try:
           {examples.map((ex) => (
@@ -124,6 +164,8 @@ export function AskPackPanel({ bidPack, profile, rankedIds, packMetrics }: { bid
               key={ex}
               type="button"
               disabled={asking}
+              // Pressed before the box lets go of focus: in the toolbar the examples show only while it has it.
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 setQuestion(ex);
                 void ask(ex);

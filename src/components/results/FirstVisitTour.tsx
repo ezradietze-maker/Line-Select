@@ -19,8 +19,9 @@ import { lockScroll, overlayOpen } from "@/lib/scroll-lock";
 const DONE_KEY = "line-select:tour:results:v1";
 
 const STEPS: { target: string; title: string; body: string }[] = [
-  { target: 'section[aria-label="This month\'s bid"]', title: "Your bid at a glance", body: "When bidding closes, counted down — and the month's bid step by step. Tick \"bid entered\" when you've put it in the bid system." },
-  { target: 'section[aria-label="Ask your pack"]', title: "Ask your pack", body: "Ask in plain words — \"lines with Honolulu and no weekends worked\" — and get the pack's own lines back, with the figures behind each." },
+  { target: 'section[aria-label="This month\'s bid"]', title: "Your bid at a glance", body: "When bidding closes, counted down, and how far through the month's bid you are. Open Details for the steps: tick \"bid entered\" when you've put it in the bid system." },
+  { target: 'section[aria-label="Your month"]', title: "Your month", body: "Your vacation, what carries in from last month, and your flight-time limits. Open one to change it; a mark says when one needs you." },
+  { target: 'section[aria-label="Ask your pack"]', title: "Ask your pack", body: "Ask in plain words — \"lines with Honolulu and no weekends worked\" — and get the pack's own lines back, with the figures behind each. Type a line number to jump to it. Sorting, views and ⋯ for settings sit beside it." },
   { target: '[id^="line-"]', title: "Your lines, best first", body: "Each line reads like the bid pack's own page. Tap one for its whole month. Ranked something wrong? Drag its handle onto another line to swap them — that teaches the ranking." },
   { target: '[role="group"][aria-label="Your flying"]', title: "Beyond this bid", body: "Your layover cities, your logbook of awards, and tools like the world clock and commute planner live here." },
 ];

@@ -38,6 +38,7 @@ export function VacationChoicePanel({
   profile,
   onUpdateProfile,
   onSaveSeniority,
+  bare = false,
 }: {
   bidPack: BidPack;
   carry: CarryIn;
@@ -45,6 +46,8 @@ export function VacationChoicePanel({
   profile: PreferenceProfile;
   onUpdateProfile: (profile: PreferenceProfile) => void;
   onSaveSeniority?: (input: SeniorityInput) => void;
+  /** Inside "Your month"'s drawer, which is its frame. */
+  bare?: boolean;
 }) {
   const { state, update, flown, vacations } = carry;
   const zone = zoneOf(bidPack);
@@ -157,7 +160,7 @@ export function VacationChoicePanel({
   }
 
   return (
-    <section aria-label="Your vacation" className="panel-glass mt-4 p-4 sm:p-5 print:hidden" data-vacation-status={status}>
+    <section aria-label="Your vacation" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`} data-vacation-status={status}>
       <h2 className="text-sm font-semibold text-ink">Your vacation</h2>
       <div className="mt-1">{body}</div>
     </section>

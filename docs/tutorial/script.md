@@ -133,6 +133,8 @@ Approved Nov 15 2026. The narration and what's on screen for each chapter; the r
 
 ## 5. Reading your rankings (about 2 min)
 
+*(Re-record (Nov 21): the top of My Rankings is now a one-line bid bar, "Your month" tabs, and one toolbar with ⋯ for settings. The colour key and "How it's scored" moved into ⋯.)*
+
 **On screen.**
 - **The list:** "Your ranked lines", panning down the strips. The #1 line's score is shown, then its yellow "Top pick"
   sign.
@@ -187,6 +189,8 @@ Approved Nov 15 2026. The narration and what's on screen for each chapter; the r
 
 ## 7. Finding the lines you want (about 2 min)
 
+*(Re-record (Nov 21): "Ask your pack" and the Line # box are one search box in the toolbar (type a number to jump to a line), beside Sort, the views and the strip switch.)*
+
 **On screen.**
 - **Ask your pack:** "Lines with Paris and at least 14 days off" is typed, and the answer list appears.
 - **Sort:** "Sort: Best match" opens the sort list. A search for "body clock", the preview pane, then "Sort by this".
@@ -240,6 +244,8 @@ Approved Nov 15 2026. The narration and what's on screen for each chapter; the r
 ---
 
 ## 9. This month's bid: deadline, carry-in, vacation and your chances (about 2 min)
+
+*(Re-record (Nov 21): the deadline and steps open from the bid bar's Details; vacation, carry-in and flight time are drawers under "Your month".)*
 
 **On screen.**
 - **Deadline:** the "Bid closes" countdown, with "Remind me in my calendar".

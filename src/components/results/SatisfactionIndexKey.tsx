@@ -14,8 +14,8 @@ const SHOWN_PRIORITIES = 8;
  * Over the ranked list: what the two numbers beside each line are, and, a tap away, how a line's Satisfaction Index is
  * worked out from what the pilot told us (`lib/satisfaction-index.ts`, `scoring-v2/score.ts`).
  */
-export function SatisfactionIndexKey({ model, lines, best, worst }: { model: PilotModel | null | undefined; lines: number; best: number | null; worst: number | null }) {
-  const [open, setOpen] = useState(false);
+export function SatisfactionIndexKey({ model, lines, best, worst, defaultOpen = false }: { model: PilotModel | null | undefined; lines: number; best: number | null; worst: number | null; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const criteria = (model?.criteria ?? []).map((c) => ({ c, w: criterionWeight(c) })).sort((a, b) => b.w - a.w);
   const total = criteria.reduce((a, x) => a + x.w, 0) || 1;
   const limits = criteria.filter((x) => x.c.hardLimit);

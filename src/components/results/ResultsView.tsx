@@ -33,7 +33,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
-import { BlockLimitLineNote, BlockLimitsPanel, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
+import { BlockLimitLineNote, BlockLimitsPanel, limitSummary, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
 import { LineCard, type LineCardActions } from "@/components/results/LineCard";
@@ -128,6 +128,8 @@ import { bestPlacements } from "@/lib/vacation-engine";
 import { toEngineGoal } from "@/lib/vacation-goal";
 import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib/vacation-lines";
 import { VacationGoal } from "@/components/results/VacationGoal";
+import { YourMonth, carrySummary, vacationSummary } from "@/components/results/YourMonth";
+import { ListMenu, MenuAction, MenuCheck, MenuSection } from "@/components/results/ListMenu";
 import { VacationGainNote, VacationLineControl } from "@/components/results/VacationLineControl";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
@@ -200,6 +202,19 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
+/** The colour key over the lines, shown from the toolbar's ⋯ (off until the pilot turns it on), on this device. */
+const COLOUR_KEY_KEY = "line-select:show-colour-key:v1";
+function readColourKey(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(COLOUR_KEY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** The toolbar's small Undo and Redo. */
+const TOOL_SMALL = "min-h-10 rounded-md px-2 text-xs font-semibold text-accent underline-offset-2 hover:underline aria-disabled:cursor-default aria-disabled:text-ink-faint aria-disabled:no-underline";
+
 /** "Keep the rest of my list where it is when I swap": on unless the pilot turned it off on this device. */
 const HOLD_LIST_KEY = "line-select:swap-holds-list:v1";
 function readHoldList(): boolean {
@@ -406,6 +421,18 @@ export function ResultsView({
   const [askingOff, setAskingOff] = useState(readStopAsking);
   // "Keep the rest of my list where it is when I swap" (`HOLD_LIST_KEY`), and the list as it was before a re-sort, for Undo.
   const [holdList, setHoldList] = useState(readHoldList);
+  // From the toolbar's ⋯: tiers renamed or added, the colour key (kept on this device), how the index is scored.
+  const [managingTiers, setManagingTiers] = useState(false);
+  const [showColourKey, setShowColourKey] = useState(readColourKey);
+  const [showIndexGuide, setShowIndexGuide] = useState(false);
+  const chooseColourKey = (on: boolean) => {
+    setShowColourKey(on);
+    try {
+      window.localStorage.setItem(COLOUR_KEY_KEY, on ? "1" : "0");
+    } catch {
+      // storage unavailable — kept for this visit only
+    }
+  };
   const [released, setReleased] = useState<Placement[] | null>(null);
   // Read by the swap's work after paint, which may run after a toggle in the same moment.
   const askingOffRef = useRef(askingOff);
@@ -782,6 +809,8 @@ export function ResultsView({
   const previewRankById = useMemo(() => new Map(placed.map((r, i) => [r.line.id, i + 1] as const)), [placed]);
   const isPreviewed = useCallback((id: string) => inPreview(previewRankById.get(id), previewLimit), [previewRankById, previewLimit]);
   // The panels above the list name lines by their place: for a non-member, only the top of the ranking they can see.
+  // Lines the vacation goal slid the vacation on (not the ones the pilot placed by hand); null until worked out.
+  const vacationMoved = vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null;
   const panelOrder = useMemo(() => {
     const end = ranked.findIndex((r) => !isPreviewed(r.line.id));
     return (end === -1 ? ranked : ranked.slice(0, end)).map((r) => r.line.lineNumber);
@@ -1622,22 +1651,51 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
-      {/* The vacation first: found in the pack by the pilot's number, it changes every line. */}
-      <VacationGoal
-        pack={bidPack}
-        carry={carry}
-        share={vacationOptions.share}
-        moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null}
-        total={bidPack.lines.length}
+      {/* What changes how this month's lines fly, as one row of drawers: the vacation first (found in the pack by the
+          pilot's number, it changes every line), then what carries in, then the flight-time limits. */}
+      <YourMonth
+        tabs={[
+          ...(bidPack.bidPeriodStart
+            ? [
+                {
+                  id: "vacation",
+                  label: "Vacation",
+                  ...(() => {
+                    const v = vacationSummary(bidPack, carry, vacationMoved);
+                    return { summary: v.text, attention: v.attention };
+                  })(),
+                  content: (
+                    <>
+                      <VacationChoicePanel bare bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
+                      {carry.chosen.some((v) => v.choice !== "not-taking") && (
+                        <div className="mt-4 border-t border-hairline pt-4">
+                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={bidPack.lines.length} />
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
+              ]
+            : []),
+          { id: "carry", label: "Carry-in", summary: carrySummary(carry), content: <CarryInPanel bare bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} /> },
+          ...(bidPack.bidPeriodStart
+            ? [
+                {
+                  id: "limits",
+                  label: "Flight time",
+                  ...(() => {
+                    const l = limitSummary(rankingFlown.pack, panelOrder, flownSoFar, blockFindings);
+                    return { summary: l.text, attention: l.attention };
+                  })(),
+                  content: <BlockLimitsPanel bare pack={bidPack} flownPack={rankingFlown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />,
+                },
+              ]
+            : []),
+        ]}
       />
-      <VacationChoicePanel bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
-      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} />
-      <BlockLimitsPanel pack={bidPack} flownPack={rankingFlown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
-      {/* A filter in words, a member's like the rest: its answers were lines from the whole pack, past a non-member's ten. */}
-      {!filtersLocked && <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />}
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"
@@ -1766,61 +1824,97 @@ export function ResultsView({
               </button>
             </div>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 print:hidden">
-            {!filtersLocked && (
-              <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
-                <input
-                  type="search"
-                  inputMode="numeric"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Line #"
-                  aria-label="Find a line by number"
-                  className="w-full rounded-md border border-field-edge bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
-                />
-              </div>
-            )}
-            <SortMenu sort={lineSort} lines={listable} />
-            {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
-                Their focus ring is drawn inside: the rounded box clips anything outside it. */}
-            <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
-              <button
-                type="button"
-                aria-pressed={view === "all"}
-                onClick={() => setView("all")}
-                className={`relative px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
-              >
-                {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative z-10">All lines</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={view === "shortlist"}
-                data-shortlist-tab
-                onClick={() => setView("shortlist")}
-                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
-              >
-                {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative z-10">
-                  Shortlist (<FlipText text={String(validMarks.starred.length)} />)
-                </span>
-              </button>
-              {forecastLines && (
+          {/* One toolbar over the list: ask your pack or find a line by number, then sort, which lines, the view, Undo and
+              Redo, and ⋯ for what's set once (tiers, the key, scoring, swaps). A non-member's has no search: those come
+              with a membership. */}
+          {(() => {
+            const controls = (
+              <div className="flex flex-wrap items-center gap-2">
+                <SortMenu sort={lineSort} lines={listable} />
+              {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
+                  Their focus ring is drawn inside: the rounded box clips anything outside it. */}
+              <div className="flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
                 <button
                   type="button"
-                  aria-pressed={view === "realistic"}
-                  onClick={() => setView("realistic")}
-                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                  aria-pressed={view === "all"}
+                  onClick={() => setView("all")}
+                  className={`relative px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
-                  {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                  <span className="relative z-10">Realistic ({realisticIds.size})</span>
+                  {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative z-10">All lines</span>
                 </button>
-              )}
-            </div>
-          </div>
+                <button
+                  type="button"
+                  aria-pressed={view === "shortlist"}
+                  data-shortlist-tab
+                  onClick={() => setView("shortlist")}
+                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                >
+                  {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative z-10">
+                    Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                  </span>
+                </button>
+                {forecastLines && (
+                  <button
+                    type="button"
+                    aria-pressed={view === "realistic"}
+                    onClick={() => setView("realistic")}
+                    className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                    <span className="relative z-10">Realistic ({realisticIds.size})</span>
+                  </button>
+                )}
+              </div>
+                <StripViewToggle view={stripView} onChange={chooseStripView} />
+                {/* Undo, Redo and ⋯ wrap as one: on a phone ⋯ alone on a row read as a stray button. */}
+                <span className="flex items-center gap-1">
+                  {/* Dimmed, not disabled, when there's nothing to take back: a disabled button lets go of focus. */}
+                  <button type="button" data-order-undo onClick={() => orderHistory.past.length > 0 && undoOrder()} aria-disabled={orderHistory.past.length === 0} className={TOOL_SMALL}>
+                    Undo
+                  </button>
+                  <button type="button" onClick={() => orderHistory.future.length > 0 && redoOrder()} aria-disabled={orderHistory.future.length === 0} className={TOOL_SMALL}>
+                    Redo
+                  </button>
+                <ListMenu>
+                  <MenuSection title="Tiers">
+                    <MenuAction onClick={() => setManagingTiers(true)}>Rename or add tiers</MenuAction>
+                    <p className="text-xs text-ink-muted">Open a line and pick a tier, or press 1&ndash;{Math.min(tiers.state.tiers.length, 9)} on it. Shift-click (long-press on a phone) to pick several.</p>
+                  </MenuSection>
+                  <MenuSection title="Reading the lines">
+                    <MenuCheck checked={showColourKey} onChange={chooseColourKey} label="Show the colour key" hint="What each bar, colour and mark on a line means." data="menu-key" />
+                    <MenuCheck checked={showIndexGuide} onChange={setShowIndexGuide} label="Show how the Satisfaction Index is scored" data="menu-index" />
+                  </MenuSection>
+                  {dragEnabled && (
+                    <MenuSection title="Swapping lines">
+                      <p className="text-xs text-ink-muted">Drag a line by its handle onto another to swap them. They stay where you put them, and each swap teaches Line Select what you care about.</p>
+                      <MenuCheck checked={holdList} onChange={setHolding} label="Keep the rest of my list where it is when I swap" hint="Only the two lines you swap move." data="hold-list" />
+                      {profile.pilotModel && <MenuCheck checked={!askingOff} onChange={setAsking} label="Ask me why after each swap" data="menu-ask" />}
+                      {validPlacements.length > 0 && <MenuAction onClick={clearPlacements}>Back to Line Select&rsquo;s order</MenuAction>}
+                    </MenuSection>
+                  )}
+                  <MenuSection title="Keyboard">
+                    <MenuCheck checked={showKeys} onChange={setShowKeys} label="Show keyboard shortcuts" hint="Or press ? on the list." />
+                  </MenuSection>
+                </ListMenu>
+                </span>
+              </div>
+            );
+            return (
+              <div className="mt-3 print:hidden" data-list-toolbar>
+                {filtersLocked ? (
+                  controls
+                ) : (
+                  // A filter in words, a member's like the rest: its answers were lines from the whole pack, past a non-member's ten.
+                  <AskPackPanel key={bidPack.id} bare bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} onLineNumber={setSearch} trailing={controls} />
+                )}
+              </div>
+            );
+          })()}
 
           <SortNote sort={lineSort} />
-          <TierBar tiers={tiers} lines={placed} history={{ undo: undoOrder, redo: redoOrder, canUndo: orderHistory.past.length > 0, canRedo: orderHistory.future.length > 0 }} />
+          <TierBar compact managing={managingTiers} onManaging={setManagingTiers} tiers={tiers} lines={placed} history={{ undo: undoOrder, redo: redoOrder, canUndo: orderHistory.past.length > 0, canRedo: orderHistory.future.length > 0 }} />
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
@@ -1866,15 +1960,13 @@ export function ResultsView({
 
           {/* The switch keeps its place whichever strip is picked: in a row that wraps, a key that grew or shrank with the view
               took it from the right edge to under the key and back. Its own column on the right (on top on a phone). */}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
-            <div className="order-2 min-w-0 flex-1 sm:order-1">
+          {/* The colour key and the index's guide, when the pilot asks for them from ⋯. */}
+          {showColourKey && (
+            <div className="mt-3" data-colour-key>
               <StripKey view={stripView} vacation={carry.chosen.some((v) => v.choice !== "not-taking")} />
             </div>
-            <div className="order-1 shrink-0 self-end sm:order-2 sm:self-start">
-              <StripViewToggle view={stripView} onChange={chooseStripView} />
-            </div>
-          </div>
-          <SatisfactionIndexKey model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />
+          )}
+          {showIndexGuide && <SatisfactionIndexKey defaultOpen model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />}
           {noTimelineSaid && stripView !== chosenStripView && (
             <p role="status" className="mt-1.5 text-right text-xs text-ink-muted print:hidden">
               This pack prints no bid period dates, so there&rsquo;s no timeline to put its trips on. Lines show as the bid pack prints them.
@@ -1901,24 +1993,6 @@ export function ResultsView({
                 </span>
               ))}
             </div>
-          )}
-
-          {dragEnabled && (
-            <p className="mt-2 hidden text-xs text-ink-faint sm:block print:hidden">
-              Ranked something wrong? Drag a line by its handle onto another to swap them &mdash; they stay where you put
-              them, and each swap teaches Line Select what you actually care about. Press{" "}
-              <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for keyboard shortcuts.
-            </p>
-          )}
-
-          {dragEnabled && (
-            <label className="mt-2 flex items-start gap-2 text-xs text-ink-muted print:hidden" data-hold-list>
-              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-brand" checked={holdList} onChange={(e) => setHolding(e.target.checked)} />
-              <span>
-                <span className="font-medium text-ink">Keep the rest of my list where it is when I swap.</span>{" "}
-                {holdList ? "Only the two lines you swap move; each swap still teaches Line Select." : "Off: after each swap the list re-sorts by what you've taught."}
-              </span>
-            </label>
           )}
 
           {dragEnabled && (heldMoves > 0 || released) && (
