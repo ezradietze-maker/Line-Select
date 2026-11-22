@@ -19,9 +19,9 @@ export function bodyClockTone(score: number): string {
 }
 
 /**
- * "64/100", colored — and, with `onClick`, a button that opens the reasons (the chevron says which way). In a container
- * under 6.25rem (the line card's summary, with the phone's text set larger) the score goes under its name: kept beside
- * it, it ran out of the box and the chevron was cut.
+ * "64/100", colored — and, with `onClick`, a button that opens the reasons (the chevron says which way). Where its box
+ * is too narrow for the three on one row (the line card's summary, or a trip's header on a 320 phone, with the phone's
+ * text set larger) the score goes under its name: kept beside it, it ran out of the box and the chevron was cut.
  */
 export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: { result: BodyClockScore; open?: boolean; onClick?: () => void; label?: string }) {
   const body = (
@@ -36,11 +36,11 @@ export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: 
   );
   const title = `Body-clock score ${result.score}/100 — 100 is the gentlest on your body clock`;
   return onClick ? (
-    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex max-w-full items-center gap-1.5 rounded-[3px] border border-hairline bg-canvas/60 px-2 py-0.5 transition-colors hover:border-border-strong @max-[6.25rem]:flex-wrap">
+    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[3px] border border-hairline bg-canvas/60 px-2 py-0.5 transition-colors hover:border-border-strong">
       {body}
     </button>
   ) : (
-    <span title={title} className="inline-flex max-w-full items-center gap-1.5 @max-[6.25rem]:flex-wrap">
+    <span title={title} className="inline-flex max-w-full flex-wrap items-center gap-1.5">
       {body}
     </span>
   );
