@@ -190,9 +190,11 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
           }
         }}
       >
-        <div className="flex items-end gap-2">
+        {/* The arrow goes under the box, at the right, when the two can't share a line with room to read (a phone with
+            its text at 200%): beside it, the box was squeezed to a word or two a line and grew most of a screen tall. */}
+        <div className="flex flex-wrap items-end justify-end gap-2">
           <NoteBox
-            className="min-w-0 flex-1"
+            className="min-w-0 grow basis-30"
             ariaLabel="Your question"
             value={question}
             onChange={setQuestion}

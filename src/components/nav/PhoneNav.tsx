@@ -235,8 +235,10 @@ export function PhoneNav({
                       {item.target === "inbox" && <Badge count={inboxUnreadCount} />}
                     </span>
                     {item.label}
+                    {/* Its line height grows with the text: held at 14px, "Coming soon" wrapped at 200% text drew its two
+                        lines over each other and over the tag's border. */}
                     {item.comingSoon && (
-                      <span aria-hidden className="-mt-1 rounded-[2px] border border-border px-1.5 py-px text-2xs font-medium leading-[14px] text-ink-faint">
+                      <span aria-hidden className="-mt-1 rounded-[2px] border border-border px-1.5 py-px text-2xs font-medium leading-[0.875rem] text-ink-faint">
                         {COMING_SOON}
                       </span>
                     )}

@@ -112,8 +112,9 @@ export function AccountMenu({ user, onSignIn, onLogout }: AccountMenuProps) {
 
       {open && (
         // On the icon rail it stands out past the rail's edge, so it's `fixed` over the button: the rail scrolls on a
-        // short window, and would cut off a menu inside it.
-        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[14rem] rail-collapsed:fixed rail-collapsed:bottom-[var(--pop-y)] rail-collapsed:left-[var(--pop-x)] rail-collapsed:w-56 animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg">
+        // short window, and would cut off a menu inside it. Its least width gives way on a phone with large text: a
+        // whole 14rem (448px at 200%) ran the menu past the screen's right edge from the More sheet.
+        <div className="absolute bottom-full left-0 z-20 mb-2 w-full min-w-[min(14rem,calc(100vw-4rem))] rail-collapsed:fixed rail-collapsed:bottom-[var(--pop-y)] rail-collapsed:left-[var(--pop-x)] rail-collapsed:w-56 animate-fade-in overflow-hidden rounded-[6px] border border-border bg-surface shadow-elevated-lg">
           {/* Who's signed in sits above the menu, not in it: a menu holds only its items. */}
           <div className="border-b border-border px-4 py-3">
             {/* A long name or address ends in "…", with the whole of it on hover. */}

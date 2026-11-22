@@ -72,15 +72,18 @@ export function TutorialScreen() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="@container mx-auto w-full max-w-6xl">
       <PageHeader
         eyebrow="Line Select"
         title="Tutorial"
         description={`How to use Line Select, one feature at a time. Watch it straight through (${tutorialLength()}) or pick the chapter you need.`}
       />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <section aria-label="Video" className="min-w-0">
+      {/* Two columns once there's room for both, measured in rem so larger text asks for more: on a laptop with Safari's
+          text at 150-200% the 20rem chapter list took the row and left the video 48px wide, and on a phone the list's
+          longest row set the one column and pushed the page sideways. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 @min-[44rem]:grid-cols-[minmax(0,1fr)_20rem]">
+        <section aria-label="Video" className="@container min-w-0">
           <div className="overflow-hidden rounded-xl border border-hairline bg-black">
             {/* The narration is captioned in the track below, shown or hidden by the captions switch. */}
             <video
@@ -99,7 +102,7 @@ export function TutorialScreen() {
               <track kind="captions" src={chapter.captions} srcLang="en" label="English" default={captionsOn} />
             </video>
           </div>
-          <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="mt-4 flex flex-col gap-3 @min-[38rem]:flex-row @min-[38rem]:items-start @min-[38rem]:justify-between">
             <div className="min-w-0">
               <p className="text-2xs font-medium text-accent">
                 Chapter {at + 1} of {TUTORIAL_CHAPTERS.length}
@@ -131,20 +134,22 @@ export function TutorialScreen() {
         </section>
 
         <nav aria-label="Chapters">
-          <ol className="divide-y divide-hairline overflow-hidden rounded-xl border border-hairline">
+          {/* A list narrower than its words at the usual size (a phone with its text at 200%): the length goes under the
+              title, so a word like "preferences" keeps its line rather than running out of the row. */}
+          <ol className="@container divide-y divide-hairline overflow-hidden rounded-xl border border-hairline">
             {TUTORIAL_CHAPTERS.map((c, i) => (
               <li key={c.id}>
                 <button
                   type="button"
                   onClick={() => pick(i)}
                   aria-current={i === at ? "true" : undefined}
-                  className={`flex w-full items-baseline gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
+                  className={`flex w-full items-baseline gap-3 px-3.5 py-2.5 text-left text-sm transition-colors @max-[12rem]:flex-wrap @max-[12rem]:gap-y-0.5 ${
                     i === at ? "bg-brand-soft/40 text-ink" : "text-ink-muted hover:bg-ink/[0.04] hover:text-ink"
                   }`}
                 >
                   <span className={`w-5 shrink-0 font-mono text-xs tabular-nums ${i === at ? "text-accent" : "text-ink-faint"}`}>{i + 1}</span>
                   <span className="min-w-0 flex-1">{c.title}</span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-ink-faint">{formatChapterLength(c.seconds)}</span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums text-ink-faint @max-[12rem]:basis-full @max-[12rem]:pl-8">{formatChapterLength(c.seconds)}</span>
                 </button>
               </li>
             ))}
