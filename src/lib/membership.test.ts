@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FREE_FOR_ALL, FREE_MEMBER_CAP, FREE_PREVIEW_LINES, MEMBERSHIP_CUTOVER, freeSlotsLeft, hasAccess, inPreview, isMember, membershipTier } from "@/lib/membership";
+import { FREE_FOR_ALL, FREE_MEMBER_CAP, FREE_PREVIEW_LINES, MEMBERSHIP_CUTOVER, countInPreview, freeSlotsLeft, hasAccess, inPreview, isMember, membershipTier } from "@/lib/membership";
 import type { UserAccount } from "@/types/auth";
 
 const CUTOVER = Date.parse(MEMBERSHIP_CUTOVER);
@@ -74,5 +74,21 @@ describe("inPreview", () => {
   it("shows a member every line", () => {
     expect(inPreview(500, null)).toBe(true);
     expect(inPreview(undefined, null)).toBe(true);
+  });
+});
+
+describe("countInPreview", () => {
+  // 75 lines a pilot could hold, at places 1–75 of their ranking.
+  const ids = Array.from({ length: 75 }, (_, i) => `line-${i + 1}`);
+  const rank = new Map(ids.map((id, i) => [id, i + 1] as const));
+  const rankOf = (id: string) => rank.get(id);
+
+  it("counts a non-member's lines as they're listed: their ten, not the 75 the Realistic view can't show", () => {
+    expect(countInPreview(ids, rankOf, FREE_PREVIEW_LINES)).toBe(10);
+    expect(countInPreview(["line-3", "line-40", "line-nowhere"], rankOf, FREE_PREVIEW_LINES)).toBe(1);
+  });
+
+  it("counts every line for a member", () => {
+    expect(countInPreview(new Set(ids), rankOf, null)).toBe(75);
   });
 });

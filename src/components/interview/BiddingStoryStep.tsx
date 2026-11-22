@@ -93,10 +93,12 @@ export function BiddingStoryStep({ value, onChange, onSubmit, onSkip, busy, erro
           {meterSaid}
         </span>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2.5">
+          {/* The meter keeps its size and its words go under it when the text is set large: on one row they pushed a
+              phone's page sideways. */}
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             <span className="flex gap-0.5" aria-hidden>
               {[1, 2, 3, 4, 5].map((n) => (
-                <span key={n} className={`h-1.5 w-5 rounded-[1px] transition-colors duration-500 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
+                <span key={n} className={`h-1.5 w-[20px] rounded-[1px] transition-colors duration-500 ${n <= depth.level ? "bg-accent" : "bg-border-strong"}`} />
               ))}
             </span>
             <span className="text-2xs text-ink-faint font-medium">{depth.label || "Your story"}</span>

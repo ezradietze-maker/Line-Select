@@ -28,7 +28,7 @@ import { FilterBlameList, ResultsFilterBar } from "@/components/results/ResultsF
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Button } from "@/components/ui/Button";
 import { MembershipPreviewNote } from "@/components/membership/MembershipPreviewNote";
-import { inPreview } from "@/lib/membership";
+import { countInPreview, inPreview } from "@/lib/membership";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
@@ -786,6 +786,9 @@ export function ResultsView({
     () => new Set(forecastLines ? Object.values(forecastLines).filter((l) => l.pAvailable >= 0.2).map((l) => l.lineId) : []),
     [forecastLines]
   );
+  // A non-member's view lists only their ten: the Realistic tab and the banner count those, not the whole pack's (the
+  // tab said "Realistic (75)" over a list of ten).
+  const realisticShown = useMemo(() => countInPreview(realisticIds, (id) => previewRankById.get(id), previewLimit), [realisticIds, previewRankById, previewLimit]);
 
   const commute = useCommuteCheck(bidPack, profile, filters.commuteOnly);
   const filterCtx = useMemo<FilterContext>(() => ({ bidPeriodStart: bidPack.bidPeriodStart, commute: commute.statuses }), [bidPack.bidPeriodStart, commute.statuses]);
@@ -1558,8 +1561,7 @@ export function ResultsView({
           response: forecast.result,
           loading: forecast.loading,
           failed: forecast.failed,
-          // A non-member's view lists only their ten: the count is of those, not of the whole pack.
-          realisticCount: previewLimit === null ? realisticIds.size : [...realisticIds].filter(isPreviewed).length,
+          realisticCount: realisticShown,
           showingRealistic: view === "realistic",
           onToggleRealistic: () => setView((v) => (v === "realistic" ? "all" : "realistic")),
           canShare: forecast.canShare,
@@ -1751,7 +1753,7 @@ export function ResultsView({
                   className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
                   {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                  <span className="relative z-10">Realistic ({realisticIds.size})</span>
+                  <span className="relative z-10">Realistic ({realisticShown})</span>
                 </button>
               )}
             </div>

@@ -278,10 +278,10 @@ function AlreadyUploaded({
       </Heading>
 
       <div className="panel-glass @container mt-6 overflow-hidden">
-        {/* Wraps: at 320px the pack's name and "Ready" don't fit on one row, and the panel cut the chip off. */}
+        {/* Wraps: at 320px the pack's name and "Ready" don't fit on one row, and the panel cut the chip off. The name
+            itself wraps between its parts once the text is set large, where on one line the panel cut it off too. */}
         <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-hairline p-6">
           <div>
-            {/* Free to wrap: kept on one line, at 320px and 200% text the panel cut it at "ANC · B77". */}
             <div className="font-display text-2xl font-semibold tracking-wide text-ink sm:text-4xl">
               {bidPack.base} <span className="text-ink-faint">&middot;</span> {bidPack.aircraft}{" "}
               <span className="text-ink-faint">&middot;</span> <span className="text-accent">{bidPack.seat}</span>
@@ -299,8 +299,8 @@ function AlreadyUploaded({
           </span>
         </div>
 
-        {/* One a row where two won't fit (320px at 150% text and up): two a row, the panel cut "83:12" to "83:". */}
-        <dl className="grid grid-cols-2 gap-px bg-hairline @max-[16rem]:grid-cols-1 sm:grid-cols-4">
+        {/* By the panel's room, not the screen's: with the text set large, two to a row cut "14.6" off. */}
+        <dl className="grid grid-cols-1 gap-px bg-hairline @min-[14rem]:grid-cols-2 @min-[27rem]:grid-cols-4">
           {[
             ["Lines", <NumberTicker key="l" value={stats.lines} />],
             ["Avg days off", <NumberTicker key="d" value={stats.avgDaysOff} format={(v) => v.toFixed(1)} />],
