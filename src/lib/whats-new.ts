@@ -14,6 +14,12 @@ export interface WhatsNewEntry {
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
     date: "2026-11-21",
+    title: "Swap two lines, and the rest stay put",
+    body: "Swap two lines and only those two move: the rest of your list stays where you left it, while each swap still teaches your ranking. When what you've taught would move other lines, a note says how many, and \"Re-sort with what I've taught\" lets them move, your swaps kept, with Undo. Rather have the list re-sort after every swap? Turn off \"Keep the rest of my list where it is\" above your lines.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-21",
     title: "Tell us why after every swap",
     body: "Swap two lines and a small box asks why, with our best guess and both lines' numbers. One tap says the guess is right; or pick another difference, say it in your own words, or say they're about equal. Each answer teaches your ranking what you care about. Rather not be asked? Turn the questions off from the box, and back on from any swap's message.",
     href: "/results",

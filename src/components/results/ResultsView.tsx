@@ -112,7 +112,7 @@ import { LineContextMenu, type LineMenu } from "@/components/results/LineContext
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, useTiersWithin, type TeachTiers } from "@/lib/use-line-tiers";
-import { applyPlacements, placementFromDrag, placementsKey, placementsStore, prunePlacements, type Placement } from "@/lib/line-placements";
+import { applyPlacements, heldPlacement, placementFromDrag, placementsKey, placementsStore, prunePlacements, releaseHolds, swapOf, withPlacement, type Placement } from "@/lib/line-placements";
 import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
 import type { LineChoice } from "@/types/pilot-model";
 import type { PackMetrics } from "@/lib/metrics/compute";
@@ -200,6 +200,16 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
+/** "Keep the rest of my list where it is when I swap": on unless the pilot turned it off on this device. */
+const HOLD_LIST_KEY = "line-select:swap-holds-list:v1";
+function readHoldList(): boolean {
+  try {
+    return typeof window === "undefined" || window.localStorage.getItem(HOLD_LIST_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 /** A pilot who turned off the question after a swap isn't asked on this device until they turn it back on. */
 const STOP_ASKING_KEY = "line-select:swap-questions-off:v1";
 
@@ -394,6 +404,9 @@ export function ResultsView({
   const [swapQuestion, setSwapQuestion] = useState<{ question: SwapQuestion; options: { priorities: ReasonOption[]; measures: ReasonOption[] } } | null>(null);
   // The question after every swap, unless the pilot turned it off (kept on this device; they can turn it back on).
   const [askingOff, setAskingOff] = useState(readStopAsking);
+  // "Keep the rest of my list where it is when I swap" (`HOLD_LIST_KEY`), and the list as it was before a re-sort, for Undo.
+  const [holdList, setHoldList] = useState(readHoldList);
+  const [released, setReleased] = useState<Placement[] | null>(null);
   // Read by the swap's work after paint, which may run after a toggle in the same moment.
   const askingOffRef = useRef(askingOff);
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
@@ -647,8 +660,15 @@ export function ResultsView({
     const at = new Map(payPlan.order.map((id, i) => [id, i]));
     return [...myRanked].sort((a, b) => (at.get(a.line.id) ?? Infinity) - (at.get(b.line.id) ?? Infinity));
   }, [payOrderOn, myRanked, payPlan]);
-  // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
-  const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
+  // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order. The
+  // swap itself — never every line of a held list.
+  const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [swapOf(p)[0], swapOf(p)[swapOf(p).length - 1]])), [validPlacements]);
+  // A held list: how many lines Line Select's ranking would now put somewhere else, swaps kept — what "Re-sort" moves.
+  const heldMoves = useMemo(() => {
+    if (!validPlacements.some((p) => p.swapped)) return 0;
+    const learned = applyPlacements(scoredLines, releaseHolds(validPlacements), (r) => r.line.id);
+    return learned.reduce((n, r, i) => (placed[i]?.line.id === r.line.id ? n : n + 1), 0);
+  }, [validPlacements, scoredLines, placed]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in an opened line's trip
   // list. On the ranking's own measured pack, so a refit re-scores trips without re-measuring them. Only an open line
@@ -1291,8 +1311,12 @@ export function ResultsView({
     const swapId = `swap-${Date.now().toString(36)}`;
     const placement = placementFromDrag(sorted.map((r) => r.line.id), fromIndex, toIndex, swapId);
     if (placement) {
-      updatePlacements((p) => [...p, placement]);
-      setOrderHistory((h) => recordStep(h, { kind: "swap", swap: { placement } }));
+      // Held: every line as it stands, the swap made, so the refit below moves nothing else. The brain still learns from
+      // `placement`, the swap alone.
+      const stored = holdList ? heldPlacement(placed.map((r) => r.line.id), placement) : placement;
+      updatePlacements((p) => withPlacement(p, stored));
+      setOrderHistory((h) => recordStep(h, { kind: "swap", swap: { placement: stored } }));
+      setReleased(null);
     }
     const moved = sorted[fromIndex].line.lineNumber;
     const target = sorted[toIndex].line.lineNumber;
@@ -1417,7 +1441,8 @@ export function ResultsView({
     const lesson = step.lesson?.length ? step.lesson : (swapLessons.current.get(placement.id) ?? []);
     updatePlacements((p) => [...p.filter((x) => x.id !== placement.id), placement]);
     const numberOf = (lineId: string) => bidPack.lines.find((l) => l.id === lineId)?.lineNumber ?? "";
-    setLearnMessage(`Swapped ${numberOf(placement.order[0])} and ${numberOf(placement.order[placement.order.length - 1])} again.`);
+    const swap = swapOf(placement);
+    setLearnMessage(`Swapped ${numberOf(swap[0])} and ${numberOf(swap[swap.length - 1])} again.`);
     afterPaint(() => {
       if (!placementsList.current().some((x) => x.id === placement.id)) return;
       const current = profileRef.current;
@@ -1471,7 +1496,35 @@ export function ResultsView({
   }
 
   /** Puts the list back in the brain's order. What it learned from the swaps stays; undo a swap to take that back too. */
+  /** "Re-sort with what I've taught": the swaps stay, the rest of the list goes where Line Select now ranks it. */
+  function releaseList() {
+    const before = placementsList.current();
+    if (!before.some((p) => p.swapped)) return;
+    updatePlacements(releaseHolds);
+    // Said, with Undo, only when the list actually moves; with nothing to move it lets go quietly.
+    setReleased(heldMoves > 0 ? before : null);
+  }
+
+  function undoRelease() {
+    if (!released) return;
+    const back = released;
+    updatePlacements(() => back);
+    setReleased(null);
+  }
+
+  function setHolding(on: boolean) {
+    setHoldList(on);
+    try {
+      window.localStorage.setItem(HOLD_LIST_KEY, on ? "1" : "0");
+    } catch {
+      // storage unavailable — kept for this visit only
+    }
+    // Turned off: the list re-sorts once, the swaps kept, with Undo.
+    if (!on) releaseList();
+  }
+
   function clearPlacements() {
+    setReleased(null);
     updatePlacements(() => []);
     setOrderHistory((h) => dropSwaps(h, () => true));
     setLastSwap(null);
@@ -1856,6 +1909,38 @@ export function ResultsView({
               them, and each swap teaches Line Select what you actually care about. Press{" "}
               <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for keyboard shortcuts.
             </p>
+          )}
+
+          {dragEnabled && (
+            <label className="mt-2 flex items-start gap-2 text-xs text-ink-muted print:hidden" data-hold-list>
+              <input type="checkbox" className="mt-0.5 h-4 w-4 shrink-0 accent-brand" checked={holdList} onChange={(e) => setHolding(e.target.checked)} />
+              <span>
+                <span className="font-medium text-ink">Keep the rest of my list where it is when I swap.</span>{" "}
+                {holdList ? "Only the two lines you swap move; each swap still teaches Line Select." : "Off: after each swap the list re-sorts by what you've taught."}
+              </span>
+            </label>
+          )}
+
+          {dragEnabled && (heldMoves > 0 || released) && (
+            <div data-for-lines role="status" className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-xs text-ink print:hidden" data-held-note>
+              {released ? (
+                <>
+                  <span>Re-sorted with what you&rsquo;ve taught. Your swaps stayed where you put them.</span>
+                  <button type="button" onClick={undoRelease} className="font-semibold text-accent underline-offset-2 hover:underline">
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>
+                    Your list is held as you left it. What you&rsquo;ve taught since would move {heldMoves === 1 ? "1 line" : `${heldMoves} lines`}.
+                  </span>
+                  <button type="button" onClick={releaseList} className="font-semibold text-accent underline-offset-2 hover:underline" data-held-resort>
+                    Re-sort with what I&rsquo;ve taught
+                  </button>
+                </>
+              )}
+            </div>
           )}
 
           {dragEnabled && validPlacements.length > 0 && (

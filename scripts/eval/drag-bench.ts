@@ -16,7 +16,9 @@
  * The question after a swap, three ways: "rare" (Nov 7–21: only an unclear swap, once per 5 swaps and 3 a session, no
  * guess shown), and "every" (from Nov 21: every swap, the brain's guess first). For "every", ACCEPT lists how often the
  * simulated pilot says yes to a wrong guess (default "0,0.3": honest, and agreeable), and CONFIRMED the share a confirmed
- * guess counts (`LEARNER.answer.confirmed`; default "0.25,0.5,1").
+ * guess counts (`LEARNER.answer.confirmed`; default "0.25,0.5,1"). HOLD=1: "keep the rest of my list where it is" on —
+ * each swap holds every line as the pilot left it, the brain learning from the swap alone; HOLD=both runs each way of
+ * asking held and not, side by side on the same unseen lines.
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { expandBidPack, restoreBidPack } from "@/lib/bidpack-storage";
@@ -24,7 +26,7 @@ import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitWeightsToChoices } from "@/lib/brain/fit-choices";
 import { choicesFromDrag, choicesFromSwap } from "@/lib/brain/profile-model";
 import { learnFromChoices, type LearnerSettings } from "@/lib/brain/reorder-learner";
-import { applyPlacements, placementFromDrag, type Placement } from "@/lib/line-placements";
+import { applyPlacements, heldPlacement, placementFromDrag, type Placement } from "@/lib/line-placements";
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { migrateProfile } from "@/lib/profile-migration";
 import { rankLinesWithTrips, tripKey } from "@/lib/scoring-v2/trip-score";
@@ -103,7 +105,7 @@ function session(bp: BidPack, pm: PackMetrics, base: PilotModel, lines: string[]
     if (!drag) break;
     const id = `swap-${k}`;
     const placement = placementFromDrag(shown, drag.from, drag.to, id)!;
-    placements.push(placement);
+    placements.push(process.env.HOLD ? heldPlacement(applyPlacements(ranked, placements, (l) => l), placement) : placement);
     choices.push(...learner.choices(placement.order, shown, drag.from, drag.to, id));
     model = learner.learn(base, choices, bp, pm);
   }
@@ -188,6 +190,11 @@ function synthetic() {
   // Each way of asking against the rare question, pilot by pilot.
   for (const a of ASKS.filter((x) => x.name !== "rare")) {
     const d = results[a.name].map((x, i) => x - results.rare[i]);
+    if (a.name.endsWith(" held")) {
+      const twin = results[a.name.slice(0, -" held".length)];
+      const dh = results[a.name].map((x, i) => x - twin[i]);
+      console.log(`  ${`${a.name} − not held`.padEnd(30)} ${(100 * mean(dh)).toFixed(2)} points ± ${(100 * se(dh)).toFixed(2)}  (better in ${dh.filter((x) => x > 1e-9).length}, worse in ${dh.filter((x) => x < -1e-9).length})`);
+    }
     const c = counts[a.name];
     console.log(`  ${`${a.name} − rare`.padEnd(24)} ${(100 * mean(d)).toFixed(2)} points ± ${(100 * se(d)).toFixed(2)}  (better in ${d.filter((x) => x > 1e-9).length}, worse in ${d.filter((x) => x < -1e-9).length}) · asked ${c.asked} of ${c.swaps} swaps, guess confirmed ${c.confirmed}, of them wrongly ${c.wrongYes}`);
   }
@@ -214,6 +221,8 @@ function withHidden(model: PilotModel, r: () => number): PilotModel {
 interface AskMode {
   name: string;
   kind: "rare" | "every";
+  /** The list held after each swap ("keep the rest of my list where it is"). */
+  hold: boolean;
   /** How often the simulated pilot says yes to a wrong guess. */
   accept: number;
   settings: Partial<LearnerSettings>;
@@ -223,10 +232,15 @@ function askModes(): AskMode[] {
   const accepts = (process.env.ACCEPT ?? "0,0.3").split(",").map(Number);
   const confirmeds = (process.env.CONFIRMED ?? "0.25,0.5,1").split(",").map(Number);
   const base = SETTINGS_LIST[0];
-  const modes: AskMode[] = [{ name: "rare", kind: "rare", accept: 0, settings: base }];
-  for (const accept of accepts)
-    for (const confirmed of confirmeds)
-      modes.push({ name: `every c=${confirmed} yes=${accept}`, kind: "every", accept, settings: { ...base, answer: { weight: 2.5, beta: 0.4, ...base.answer, confirmed } } });
+  const holds = process.env.HOLD === "both" ? [false, true] : [!!process.env.HOLD];
+  const modes: AskMode[] = [];
+  for (const hold of holds) {
+    const h = hold && holds.length > 1 ? " held" : "";
+    modes.push({ name: `rare${h}`, kind: "rare", hold, accept: 0, settings: base });
+    for (const accept of accepts)
+      for (const confirmed of confirmeds)
+        modes.push({ name: `every c=${confirmed} yes=${accept}${h}`, kind: "every", hold, accept, settings: { ...base, answer: { weight: 2.5, beta: 0.4, ...base.answer, confirmed } } });
+  }
   return modes;
 }
 
@@ -276,7 +290,7 @@ function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: 
     tally.swaps++;
     const id = `swap-${k}`;
     const placement = placementFromDrag(shown, drag.from, drag.to, id)!;
-    placements.push(placement);
+    placements.push(mode.hold ? heldPlacement(applyPlacements(ranked, placements, (l) => l), placement) : placement);
     const [higher, lower] = [placement.order[0], placement.order[placement.order.length - 1]];
     choices.push(...choicesFromSwap(placement.order, id));
     const before = new Map(scorePackV2(bp, model, { pack: pm }).map((x) => [x.lineNumber, x]));

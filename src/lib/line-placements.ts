@@ -13,8 +13,39 @@ export interface Placement {
   /**
    * The lines from the dropped one to the one it was dropped on, in the order the pilot left them. Kept as an order
    * rather than as "swap these two", so a brain that has since learned the swap doesn't get it swapped back.
+   * A held swap (`swapped` set) keeps the whole list here instead, as the pilot left it after the swap.
    */
   order: string[];
+  /**
+   * With "keep the rest of my list where it is" on: the swap itself (what `order` holds for an ordinary swap), while
+   * `order` holds every line as the pilot left it, so a refit moves nothing they didn't move. The brain learns from
+   * this, never from the whole held list — that would read as the pilot ranking every line by hand.
+   */
+  swapped?: string[];
+}
+
+/** Only the newest held lists keep every line: an older one is under the newest anyway, and only an undo reaches it. */
+export const HELD_KEPT = 10;
+
+/** The pilot's own swap: the lines from the dropped one to the one it was dropped on, in their order. */
+export const swapOf = (p: Placement): string[] => p.swapped ?? p.order;
+
+/** A swap that holds the rest of the list: every line in `ids` (the list as it stands) as left after the swap. */
+export function heldPlacement(ids: string[], swap: Placement): Placement {
+  return { id: swap.id, order: applyPlacements(ids, [swap], (x) => x), swapped: swap.order };
+}
+
+/** The swaps, kept, with the rest of the list let go: each held one back to the swap alone. */
+export function releaseHolds(placements: Placement[]): Placement[] {
+  return placements.map((p) => (p.swapped ? { id: p.id, order: p.swapped } : p));
+}
+
+/** A new swap added: held lists older than the newest `HELD_KEPT` go back to their swap alone, so storage stays small. */
+export function withPlacement(placements: Placement[], next: Placement): Placement[] {
+  const all = [...placements.filter((p) => p.id !== next.id), next];
+  const held = all.filter((p) => p.swapped);
+  const old = new Set(held.slice(0, Math.max(0, held.length - HELD_KEPT)).map((p) => p.id));
+  return old.size ? all.map((p) => (old.has(p.id) ? { id: p.id, order: p.swapped! } : p)) : all;
 }
 
 /**
@@ -51,8 +82,8 @@ export function placementFromDrag(ids: string[], fromIndex: number, toIndex: num
 /** Placements with their lines narrowed to the ones still in the pack (none left that orders fewer than two). */
 export function prunePlacements(placements: Placement[], validLineIds: Set<string>): Placement[] {
   return placements
-    .map((p) => ({ ...p, order: p.order.filter((id) => validLineIds.has(id)) }))
-    .filter((p) => p.order.length >= 2);
+    .map((p) => ({ ...p, order: p.order.filter((id) => validLineIds.has(id)), ...(p.swapped ? { swapped: p.swapped.filter((id) => validLineIds.has(id)) } : {}) }))
+    .filter((p) => p.order.length >= 2 && (!p.swapped || p.swapped.length >= 2));
 }
 
 export function placementsKey(userId: string | null, bidPackId: string): string {
@@ -71,7 +102,12 @@ function readPlacements(userId: string | null, bidPackId: string): Placement[] |
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     if (!Array.isArray(parsed)) return null;
     return parsed.filter(
-      (p): p is Placement => !!p && typeof p.id === "string" && Array.isArray(p.order) && p.order.every((x: unknown) => typeof x === "string")
+      (p): p is Placement =>
+        !!p &&
+        typeof p.id === "string" &&
+        Array.isArray(p.order) &&
+        p.order.every((x: unknown) => typeof x === "string") &&
+        (p.swapped === undefined || (Array.isArray(p.swapped) && p.swapped.every((x: unknown) => typeof x === "string")))
     );
   } catch {
     return null;
