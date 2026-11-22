@@ -68,8 +68,11 @@ function creditFits(day: DetailedDay): string {
 }
 
 function cellClass(day: DetailedDay, selected: boolean): string {
+  // The padding in px, as the grid's gap is: the bars' width, how far they run on past midnight (`CELL_BLEED`) and the
+  // trip's rail are worked out in px from them. In rem, with a phone's text set larger, they grew while all that didn't,
+  // and a day narrowed to almost nothing between them.
   const base =
-    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
+    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-[4px] text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
   const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
@@ -241,14 +244,10 @@ function Cell({
         // Along the foot: the top edge is the trip's own rail, in much the same colour.
         <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] rounded-b-md opacity-80" style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)" }} />
       )}
-      {vacation?.first != null && (
-        <span aria-hidden className="pointer-events-none absolute bottom-0.5 right-1 font-mono text-[9px] font-bold leading-none text-accent">
-          VAC {vacation.first}
-        </span>
-      )}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
-        <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
+        {/* Grows with the text up to 150%, like the weekday names: at 200% a phone's dates ran together ("282930"). */}
+        <span className={`text-[length:min(var(--text-2xs),16.5px)] leading-4 tabular-nums ${isOff ? "" : "font-semibold"}`}>
           {day.label}
           {/* Too narrow for it beside the date (a phone), "26 NOV27 NOV" ran together: the carry bar along the bottom says it. */}
           {day.nextMonth && <span className="ml-0.5 hidden text-2xs font-semibold uppercase tracking-wide text-carry @min-[2.5rem]:inline">{day.nextMonth.slice(0, 3)}</span>}
@@ -287,26 +286,38 @@ function Cell({
       )}
       {day.preReportTime !== null && <span className="hidden text-2xs leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
 
-      <span className="mt-auto flex min-w-0 flex-col gap-px">
-        {standby && (
-          <span className="whitespace-nowrap font-mono text-2xs font-semibold text-standby">
-            SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
+      {/* The day's last words, and its vacation's "VAC 7" beside them where they leave room, else on a line under them: laid
+          over the corner, it ran into "4 off" and "END MEM 07:50" on a phone's narrow days. A day too narrow for "VAC 7"
+          even into its padding (a phone with its text set larger) leaves it to the gold ring. */}
+      <span className="mt-auto flex min-w-0 flex-wrap items-end gap-x-1 gap-y-px">
+        <span className="flex min-w-0 flex-auto flex-col gap-px">
+          {standby && (
+            <span className="whitespace-nowrap font-mono text-2xs font-semibold text-standby">
+              SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
+            </span>
+          )}
+          {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
+            // Up to 150% as the date is: at 200% "off" ran into the next day.
+            <span className="text-[length:min(var(--text-2xs),16.5px)] font-medium leading-tight">
+              {day.offRun.length}
+              <span className="hidden @min-[4.75rem]:inline"> days</span> off
+            </span>
+          )}
+          {day.fullDay && (
+            // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
+            // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day. Narrower than
+            // "Full" itself (a phone with its text at 200%), so is all of it: "FullFull dayday" ran across two days.
+            <span className="hidden text-2xs font-semibold leading-tight text-layover @min-[1.25rem]:inline" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+              Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
+            </span>
+          )}
+          {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
+        </span>
+        {vacation?.first != null && (
+          <span aria-hidden className="ml-auto whitespace-nowrap font-mono text-[9px] font-bold leading-none text-accent @max-[22px]:hidden">
+            VAC {vacation.first}
           </span>
         )}
-        {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
-          <span className="text-2xs font-medium leading-tight">
-            {day.offRun.length}
-            <span className="hidden @min-[4.75rem]:inline"> days</span> off
-          </span>
-        )}
-        {day.fullDay && (
-          // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
-          // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
-          <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
-            Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
-          </span>
-        )}
-        {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
       </span>
     </button>
   );
@@ -546,13 +557,17 @@ export function fmtRuns(runs: number[]): string {
   return `${runs.slice(0, -1).join(", ")} and ${runs[runs.length - 1]}`;
 }
 
-/** One fact: its name on the left, the value beside it, every row on the same two columns so the box reads as one list. */
+/**
+ * One fact: its name on the left, the value beside it, every row on the same two columns so the box reads as one list.
+ * Where both won't fit side by side (a phone with its text set larger) the value goes under its name: a fixed name column
+ * left the value a few pixels at 200% text, one letter a row.
+ */
 function Row({ label, children, tone = "", labelTone = "text-ink-faint", full = false }: { label: ReactNode; children: ReactNode; tone?: string; labelTone?: string; full?: boolean }) {
   return (
-    <div className={`grid min-w-0 grid-cols-[7.25rem_minmax(0,1fr)] items-baseline gap-x-2 ${full ? "sm:col-span-2" : ""}`}>
+    <div className={`flex min-w-0 flex-wrap items-baseline gap-x-2 ${full ? "sm:col-span-2" : ""}`}>
       {/* Wraps rather than cutting off: at 200% text "Days off in a row" lost its last words. */}
-      <dt className={`text-2xs font-medium ${labelTone}`}>{label}</dt>
-      <dd className={`min-w-0 break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{children}</dd>
+      <dt className={`w-[7.25rem] max-w-full shrink-0 text-2xs font-medium ${labelTone}`}>{label}</dt>
+      <dd className={`min-w-0 flex-1 basis-24 break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{children}</dd>
     </div>
   );
 }
@@ -746,8 +761,9 @@ export const MiniLinePreview = memo(function MiniLinePreview({
   return (
     <div>
       {!compact && (
-        <div className="mb-1.5 flex items-center justify-between gap-2 print:hidden">
-          <span className="min-w-0 text-2xs leading-tight text-ink-faint">
+        // Zulu/Local goes under the words where both won't fit: at 200% text on a 320 px phone it ran off the side.
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 print:hidden">
+          <span className="min-w-0 flex-1 basis-24 text-2xs leading-tight text-ink-faint">
             {mode === "zulu" ? "Zulu days, midnight to midnight Z · times Z" : `${departureOptions?.base ? `${departureOptions.base}'s` : "The domicile's"} calendar days · times local`}
           </span>
           <TimeModeToggle mode={mode} onChange={setMode} />
@@ -757,13 +773,14 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-[4px] text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}
           </div>
         )}
-        <div ref={gridRef} className={`cal-grid grid grid-cols-7 gap-1 ${revealed ? "is-revealed" : ""}`}>
+        {/* The gap in px, as `barWidth` and the day's padding are (see `cellClass`). */}
+        <div ref={gridRef} className={`cal-grid grid grid-cols-7 gap-[4px] ${revealed ? "is-revealed" : ""}`}>
           {month.days.map((day, i) => (
             <Cell
               key={day.dayIndex}

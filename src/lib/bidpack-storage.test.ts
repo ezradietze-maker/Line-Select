@@ -43,6 +43,18 @@ describe("bid pack storage", () => {
     vi.stubGlobal("window", { localStorage: memoryStorage() });
   });
 
+  it("reads whether a saved trip is international from its legs, so a pack saved when an airport was misread is right without a re-upload", () => {
+    const pack = busyPack();
+    const trip = pack.lines[0].trips[0];
+    const legs = trip.schedule.flatMap((d) => d.legs);
+    expect(legs.length).toBeGreaterThan(0);
+    // Saved when Hilo wasn't on the domestic list: the inter-island trip came back "intl".
+    const toHilo: Trip = { ...trip, international: true, schedule: trip.schedule.map((d) => ({ ...d, legs: d.legs.map((l) => ({ ...l, depAirport: "HNL", arrAirport: "ITO" })) })) };
+    const toParis: Trip = { ...trip, international: false, schedule: trip.schedule.map((d) => ({ ...d, legs: d.legs.map((l) => ({ ...l, arrAirport: "CDG" })) })) };
+    const restored = restoreBidPack({ ...pack, lines: [{ ...pack.lines[0], trips: [toHilo, toParis] }] });
+    expect(restored.lines[0].trips.map((t) => t.international)).toEqual([false, true]);
+  });
+
   it("round-trips a pack exactly, including each line's own trip start days", async () => {
     const pack = busyPack();
     expect(await saveBidPack(null, pack)).toBe(true);

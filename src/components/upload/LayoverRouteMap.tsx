@@ -1,10 +1,11 @@
 "use client";
 
 import { useReducedMotion } from "motion/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { WorldMap } from "@/components/ui/WorldMap";
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
 import { MAP_H, MAP_W, project } from "@/lib/globe/flat-map";
+import { widthWatcher } from "@/lib/width-watcher";
 
 /** Width over height of the map: a wide strip, so a pack of mostly domestic flying isn't a tall box of empty ocean. */
 const RATIO = 3;
@@ -17,7 +18,7 @@ interface Stop {
 }
 
 /** The part of the world map that holds every point with a margin, widened or heightened to the strip's shape. */
-function frameAround(points: { x: number; y: number }[]): [number, number, number, number] {
+export function frameAround(points: { x: number; y: number }[]): [number, number, number, number] {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
   const x0 = Math.min(...xs) - PAD;
@@ -29,6 +30,44 @@ function frameAround(points: { x: number; y: number }[]): [number, number, numbe
   // Centred on the points, but never above the top of the map or below its foot.
   const top = Math.min(Math.max((y0 + y1) / 2 - h / 2, 0), Math.max(0, MAP_H - h));
   return [(x0 + x1) / 2 - w / 2, top, w, h];
+}
+
+export type LabelSide = "above" | "west" | "east" | "below";
+
+/**
+ * Where a city's code sits from its dot, in px at `rem` px to the rem: the letters themselves (each about 0.68 of the
+ * 2xs text's size wide, standing from 0.3 to 0.82 of the way down its 1rem line), not the spacing above and below them.
+ */
+export function labelBox(side: LabelSide, x: number, y: number, chars: number, rem: number): { l: number; t: number; r: number; b: number } {
+  const w = chars * 0.68 * 0.6875 * rem;
+  const off = 0.4375 * rem;
+  const top = side === "above" ? y - 1.125 * rem : side === "below" ? y + 0.25 * rem : y - off;
+  const left = side === "above" || side === "below" ? x - w / 2 : side === "west" ? x - off - w : x + off;
+  return { l: left, t: top + 0.3 * rem, r: left + w, b: top + 0.82 * rem };
+}
+
+/**
+ * Which side of its dot each of the most-flown three is named on. Above it, unless another of them is close by: then
+ * the two take a side each, west and east. Where that still runs into one named before it on the map as it's drawn
+ * (`widthPx` wide; three close together, or the text set larger), the first other side that's clear: MDT, IND and BWI
+ * from Memphis all printed over one another east of their dots. Before the map's width is known, the first rule alone.
+ */
+export function labelSides(stops: { code: string; x: number; y: number }[], view: [number, number, number, number], widthPx: number, rem: number): LabelSide[] {
+  const placed: { l: number; t: number; r: number; b: number }[] = [];
+  return stops.map((s) => {
+    const near = stops.find((o) => o !== s && Math.abs(o.x - s.x) / view[2] < 0.16 && Math.abs(o.y - s.y) / view[3] < 0.22);
+    const first: LabelSide = !near ? "above" : s.x < near.x ? "west" : "east";
+    if (widthPx <= 0) return first;
+    const px = ((s.x - view[0]) / view[2]) * widthPx;
+    const py = ((s.y - view[1]) / view[3]) * widthPx * (view[3] / view[2]);
+    const clear = (side: LabelSide) => {
+      const b = labelBox(side, px, py, s.code.length, rem);
+      return placed.every((o) => b.r + 2 <= o.l || o.r + 2 <= b.l || b.b + 2 <= o.t || o.b + 2 <= b.t);
+    };
+    const side = ([first, "above", "east", "west", "below"] as const).find(clear) ?? first;
+    placed.push(labelBox(side, px, py, s.code.length, rem));
+    return side;
+  });
 }
 
 /** A gentle bow from base to city, bending to the left of the way flown, the way route maps draw them. */
@@ -46,6 +85,12 @@ function bow(a: Stop, b: Stop): string {
  */
 export function LayoverRouteMap({ base, cities, labels = true }: { base: string; cities: string[]; labels?: boolean }) {
   const reduce = useReducedMotion();
+  // The map's width as drawn (0 until it's measured), for where its codes have room.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [widthPx, setWidthPx] = useState(0);
+  const [watcher] = useState(() => widthWatcher(setWidthPx, 0));
+  useEffect(() => watcher.follow(boxRef.current));
+  useEffect(() => () => watcher.stop(), [watcher]);
   const placed = useMemo(() => {
     const home = coordinatesForAirport(base);
     if (!home) return null;
@@ -69,9 +114,12 @@ export function LayoverRouteMap({ base, cities, labels = true }: { base: string;
   const unit = view[2] / 360;
   // One after another, but the whole map's drawn inside a couple of seconds, however many cities a pack has.
   const step = Math.min(70, 1400 / stops.length);
+  // Measured once it's drawn: the page's text size, so the codes' room grows with them.
+  const rem = widthPx > 0 ? parseFloat(getComputedStyle(document.documentElement).fontSize) || 16 : 16;
+  const sides = labelSides(stops.slice(0, 3), view, widthPx, rem);
 
   return (
-    <div className="relative">
+    <div ref={boxRef} className="relative">
       <WorldMap view={view} label={`Routes from ${base} to the ${stops.length} layover cities in this pack`}>
         {stops.map((s, i) => (
           <path
@@ -107,17 +155,17 @@ export function LayoverRouteMap({ base, cities, labels = true }: { base: string;
       {labels && stops.slice(0, 3).map((s, i) => {
         const left = ((s.x - view[0]) / view[2]) * 100;
         const top = ((s.y - view[1]) / view[3]) * 100;
-        // Two close together (Toronto and Newark, from Memphis) would print over each other above their dots: each takes its own side instead.
-        const near = stops.slice(0, 3).find((o) => o !== s && Math.abs(o.x - s.x) / view[2] < 0.16 && Math.abs(o.y - s.y) / view[3] < 0.22);
-        const side = !near ? "above" : s.x < near.x ? "west" : "east";
+        const side = sides[i];
+        const across = side === "above" || side === "below";
+        // Set off from the dot in rem, so a code set larger stays clear of its own dot (in px, at 150% it sat on it).
         return (
           <span
             key={s.code}
             aria-hidden
-            className={`pointer-events-none absolute font-mono text-2xs font-semibold tracking-wider text-accent ${side === "above" ? "-translate-x-1/2" : side === "west" ? "-translate-x-full" : ""} ${reduce ? "" : "route-dot"}`}
+            className={`pointer-events-none absolute font-mono text-2xs font-semibold tracking-wider text-accent ${across ? "-translate-x-1/2" : side === "west" ? "-translate-x-full" : ""} ${reduce ? "" : "route-dot"}`}
             style={{
-              left: side === "above" ? `${left}%` : `calc(${left}% ${side === "west" ? "-" : "+"} 7px)`,
-              top: side === "above" ? `calc(${top}% - 18px)` : `calc(${top}% - 7px)`,
+              left: across ? `${left}%` : `calc(${left}% ${side === "west" ? "-" : "+"} 0.4375rem)`,
+              top: side === "above" ? `calc(${top}% - 1.125rem)` : side === "below" ? `calc(${top}% + 0.25rem)` : `calc(${top}% - 0.4375rem)`,
               animationDelay: reduce ? undefined : `${900 + i * step}ms`,
             }}
           >

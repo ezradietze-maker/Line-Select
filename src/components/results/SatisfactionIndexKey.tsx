@@ -21,8 +21,10 @@ export function SatisfactionIndexKey({ model, lines, best, worst, defaultOpen = 
   const limits = criteria.filter((x) => x.c.hardLimit);
   return (
     <div className="mt-3 rounded-lg border border-hairline print:hidden" data-satisfaction-key>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
-        <span className="min-w-0 text-xs text-ink-muted">
+      {/* Wraps where the words and "How it's scored" won't both fit (320px at 150% text and up): beside it, the words were
+          squeezed to nothing and ran under it. */}
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-left">
+        <span className="min-w-0 flex-1 basis-24 text-xs text-ink-muted">
           <span className="font-semibold text-ink">Satisfaction Index</span> &middot; how well each line fits you, 1 to 100
           <span className="hidden sm:inline">
             {" "}

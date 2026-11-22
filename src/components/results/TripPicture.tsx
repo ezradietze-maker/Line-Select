@@ -86,7 +86,9 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   // date column beside it), or "00 03 06" ran into each other.
   const hours = compact || width < 136 ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
   // The day column holds "Rpt 20:00L" and "Wed 28 NOV" whole, compact or not: narrower, they ran into the bars beside them.
-  const grid = "grid-cols-[4.25rem_minmax(0,1fr)]";
+  // Where it would leave the bars too little room (an interview card on a phone with its text set larger), it goes over
+  // them instead: beside them, the bars had none and ran off the screen.
+  const grid = "grid-cols-1 @min-[9rem]:grid-cols-[4.25rem_minmax(0,1fr)]";
   const allOpen = open.size === days.length;
   const toggle = (n: number) =>
     setOpen((prev) => {
@@ -97,7 +99,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
     });
 
   return (
-    <div className="min-w-0">
+    <div className="@container min-w-0">
       {dayDetail && (
         <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           {/* The words wrap beside the button while their longest fits; then the button goes under them. Kept beside

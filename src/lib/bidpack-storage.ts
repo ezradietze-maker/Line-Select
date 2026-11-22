@@ -2,6 +2,7 @@ import { monthAnchorZulu } from "@/lib/pdf-parser/build-bidpack";
 import { tripDutyPeriods } from "@/lib/duty-periods";
 import { backfillDeadheads } from "@/lib/deadhead";
 import { backfillStandby } from "@/lib/standby";
+import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { anchorTripToItsDate } from "@/lib/trip-anchor";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 import { moveKeptUnderOldId, withCurrentPackId } from "@/lib/pack-id";
@@ -47,6 +48,12 @@ function anchorStored(pack: BidPack, trip: Trip): Trip {
   return pack.base ? anchorTripToItsDate(pack, trip) : trip;
 }
 
+/** Whether any leg touches an airport outside the US (the parser's test), or null for a trip saved without its legs. */
+function legsInternational(trip: Trip): boolean | null {
+  const legs = (trip.schedule ?? []).flatMap((d) => d.legs ?? []);
+  return legs.length ? legs.some((l) => isInternationalCity(l.depAirport) || isInternationalCity(l.arrAirport)) : null;
+}
+
 /**
  * Backfills fields that didn't exist yet when a bid pack was saved (same
  * reasoning as `normalizeProfile` in storage.ts) — a bid pack saved by an
@@ -66,6 +73,9 @@ function normalizeBidPack(stored: BidPack): BidPack {
               departures: trip.landings,
               // Saved before duty periods were tracked as their own number: the old "departures" was exactly this count (layovers + 1), so rebuild it from the trip itself.
               dutyPeriods: trip.dutyPeriods ?? (trip.layoverDetails?.length ?? 0) + 1,
+              // From its legs, as the parser reads it: a pack saved while an airport was missing from the domestic list
+              // (Hilo, Fort Worth Alliance, Rickenbacker…) had a domestic trip tagged international.
+              international: legsInternational(trip) ?? trip.international,
             },
             parsed.month
           ))));

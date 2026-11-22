@@ -24,10 +24,12 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
   const next = () => (i++) * 45;
   return (
     <div className="mt-5" aria-hidden>
-      {/* Clipped sideways only: the "You" label hangs below the row. On a phone the planes behind are left off and the
-          runway is shorter, so the line ahead and the runway fit; yours is then first in the row, so its label starts
-          at the plane's edge instead of centring past the clip. */}
-      <div className="flex items-center gap-1 overflow-x-clip pb-4 sm:gap-1.5">
+      {/* Clipped sideways only: the "You" label hangs below the row. On a phone the planes behind are left off, the
+          runway is shorter, the planes closer, and the count has no dots and no gap before it, so the line ahead and
+          the runway fit (they didn't: a 320px phone cut the runway off, and a 375px one did once 10 or more were
+          ahead); yours is then first in the row, so its label starts at the plane's edge instead of centring past the
+          clip. */}
+      <div className="flex items-center gap-0.5 overflow-x-clip pb-4 sm:gap-1.5">
         {Array.from({ length: behind }, (_, k) => (
           <Plane key={k} className="hidden text-ink-faint sm:block" delay={next()} opacity={0.3 + (0.4 * (k + 1)) / behind} />
         ))}
@@ -35,13 +37,15 @@ export function SeniorityQueue({ ahead, total }: { ahead: number; total: number 
           <Plane className="text-accent" delay={next()} />
           <span className="absolute left-0 top-full mt-1 text-2xs text-accent sm:left-1/2 sm:-translate-x-1/2 font-medium">You</span>
         </span>
-        <span className="mx-1 h-px w-3 bg-hairline" />
+        <span className="mx-1 hidden h-px w-3 bg-hairline sm:block" />
         {long ? (
           <>
             <Plane className="text-ink-muted" delay={next()} />
             <Plane className="text-ink-muted" delay={next()} />
             <span className="queue-roll whitespace-nowrap px-1.5 font-mono text-2xs text-ink-faint" style={{ animationDelay: `${next()}ms` }}>
-              &middot; &middot; {ahead - 5} more &middot; &middot;
+              <span className="hidden sm:inline">&middot; &middot; </span>
+              {ahead - 5} more
+              <span className="hidden sm:inline"> &middot; &middot;</span>
             </span>
             {[0, 1, 2].map((k) => (
               <Plane key={k} className="text-ink-muted" delay={next()} />

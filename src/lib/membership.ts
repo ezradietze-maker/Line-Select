@@ -27,6 +27,13 @@ export function inPreview(rank: number | undefined, limit: number | null): boole
   return limit === null || (rank !== undefined && rank <= limit);
 }
 
+/** How many of these lines a preview of `limit` lists: a count beside a view of them is of the lines it shows. */
+export function countInPreview(ids: Iterable<string>, rankOf: (id: string) => number | undefined, limit: number | null): number {
+  let n = 0;
+  for (const id of ids) if (inPreview(rankOf(id), limit)) n++;
+  return n;
+}
+
 /** How many new pilots may claim the free tier before it shuts off and new pilots must subscribe to Pro. */
 export const FREE_MEMBER_CAP = 15;
 

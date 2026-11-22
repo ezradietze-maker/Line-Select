@@ -103,11 +103,12 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
         <NoteBox value={why} onChange={setWhy} placeholder="What decided your grades? (optional)" ariaLabel="What decided your grades" maxLength={MAX_NOTE} className="mt-4" />
         {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
 
-        <div className="mt-4 flex items-center justify-between gap-3">
+        {/* Wraps when the text is set large: in one row "8 of 8 graded" and Continue pushed a phone's page sideways. */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={onSkip} disabled={busy} className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Skip these
           </button>
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-3">
             <span className="font-mono text-xs text-ink-faint" aria-live="polite">
               {graded} of {screen.keys.length} graded
             </span>

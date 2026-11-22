@@ -73,7 +73,8 @@ export function ChoiceStep({ prompt, helpText, eyebrow, options, selected, onSel
                 >
                   {i + 1}
                 </span>
-                <span className="min-w-0">
+                {/* A word wider than the choice (text set large) breaks: whole, it pushed a phone's page sideways. */}
+                <span className="min-w-0 wrap-anywhere">
                   <span className={`block text-[0.9375rem] font-semibold ${isSelected ? "text-ink" : "text-ink"}`}>{opt.label}</span>
                   {opt.description && <span className="mt-0.5 block text-sm leading-snug text-ink-muted">{opt.description}</span>}
                 </span>

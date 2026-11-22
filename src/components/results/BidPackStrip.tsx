@@ -141,7 +141,8 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
       {view === "heat" ? (
         <>
-          <span className="inline-flex items-center gap-1.5">
+          {/* No wider than the key: at 320px and 200% text "Hot" ran 7px off the side; the scale gives the room. */}
+          <span className="inline-flex max-w-full items-center gap-1.5">
             Cold
             <span aria-hidden className="inline-block h-2.5 w-24 rounded-[2px] border border-border-strong/60" style={{ background: HEAT_GRADIENT }} />
             Hot
@@ -151,7 +152,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
         </>
       ) : view === "pack" ? (
         <>
-          {item(word("1875", "text-leg"), "flight, on the day it leaves")}
+          {item(word("1875", "text-leg"), "flight, on the day the pack prints it")}
           {item(word("D/H", "text-deadhead"), "deadhead")}
           {item(word("HNL", "text-layover"), "where you lay over")}
           {item(word("HSBY", "text-standby"), "hotel standby")}
@@ -217,9 +218,10 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
       <span className="relative z-10">{label}</span>
     </button>
   );
-  // No wider than its row: with a phone's text set larger, "Bid pack" goes over two lines rather than off the side.
+  // No wider than its row: with a phone's text set larger, "Bid pack" goes over two lines rather than off the side, and
+  // where even then the three won't fit (320px at 150% text and up) "Heat Map" goes under; on one row it cut "Timeline".
   return (
-    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex max-w-full shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
+    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex max-w-full shrink-0 flex-wrap items-center justify-end rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
       {option("timeline", "Timeline")}
       {option("pack", "Bid pack")}
       {option("heat", "Heat Map")}
@@ -488,7 +490,7 @@ function RouteDays({ columns, timeline, layout, heat, vacation }: { columns: Pac
       </div>
       <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={G.height} aria-hidden>
         {/* On the Heat Map the vacation is its bar, hashes and outline only: the colours belong to the heat. */}
-        {vacation && <VacationLayer mark={vacation} x={x} height={G.height} wash={!heat} id={hatchId} />}
+        {vacation && <VacationLayer mark={vacation} x={x} height={G.height} wash={!heat} id={hatchId} clear={headers.map((h, i): [number, number] => [h.left - 2, h.left + headerWidths[i] + 2])} />}
         {offDays.map((d) => {
           const cx = (d + 0.5) * colPx;
           if (cards.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
@@ -559,8 +561,12 @@ function RouteDays({ columns, timeline, layout, heat, vacation }: { columns: Pac
  * Map, whose colours are heat), a gold bar along the top, the days it could slide to hatched either side of that bar,
  * and where the pack had it outlined when it's slid.
  */
-function VacationLayer({ mark, x, height, wash, id }: { mark: LineVacationMark; x: (m: number) => number; height: number; wash: boolean; id: string }) {
+function VacationLayer({ mark, x, height, wash, id, clear = [] }: { mark: LineVacationMark; x: (m: number) => number; height: number; wash: boolean; id: string; clear?: [number, number][] }) {
   const hatch = `vh-${id}`;
+  // The hatches stop short of each trip's number and credit (`clear`, px across): they're as high on the strip, and ran
+  // through the tops of "2233 32:57" where a trip sat in the days the vacation could slide to.
+  const hatched = (a: number, b: number): [number, number][] =>
+    clear.reduce<[number, number][]>((pieces, [c0, c1]) => pieces.flatMap(([p0, p1]): [number, number][] => (c1 <= p0 || c0 >= p1 ? [[p0, p1]] : [...(c0 - p0 >= 2 ? [[p0, c0] as [number, number]] : []), ...(p1 - c1 >= 2 ? [[c1, p1] as [number, number]] : [])])), [[a, b]]);
   return (
     <g aria-hidden>
       <defs>
@@ -575,7 +581,7 @@ function VacationLayer({ mark, x, height, wash, id }: { mark: LineVacationMark; 
           <g key={p.id}>
             {wash && <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={height} fill="var(--color-accent)" opacity={0.13} />}
             {slid && <rect x={x(p.awardedStart) + 0.5} y={0.5} width={Math.max(1, x(p.awardedEnd) - x(p.awardedStart) - 1)} height={height - 1} rx={3} fill="none" stroke="var(--color-accent)" strokeOpacity={0.7} strokeDasharray="3 2" />}
-            {[before, after].map((r, k) => (r ? <rect key={k} x={x(r[0])} y={0} width={Math.max(1, x(r[1]) - x(r[0]))} height={5} fill={`url(#${hatch})`} opacity={0.85} /> : null))}
+            {[before, after].flatMap((r, k) => (r ? hatched(x(r[0]), x(r[1])).map(([a, b], j) => <rect key={`${k}-${j}`} x={a} y={0} width={Math.max(1, b - a)} height={5} fill={`url(#${hatch})`} opacity={0.85} />) : []))}
             <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={3} rx={1.5} fill="var(--color-accent)">
               <title>{`Your vacation, ${p.days} days${slid ? ", slid" : ""}`}</title>
             </rect>
@@ -659,6 +665,35 @@ function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackC
   const hatchId = useId().replace(/:/g, "");
   // The trips the vacation takes off: faded, still there, so the pilot sees what it gives up.
   const removed = new Set(vacation ? trips.flatMap((c, i) => (vacation.removedStarts.some((m) => m >= c.trip.start - 1 && m <= c.trip.end) ? [i] : [])) : []);
+  // Its words are faded whole, over the card's fade: a word reaching past the card's edge ("LAX 30h" at the end of a
+  // trip) was faded only as far as the card went.
+  const offAt = (m: number) => trips.some((c, i) => removed.has(i) && m >= c.trip.start && m <= c.trip.end);
+  const routeWord = (i: number) => {
+    const w = routeWords[i];
+    const spot = routeSpots[i];
+    if (!spot) return null;
+    return (
+      <text key={`r${i}`} x={spot.x} y={CT.routeLanes[spot.lane]} fontSize={font} fontWeight={600}>
+        {w.variants[spot.variant].map((c, k) => (
+          <tspan key={k} fill={w.d.standby ? "var(--color-standby)" : c.deadhead ? "var(--color-deadhead)" : "var(--color-ink)"}>
+            {k > 0 ? "-" : ""}
+            {c.code}
+          </tspan>
+        ))}
+      </text>
+    );
+  };
+  const stayWord = (i: number) => {
+    const spot = staySpots[i];
+    if (!spot) return null;
+    return (
+      <text key={`t${i}`} x={spot.x} y={CT.stayLanes[spot.lane]} fontSize={font} fontWeight={600} fill="var(--color-layover)">
+        {stayWords[i].variants[spot.variant]}
+      </text>
+    );
+  };
+  const routeOff = routeWords.map((w) => offAt(w.d.flyStart));
+  const stayOff = stayWords.map((w) => offAt(w.st.start));
   const taken = [
     ...routeWords.flatMap((w, i) => (routeSpots[i] ? [{ x: routeSpots[i]!.x, w: w.widths[routeSpots[i]!.variant], y: CT.routeLanes[routeSpots[i]!.lane] }] : [])),
     ...stayWords.flatMap((w, i) => (staySpots[i] ? [{ x: staySpots[i]!.x, w: w.widths[staySpots[i]!.variant], y: CT.stayLanes[staySpots[i]!.lane] }] : [])),
@@ -678,7 +713,7 @@ function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackC
         ))}
       </div>
       <svg className="absolute inset-0 overflow-visible font-mono" width={width} height={CT.height} aria-hidden>
-        {vacation && <VacationLayer mark={vacation} x={x} height={CT.height} wash id={hatchId} />}
+        {vacation && <VacationLayer mark={vacation} x={x} height={CT.height} wash id={hatchId} clear={headerSpots.map((s, i): [number, number] => [s.x - 2, s.x + headerWidths[i] + 2])} />}
         {offDays.map((d) => {
           const cx = (d + 0.5) * colPx;
           if (trips.some((c) => cx + 9 > c.left && cx - 9 < c.right)) return null;
@@ -719,30 +754,8 @@ function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackC
             </g>
           );
         })}
-        {routeWords.map((w, i) => {
-          const spot = routeSpots[i];
-          if (!spot) return null;
-          const cities = w.variants[spot.variant];
-          return (
-            <text key={`r${i}`} x={spot.x} y={CT.routeLanes[spot.lane]} fontSize={font} fontWeight={600}>
-              {cities.map((c, k) => (
-                <tspan key={k} fill={w.d.standby ? "var(--color-standby)" : c.deadhead ? "var(--color-deadhead)" : "var(--color-ink)"}>
-                  {k > 0 ? "-" : ""}
-                  {c.code}
-                </tspan>
-              ))}
-            </text>
-          );
-        })}
-        {stayWords.map((w, i) => {
-          const spot = staySpots[i];
-          if (!spot) return null;
-          return (
-            <text key={`t${i}`} x={spot.x} y={CT.stayLanes[spot.lane]} fontSize={font} fontWeight={600} fill="var(--color-layover)">
-              {w.variants[spot.variant]}
-            </text>
-          );
-        })}
+        {routeWords.map((_, i) => (routeOff[i] ? null : routeWord(i)))}
+        {stayWords.map((_, i) => (stayOff[i] ? null : stayWord(i)))}
         {headerText.map((h, i) => (
           <text key={`h${i}`} x={headerSpots[i].x} y={CT.header} fontSize={headerFont}>
             <tspan fontWeight={600} fill="var(--color-ink)">
@@ -758,6 +771,13 @@ function CalendarRoute({ columns, timeline, layout, vacation }: { columns: PackC
               <title>{`Trip ${c.trip.number ?? ""}: your vacation takes it off, paid from your bank`}</title>
             </rect>
           ) : null
+        )}
+        {/* As faded as the card's fade leaves what's under it (its surface at 62%). */}
+        {(routeOff.includes(true) || stayOff.includes(true)) && (
+          <g opacity={0.38}>
+            {routeWords.map((_, i) => (routeOff[i] ? routeWord(i) : null))}
+            {stayWords.map((_, i) => (stayOff[i] ? stayWord(i) : null))}
+          </g>
         )}
         {vacLabels.map((l, i) => (
           <text key={`v${i}`} x={l.x} y={l.y} fontSize={font} fontWeight={700} fill="var(--color-accent)">

@@ -86,7 +86,8 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 
       {result.meta && (
         <div className="panel-glass mt-6 flex flex-wrap items-center justify-between gap-3 px-6 py-5">
-          <div className="whitespace-nowrap font-display text-2xl font-semibold tracking-wide text-ink sm:text-3xl">
+          {/* Wraps between its parts when the text is set large: on one line it pushed the page sideways on a phone. */}
+          <div className="font-display text-2xl font-semibold tracking-wide text-ink sm:text-3xl">
             {result.meta.base} <span className="text-ink-faint">&middot;</span> {result.meta.aircraft}
             {selectedSeat && (
               <>
@@ -121,9 +122,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
                 <div className="font-display text-base font-semibold text-ink">
                   {seat === "CAP" ? "Captain" : "First Officer"}
                 </div>
-                <div className="text-readout mt-1 text-2xl font-semibold">
+                <div className="text-readout mt-1 flex flex-wrap items-baseline gap-x-1.5 text-2xl font-semibold">
                   {result.bidPacksBySeat[seat]?.lines.length}
-                  <span className="ml-1.5 font-sans text-xs font-normal text-ink-faint">lines</span>
+                  <span className="font-sans text-xs font-normal text-ink-faint">lines</span>
                 </div>
               </button>
             ))}
@@ -132,8 +133,9 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
       )}
 
       {bidPack && (
-        <div className="panel-glass mt-6 p-5">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="panel-glass @container mt-6 p-5">
+          {/* By the room there is, not the screen's width: with the text set large, two to a row ran "77/77" into "14.6". */}
+          <div className="grid grid-cols-1 gap-4 @min-[14rem]:grid-cols-2 @min-[24rem]:grid-cols-4">
             <Stat label="Lines" value={<NumberTicker value={bidPack.lines.length} />} />
             <Stat
               label="Avg credit"

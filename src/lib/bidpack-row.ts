@@ -10,11 +10,17 @@ import type { BidPack, Line } from "@/types/bidpack";
  * A line the way the bid pack prints it on its line pages — one strip across the whole bid period, a column a day,
  * weeks split MO–FR | SA–SU — for the results list's first look.
  *
- * The pack's own day cell, read against its pairings: every leg's flight number on the local date it departs ("D/H"
- * for a deadhead), and after a duty's last leg the city the pilot lays over in — a hub turn's city isn't printed, only
- * where they sleep; the layover city again on each whole day of the stay; the pairing number on the trip's first day,
- * its credit under it; "---" on a day off. This reads the same things from the parsed trips, so it works on every
- * stored pack, not only ones parsed after the grid's raw text was kept.
+ * The pack's own day cell, read against its pairings. A cell is four rows, a quarter of the local day each. A duty
+ * starts in the row its report falls in — an hour before its first flight leaves, or when a day of hotel standby starts
+ * — so a flight leaving at 0042 is the last row of the day before. Each leg after it takes the next row down ("D/H" for
+ * a deadhead), and after the duty's last leg the city the pilot lays over in — a hub turn's city isn't printed, only
+ * where they sleep. Past a day's fourth row it runs on into the next day's first: B767 MEM trip 76's 0036, out of
+ * Frankfurt at 2235 on Oct 8 after 5233 and 5034, is printed on the 9th. A row already taken keeps what it has: a
+ * trip's first flight is lost under the trip before's run-over, and a duty's first flight takes the row its layover
+ * city would have had. The layover city again on each whole day of the stay; the pairing number on the trip's first
+ * day, its credit under it; "---" on a day off. Read so against the line grids of all seven October 2026 packs, every
+ * flight number they print lands on the pack's own day and row. This reads the same things from the parsed trips, so
+ * it works on every stored pack, not only ones parsed after the grid's raw text was kept.
  */
 
 /** One column of the strip's header: the date and weekday, as the pack's two header rows print them. */
@@ -77,12 +83,6 @@ export function packColumns(bidPeriodStart: string | null, bidPeriodDays: number
   });
 }
 
-/** A day's words, tightened to fit: a run of deadheads says "D/H" once, and past four the middle ones go. */
-function fit(tokens: PackToken[]): PackToken[] {
-  const out = tokens.filter((t, i) => !(t.kind === "deadhead" && tokens[i - 1]?.kind === "deadhead"));
-  return out.length > PACK_TOKENS_PER_DAY ? [...out.slice(0, PACK_TOKENS_PER_DAY - 1), out.at(-1)!] : out;
-}
-
 /**
  * Each line's strip as last built, by line: it takes the whole month calendar to learn which trip owns each day, and a
  * card is drawn again every time it comes back into the list (a filter changed, the list re-sorted). Callers only read it.
@@ -115,51 +115,44 @@ function buildPackRowFresh(whole: Line, bidPeriodStart: string | null, bidPeriod
   });
   if (!bidPeriodStart || !month.placementIsReal) return out;
 
-  // Each leg on the date it departs, where it departs — the pack's own calendar for its flight numbers.
+  // Which of the strip's rows a time falls in, `minutesBefore` an instant at an airport: four a day, a quarter of its local day each.
   const first = DateTime.fromISO(bidPeriodStart, { zone: "UTC" });
-  const dayOf = (iso: string, airport: string): number | null => {
-    const at = DateTime.fromISO(iso, { zone: timezoneForAirport(airport) ?? "UTC" });
+  const rowOf = (iso: string, airport: string, minutesBefore: number): number | null => {
+    const at = DateTime.fromISO(iso, { zone: timezoneForAirport(airport) ?? "UTC" }).minus({ minutes: minutesBefore });
     if (!at.isValid) return null;
-    return Math.round(DateTime.fromISO(at.toISODate()!, { zone: "UTC" }).diff(first, "days").days);
+    const day = Math.round(DateTime.fromISO(at.toISODate()!, { zone: "UTC" }).diff(first, "days").days);
+    return day * PACK_TOKENS_PER_DAY + Math.floor((at.hour * PACK_TOKENS_PER_DAY) / 24);
   };
-  const raw: PackToken[][] = Array.from({ length: count }, () => []);
-  const put = (d: number | null, t: PackToken) => {
-    if (d !== null && d >= 0 && d < count) raw[d].push(t);
+  const rows: (PackToken | null)[] = Array.from({ length: count * PACK_TOKENS_PER_DAY }, () => null);
+  const put = (r: number, t: PackToken) => {
+    if (r >= 0 && r < rows.length && !rows[r]) rows[r] = t;
   };
+  // Each layover city goes in after every leg is in: a leg takes the row first.
+  const cities: { row: number; token: PackToken }[] = [];
   for (const trip of line.trips) {
-    trip.schedule.forEach((duty, k) => {
-      // Leaving a layover: its city first, where the pilot wakes up — unless the day already says it.
-      const before = trip.schedule[k - 1]?.layover;
-      const firstLeg = duty.legs[0];
-      if (before && firstLeg) {
-        const d = dayOf(firstLeg.depTimeZulu, firstLeg.depAirport);
-        if (d !== null && d >= 0 && d < count && !raw[d].some((t) => t.text === before.city)) put(d, { text: before.city, kind: "layover" });
-      }
-      // A day of hotel standby, as the pack prints it: the hotel's city, then "HSBY".
-      if (duty.legs.length > 0 && duty.legs.every((l) => l.isStandby)) {
-        const d = dayOf(duty.legs[0].depTimeZulu, duty.legs[0].depAirport);
-        if (!(d !== null && raw[d]?.at(-1)?.text === duty.legs[0].depAirport)) put(d, { text: duty.legs[0].depAirport, kind: "layover" });
-        put(d, { text: "HSBY", kind: "standby" });
-        return;
-      }
-      let last: number | null = null;
-      for (const leg of duty.legs) {
-        last = dayOf(leg.depTimeZulu, leg.depAirport);
+    let last = -Infinity;
+    for (const duty of trip.schedule) {
+      duty.legs.forEach((leg, j) => {
+        // A duty starts in the row its report falls in: an hour before a flight, or when a day on call at the hotel starts.
+        const own = rowOf(leg.depTimeZulu, leg.depAirport, leg.isStandby ? 0 : 60);
+        if (own === null) return;
+        last = j === 0 ? Math.max(own, last + 1) : last + 1;
         // An hour or two on call at the airport (STARPT) is "ASBY" on the line page; a hotel's is "HSBY".
         if (leg.isStandby) put(last, { text: standbyPlace(leg.flightNumber) === "airport" ? "ASBY" : "HSBY", kind: "standby" });
         else if (leg.isDeadhead || leg.equipment === "CAB") put(last, { text: "D/H", kind: "deadhead" });
         else put(last, { text: leg.flightNumber, kind: "flight" });
-      }
-      if (duty.layover && !(last !== null && raw[last]?.at(-1)?.text === duty.layover.city)) put(last, { text: duty.layover.city, kind: "layover" });
-    });
+      });
+      if (duty.layover) cities.push({ row: last + 1, token: { text: duty.layover.city, kind: "layover" } });
+    }
   }
-  // A whole day at a layover hotel, nothing departing: the city again, as the pack prints it each day of the stay.
+  for (const c of cities) put(c.row, c.token);
+  out.forEach((day, i) => (day.tokens = rows.slice(i * PACK_TOKENS_PER_DAY, (i + 1) * PACK_TOKENS_PER_DAY).filter((t) => t !== null)));
+  // A whole day at a layover hotel, nothing printed on it: the city again, as the pack prints it each day of the stay.
   month.days.forEach((day, i) => {
-    if (i >= count || raw[i].length > 0 || day.tripIndex === null || day.isOff) return;
+    if (i >= count || out[i].tokens.length > 0 || day.tripIndex === null || day.isOff) return;
     // The stay the day starts in, the first time through — after an eastbound date-line crossing the date also holds a second.
     const stay = [...day.segments].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay).find((s) => s.kind === "layover" && s.stay && !s.secondPass);
-    if (stay?.stay) raw[i].push({ text: stay.stay.city, kind: "layover" });
+    if (stay?.stay) out[i].tokens = [{ text: stay.stay.city, kind: "layover" }];
   });
-  raw.forEach((tokens, i) => (out[i].tokens = fit(tokens)));
   return out;
 }

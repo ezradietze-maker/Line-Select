@@ -205,8 +205,10 @@ export function PilotPrioritiesEditor({ bidPack, profile, onUpdate }: PilotPrior
             return (
               // A strip in the rack: each priority slides into its slot in turn, a holder-yellow edge down its side.
               <li key={d.id} className="rack rounded-[4px] border border-l-[3px] border-border border-l-accent bg-surface p-4" style={{ animationDelay: `${row * 40}ms` }}>
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="min-w-0 font-medium text-ink">{d.label}</p>
+                {/* The share goes under where the two won't fit (320px at 200% text): beside it, the name was squeezed to a
+                    word's width and ran over the share. A word longer than the card breaks. */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <p className="min-w-0 flex-1 basis-32 break-words font-medium text-ink">{d.label}</p>
                   <span className="shrink-0 font-mono text-xs text-accent">{Math.round(d.influence)}%</span>
                 </div>
                 <p className="mt-1 text-xs text-ink-muted">

@@ -13,7 +13,9 @@ const FIT_STYLE: Record<StrategyFit, { label: string; cls: string }> = {
 
 function FitBadge({ fit }: { fit: StrategyFit }) {
   const f = FIT_STYLE[fit];
-  return <span className={`inline-flex shrink-0 items-center rounded-[3px] border px-2 py-0.5 text-xs font-medium ${f.cls}`}>{f.label}</span>;
+  // Not held to one line: alone on its row under a long name (a phone with its text at 200%), "For you this month" ran
+  // past the card's edge and was cut off.
+  return <span className={`inline-flex items-center rounded-[3px] border px-2 py-0.5 text-xs font-medium ${f.cls}`}>{f.label}</span>;
 }
 
 function ScoreContextLine({ scoreContext }: { scoreContext: StrategyLineRecommendation["scoreContext"] }) {
@@ -185,13 +187,15 @@ export function StrategyCard({
         {action && <div className="mt-3">{action}</div>}
 
         {strategy.facts.length > 0 && (
-          <dl className="mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-lg border border-hairline bg-canvas/40 px-3.5 py-2.5 sm:grid-cols-2">
+          <dl className="@container mt-4 grid grid-cols-1 gap-x-4 gap-y-1.5 rounded-lg border border-hairline bg-canvas/40 px-3.5 py-2.5 sm:grid-cols-2">
             {strategy.facts.map((f) => (
-              <div key={f.label} className="flex items-baseline justify-between gap-3 text-xs">
-                <dt className="text-ink-muted">{f.label}</dt>
+              <div key={f.label} className="flex items-baseline justify-between gap-3 text-xs @max-[8rem]:flex-wrap @max-[8rem]:gap-y-0.5">
+                <dt className="text-ink-muted @max-[8rem]:min-w-0 @max-[8rem]:break-words">{f.label}</dt>
                 {/* Held to most of the row and wrapped: kept whole on one line, a long value ("Conflict · View/Add · SWW ·
-                    Secondary · Open time") ran past the card's edge on a phone and was cut off. */}
-                <dd className={`max-w-[65%] shrink-0 text-right font-mono font-semibold ${f.tone === "good" ? "text-good" : f.tone === "warn" ? "text-warn" : "text-readout"}`}>{f.value}</dd>
+                    Secondary · Open time") ran past the card's edge on a phone and was cut off. In a box narrower than
+                    its words at the usual size (a phone with its text at 200%), the value goes under its name, at the
+                    right: beside it, "#267 of 781" ran out of the box. */}
+                <dd className={`max-w-[65%] shrink-0 text-right font-mono @max-[8rem]:ml-auto @max-[8rem]:max-w-full font-semibold ${f.tone === "good" ? "text-good" : f.tone === "warn" ? "text-warn" : "text-readout"}`}>{f.value}</dd>
               </div>
             ))}
           </dl>

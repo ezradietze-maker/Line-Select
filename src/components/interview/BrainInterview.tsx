@@ -1670,8 +1670,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
         </div>
       )}
 
-      {/* Scrolled to, it stops clear of the phone's top bar (57px), and just short of the top on a wider screen. */}
-      <div ref={panelRef} className="panel-glass scroll-mt-[4.5rem] p-6 sm:p-10 md:scroll-mt-6">
+      {/* Scrolled to, it stops clear of the phone's top bar (57px), and just short of the top on a wider screen. On a
+          phone its padding stays 24px with the text set large: doubled, a 320px phone at 200% had 158px left for the
+          question, and its words, choices and Continue ran off the side. */}
+      <div ref={panelRef} className="panel-glass scroll-mt-[4.5rem] p-[min(1.5rem,24px)] sm:p-10 md:scroll-mt-6">
         {(backTo || backInOpening) && !finishedElsewhere && (
           <button
             type="button"

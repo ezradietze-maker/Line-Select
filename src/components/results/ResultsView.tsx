@@ -28,7 +28,7 @@ import { FilterBlameList, ResultsFilterBar } from "@/components/results/ResultsF
 import { SkeletonCards } from "@/components/ui/SkeletonCards";
 import { Button } from "@/components/ui/Button";
 import { MembershipPreviewNote } from "@/components/membership/MembershipPreviewNote";
-import { inPreview } from "@/lib/membership";
+import { countInPreview, inPreview } from "@/lib/membership";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
@@ -809,8 +809,10 @@ export function ResultsView({
   const previewRankById = useMemo(() => new Map(placed.map((r, i) => [r.line.id, i + 1] as const)), [placed]);
   const isPreviewed = useCallback((id: string) => inPreview(previewRankById.get(id), previewLimit), [previewRankById, previewLimit]);
   // The panels above the list name lines by their place: for a non-member, only the top of the ranking they can see.
-  // Lines the vacation goal slid the vacation on (not the ones the pilot placed by hand); null until worked out.
-  const vacationMoved = vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null;
+  // Lines the vacation goal slid the vacation on (not the ones the pilot placed by hand); null until worked out. A
+  // non-member's view lists only their ten: the count is of those, not of the whole pack.
+  const vacationMoved = vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id] && isPreviewed(id)).length : null;
+  const vacationLineCount = previewLimit === null ? bidPack.lines.length : bidPack.lines.filter((l) => isPreviewed(l.id)).length;
   const panelOrder = useMemo(() => {
     const end = ranked.findIndex((r) => !isPreviewed(r.line.id));
     return (end === -1 ? ranked : ranked.slice(0, end)).map((r) => r.line.lineNumber);
@@ -838,6 +840,9 @@ export function ResultsView({
     () => new Set(forecastLines ? Object.values(forecastLines).filter((l) => l.pAvailable >= 0.2).map((l) => l.lineId) : []),
     [forecastLines]
   );
+  // A non-member's view lists only their ten: the Realistic tab and the banner count those, not the whole pack's (the
+  // tab said "Realistic (75)" over a list of ten).
+  const realisticShown = useMemo(() => countInPreview(realisticIds, (id) => previewRankById.get(id), previewLimit), [realisticIds, previewRankById, previewLimit]);
 
   const commute = useCommuteCheck(bidPack, profile, filters.commuteOnly);
   const filterCtx = useMemo<FilterContext>(() => ({ bidPeriodStart: bidPack.bidPeriodStart, commute: commute.statuses }), [bidPack.bidPeriodStart, commute.statuses]);
@@ -1642,8 +1647,7 @@ export function ResultsView({
           response: forecast.result,
           loading: forecast.loading,
           failed: forecast.failed,
-          // A non-member's view lists only their ten: the count is of those, not of the whole pack.
-          realisticCount: previewLimit === null ? realisticIds.size : [...realisticIds].filter(isPreviewed).length,
+          realisticCount: realisticShown,
           showingRealistic: view === "realistic",
           onToggleRealistic: () => setView((v) => (v === "realistic" ? "all" : "realistic")),
           canShare: forecast.canShare,
@@ -1669,7 +1673,7 @@ export function ResultsView({
                       <VacationChoicePanel bare bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
                       {carry.chosen.some((v) => v.choice !== "not-taking") && (
                         <div className="mt-4 border-t border-hairline pt-4">
-                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={bidPack.lines.length} />
+                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={vacationLineCount} />
                         </div>
                       )}
                     </>
@@ -1829,11 +1833,12 @@ export function ResultsView({
               with a membership. */}
           {(() => {
             const controls = (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                 <SortMenu sort={lineSort} lines={listable} />
               {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
                   Their focus ring is drawn inside: the rounded box clips anything outside it. */}
-              <div className="flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
+              {/* No wider than the row: at 150% text on a 320 px phone the three ran off the side and the page scrolled sideways. */}
+              <div className="flex max-w-full flex-wrap overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
                 <button
                   type="button"
                   aria-pressed={view === "all"}
@@ -1852,7 +1857,11 @@ export function ResultsView({
                 >
                   {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
                   <span className="relative z-10">
-                    Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                    {/* The count held to its brackets: its rolling digits are boxes a row can break between, and at 320 px it read "(0" over ")". */}
+                    Shortlist{" "}
+                    <span className="whitespace-nowrap">
+                      (<FlipText text={String(validMarks.starred.length)} />)
+                    </span>
                   </span>
                 </button>
                 {forecastLines && (
@@ -1863,7 +1872,7 @@ export function ResultsView({
                     className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                   >
                     {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                    <span className="relative z-10">Realistic ({realisticIds.size})</span>
+                    <span className="relative z-10">Realistic ({realisticShown})</span>
                   </button>
                 )}
               </div>

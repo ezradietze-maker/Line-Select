@@ -189,18 +189,20 @@ export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2"
   const list = useRef<HTMLUListElement>(null);
   const { progress, reached } = useReadProgress(list);
   return (
-    <ul ref={list} className="relative space-y-6">
-      <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-hairline" />
+    // Where the words beside the signs would be a word or two wide (320px at 150% text and up), each sign goes over its
+    // words and the centreline is left off: beside them, "satisfaction" ran 18px off the side of the page.
+    <ul ref={list} className="@container relative space-y-6">
+      <span aria-hidden className="absolute bottom-4 left-[17px] top-4 w-px bg-hairline @max-[12rem]:hidden" />
       <span
         aria-hidden
         // Read so far: the green centreline, drawn down the list as you go.
-        className="absolute bottom-4 left-[17px] top-4 w-0.5 -translate-x-[0.5px] origin-top bg-good transition-transform duration-200 ease-out"
+        className="absolute bottom-4 left-[17px] top-4 w-0.5 -translate-x-[0.5px] origin-top bg-good transition-transform duration-200 ease-out @max-[12rem]:hidden"
         style={{ transform: `scaleY(${progress})` }}
       />
       {POINTS.map((point, i) => {
         const lit = i < reached;
         return (
-          <li key={point.title} className="relative flex gap-4">
+          <li key={point.title} className="relative flex flex-col gap-2 @min-[12rem]:flex-row @min-[12rem]:gap-4">
             <div
               // Each point turns into a location sign (yellow on black) once it's been read.
               className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-[4px] border transition-[color,border-color,background-color] duration-300 ${
@@ -209,7 +211,8 @@ export function HowItWorksContent({ headingLevel = "h3" }: { headingLevel?: "h2"
             >
               {point.icon}
             </div>
-            <div className="min-w-0 pt-1.5">
+            {/* A word still longer than the column breaks. */}
+            <div className="min-w-0 pt-1.5 break-words">
               <Heading as={headingLevel} className="text-base text-ink">
                 {point.title}
               </Heading>
