@@ -156,8 +156,26 @@ Pulling the other way: 1003 has more layover value (145 vs 111) and fewer home d
 
 ### 4.4 The one question
 
-Ask only when the verdict is ambiguous, threshold or unexplained, *and* the best question's information gain clears a
-cost, at most about once per 5–8 drags.
+**Since Nov 21 2026 (owner's call): asked after every swap, with the brain's guess first.** A small box pops up (at the
+side on a laptop, along the foot on a phone): "Why did you put line X above Y?", the guess with both lines' numbers and
+"Yes, that's it", the other real differences, "Something else…" (typed, read by the reason route), "About equal", and
+"Turn off these questions" (back on from any swap's message). A confirmed guess counts half a picked or typed reason
+(`LEARNER.answer.confirmed` 0.5), because people say yes to a plausible suggestion. Bench (scripts/eval/drag-bench.ts,
+100 synthetic pilots, 6 swaps), every swap vs the rare question below, unseen lines of their true top 30:
+
+| Pilots | Rare | Every swap | Gain |
+|---|---|---|---|
+| Interview named the right things, honest | 77.6% | 80.3% | +2.7 ± 0.6 |
+| … say yes to 30% of wrong guesses | 77.6% | 80.4% | +2.8 ± 0.7 |
+| Also care about something never asked, honest | 72.0% | 76.4% | +4.4 ± 0.6 |
+| … say yes to 30% of wrong guesses | 72.0% | 74.3% | +2.3 ± 0.6 |
+| … say yes to 60% of wrong guesses | 72.4% | 72.8% | +0.4 ± 0.7 (no learning 68.0%) |
+
+Counting a confirmed guess in full did better for honest pilots and worse for agreeable ones (−0.5 at 60%). The
+ex-pilot, answered as his whole real order implies: 85.4% vs 85.5% held out, 90.7% vs 90.7% whole list — no change.
+
+Before that (Nov 7–21): ask only when the verdict is ambiguous, threshold or unexplained, *and* the best question's
+information gain clears a cost, at most about once per 5–8 drags.
 
 The question is a small card worded by Claude from real numbers, for example:
 

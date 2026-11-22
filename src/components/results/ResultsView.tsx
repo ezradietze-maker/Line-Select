@@ -100,7 +100,7 @@ import {
 } from "@/lib/rank-learning";
 import { addDragChoices, answerSwap, choicesFromSwap, describeChanges, withModel, withoutDrag, type SwapReply } from "@/lib/brain/profile-model";
 import { describeSwap, explainSwap } from "@/lib/brain/explain-swap";
-import { pickSwapQuestion, reasonOptions, untrackedFactor, type AskState, type SwapQuestion } from "@/lib/brain/swap-question";
+import { pickSwapQuestion, reasonOptions, untrackedFactor, type SwapQuestion } from "@/lib/brain/swap-question";
 import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
@@ -200,7 +200,7 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
-/** A pilot who chose "Stop asking" on the question after a swap isn't asked again on this device. */
+/** A pilot who turned off the question after a swap isn't asked on this device until they turn it back on. */
 const STOP_ASKING_KEY = "line-select:swap-questions-off:v1";
 
 function readStopAsking(): boolean {
@@ -392,7 +392,10 @@ export function ResultsView({
   const recordTierStep = useCallback(() => setOrderHistory((h) => recordStep(h, { kind: "tier" })), [setOrderHistory]);
   // The one question after an unclear swap, and how often it's been asked this visit (see `lib/brain/swap-question.ts`).
   const [swapQuestion, setSwapQuestion] = useState<{ question: SwapQuestion; options: { priorities: ReasonOption[]; measures: ReasonOption[] } } | null>(null);
-  const askRef = useRef<AskState>({ swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: readStopAsking() });
+  // The question after every swap, unless the pilot turned it off (kept on this device; they can turn it back on).
+  const [askingOff, setAskingOff] = useState(readStopAsking);
+  // Read by the swap's work after paint, which may run after a toggle in the same moment.
+  const askingOffRef = useRef(askingOff);
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
   // Which lines are open under their strips — as many as the pilot likes, to read side by side.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
@@ -1322,15 +1325,12 @@ export function ResultsView({
         onUpdateProfile(next);
         setLastSwap({ id: swapId, before: current, after: next });
         const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
-        setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
-        // When the brain can't tell why, and it's time to ask: one question.
-        const ask = askRef.current;
-        ask.swapsSince += 1;
+        setLearnMessage([kept, why ? describeSwap(why, higher, lower, !askingOffRef.current) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+        // After every swap, the question: the brain's guess at why, and the chance to say it was something else.
         if (!why || !packMetrics) return;
-        const untracked = why.verdict === "unexplained" ? untrackedFactor(bidPack, packMetrics, current.pilotModel, higher, lower) : null;
-        const question = pickSwapQuestion(why, { dragId: swapId, higher, lower }, ask, untracked);
+        const untracked = why.verdict === "limit" ? null : untrackedFactor(bidPack, packMetrics, current.pilotModel, higher, lower);
+        const question = pickSwapQuestion(why, { dragId: swapId, higher, lower }, askingOffRef.current, untracked);
         if (!question) return;
-        askRef.current = { ...ask, asked: ask.asked + 1, swapsSince: 0, askedPairs: new Set(ask.askedPairs).add([higher, lower].sort().join("|")) };
         setSwapQuestion({ question, options: reasonOptions(bidPack, packMetrics, current.pilotModel, before, higher, lower) });
       });
       return;
@@ -1506,13 +1506,15 @@ export function ResultsView({
     setLearnMessage([said, moved ? `Now ${moved}.` : null].filter(Boolean).join(" "));
   }
 
-  function stopAsking() {
-    askRef.current = { ...askRef.current, stopped: true };
-    setSwapQuestion(null);
+  function setAsking(on: boolean) {
+    askingOffRef.current = !on;
+    setAskingOff(!on);
+    if (!on) setSwapQuestion(null);
     try {
-      window.localStorage.setItem(STOP_ASKING_KEY, "1");
+      if (on) window.localStorage.removeItem(STOP_ASKING_KEY);
+      else window.localStorage.setItem(STOP_ASKING_KEY, "1");
     } catch {
-      // storage unavailable — it just asks again next visit
+      // storage unavailable — kept for this visit only
     }
   }
 
@@ -1606,11 +1608,19 @@ export function ResultsView({
       {learnMessage && !promptJudgment && (
         <div role="status" data-for-lines className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
           <span>{learnMessage}</span>
-          {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
-            <button type="button" onClick={() => undoSwap(lastSwap.id)} className="shrink-0 font-semibold underline underline-offset-2 hover:text-ink print:hidden">
-              Undo
-            </button>
-          )}
+          <span className="flex shrink-0 items-center gap-3 print:hidden">
+            {/* Turned off, the question after a swap can come back from the swap's own message. */}
+            {askingOff && profile.pilotModel && (
+              <button type="button" onClick={() => setAsking(true)} className="font-medium underline underline-offset-2 hover:text-ink" data-swap-ask-on>
+                Ask me why after each swap
+              </button>
+            )}
+            {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
+              <button type="button" onClick={() => undoSwap(lastSwap.id)} className="font-semibold underline underline-offset-2 hover:text-ink">
+                Undo
+              </button>
+            )}
+          </span>
         </div>
       )}
 
@@ -1634,7 +1644,7 @@ export function ResultsView({
             options={swapQuestion.options}
             onReply={replyToSwap}
             onDismiss={() => setSwapQuestion(null)}
-            onStop={stopAsking}
+            onStop={() => setAsking(false)}
           />
         </div>
       )}

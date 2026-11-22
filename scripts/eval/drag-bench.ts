@@ -12,6 +12,11 @@
  *
  *   npx tsx scripts/eval/drag-bench.ts [synthetic|expilot|both] [swaps=6] [tau=2] [pilots per reading=10] ['{"swap":{…}}']
  *   EVAL_ROOT=<main checkout> when running from a worktree (the saved runs and packs live there).
+ *
+ * The question after a swap, three ways: "rare" (Nov 7–21: only an unclear swap, once per 5 swaps and 3 a session, no
+ * guess shown), and "every" (from Nov 21: every swap, the brain's guess first). For "every", ACCEPT lists how often the
+ * simulated pilot says yes to a wrong guess (default "0,0.3": honest, and agreeable), and CONFIRMED the share a confirmed
+ * guess counts (`LEARNER.answer.confirmed`; default "0.25,0.5,1").
  */
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { expandBidPack, restoreBidPack } from "@/lib/bidpack-storage";
@@ -27,7 +32,7 @@ import { fitTripWeights } from "@/lib/brain/fit-choices";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
 import { explainSwap } from "@/lib/brain/explain-swap";
-import { criterionFromAnswer, pickSwapQuestion, untrackedFactor, type AskState } from "@/lib/brain/swap-question";
+import { criterionFromAnswer, pickSwapQuestion, untrackedFactor, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
 import { PERSONAS } from "./personas";
 
@@ -145,7 +150,9 @@ function synthetic() {
     const bp = expandBidPack(JSON.parse(readFileSync(packFile, "utf8")));
     sources.push({ name: persona.id, bp, pm: prepareMetrics(bp), model });
   }
-  const results: Record<string, number[]> = Object.fromEntries([...Object.keys(LEARNERS), "ask"].map((n) => [n, []]));
+  const ASKS = askModes();
+  const results: Record<string, number[]> = Object.fromEntries([...Object.keys(LEARNERS), ...ASKS.map((a) => a.name)].map((n) => [n, []]));
+  const counts: Record<string, { asked: number; confirmed: number; wrongYes: number; swaps: number }> = Object.fromEntries(ASKS.map((a) => [a.name, { asked: 0, confirmed: 0, wrongYes: 0, swaps: 0 }]));
   const baseline: number[] = [];
   let hiddenNamed = 0;
   for (const [si, src] of sources.entries()) {
@@ -164,9 +171,12 @@ function synthetic() {
         const { model, seen } = session(src.bp, src.pm, src.model, lines, perceived, learner, SHOWN);
         out[name] = { s: scores(src.bp, model, src.pm), seen };
       }
-      const asked = askSession(src.bp, src.pm, src.model, truth, lines, perceived, SHOWN);
-      out.ask = { s: scores(src.bp, asked.model, src.pm), seen: asked.seen };
-      if (asked.named) hiddenNamed++;
+      for (const a of ASKS) {
+        const asked = askSession(src.bp, src.pm, src.model, truth, lines, perceived, SHOWN, a, rng(7919 * (1000 * si + p + 1)));
+        out[a.name] = { s: scores(src.bp, asked.model, src.pm), seen: asked.seen };
+        for (const k of ["asked", "confirmed", "wrongYes", "swaps"] as const) counts[a.name][k] += asked.tally[k];
+        if (a.name === "rare" && asked.named) hiddenNamed++;
+      }
       // The same held-out lines for every learner: never on screen for any of them.
       const unseen = truthTop.filter((l) => Object.values(out).every((o) => !o.seen.has(l)));
       baseline.push(pairAgreement(scores(src.bp, src.model, src.pm), unseen));
@@ -175,6 +185,14 @@ function synthetic() {
     console.log(`  ${src.name.padEnd(26)} ${src.bp.lines.length} lines, ${src.model.criteria.length} criteria`);
   }
   report(`Synthetic pilots${process.env.HIDDEN ? " with a factor the interview never named" : ""}, ${SWAPS} swaps, τ=${TAU}: unseen lines of their true top 30`, results, baseline);
+  // Each way of asking against the rare question, pilot by pilot.
+  for (const a of ASKS.filter((x) => x.name !== "rare")) {
+    const d = results[a.name].map((x, i) => x - results.rare[i]);
+    const c = counts[a.name];
+    console.log(`  ${`${a.name} − rare`.padEnd(24)} ${(100 * mean(d)).toFixed(2)} points ± ${(100 * se(d)).toFixed(2)}  (better in ${d.filter((x) => x > 1e-9).length}, worse in ${d.filter((x) => x < -1e-9).length}) · asked ${c.asked} of ${c.swaps} swaps, guess confirmed ${c.confirmed}, of them wrongly ${c.wrongYes}`);
+  }
+  const r = counts.rare;
+  if (r) console.log(`  rare asked ${r.asked} of ${r.swaps} swaps`);
   if (process.env.HIDDEN) console.log(`  the hidden factor got named and added for ${hiddenNamed} of ${baseline.length} pilots`);
 }
 
@@ -193,22 +211,57 @@ function withHidden(model: PilotModel, r: () => number): PilotModel {
   return { ...model, criteria: [...model.criteria, { id: `hidden-${metric}`, metric, shape: { kind }, tier: "medium", weight: 0.5 * top, confidence: 1, label: metric, evidence: [], status: "settled" }] };
 }
 
+interface AskMode {
+  name: string;
+  kind: "rare" | "every";
+  /** How often the simulated pilot says yes to a wrong guess. */
+  accept: number;
+  settings: Partial<LearnerSettings>;
+}
+
+function askModes(): AskMode[] {
+  const accepts = (process.env.ACCEPT ?? "0,0.3").split(",").map(Number);
+  const confirmeds = (process.env.CONFIRMED ?? "0.25,0.5,1").split(",").map(Number);
+  const base = SETTINGS_LIST[0];
+  const modes: AskMode[] = [{ name: "rare", kind: "rare", accept: 0, settings: base }];
+  for (const accept of accepts)
+    for (const confirmed of confirmeds)
+      modes.push({ name: `every c=${confirmed} yes=${accept}`, kind: "every", accept, settings: { ...base, answer: { weight: 2.5, beta: 0.4, ...base.answer, confirmed } } });
+  return modes;
+}
+
+/** The rare question, as the app asked it Nov 7–21: only an unclear swap, once per 5 swaps and 3 a session, no guess. */
+function rareQuestion(q: SwapQuestion | null, why: ReturnType<typeof explainSwap>, state: { swapsSince: number; asked: number; pairs: Set<string> }, pair: string): SwapQuestion | null {
+  if (!q || state.asked >= 3 || (state.asked > 0 && state.swapsSince < 5) || state.pairs.has(pair)) return null;
+  if (q.kind === "limit") return q;
+  if (why.verdict !== "ambiguous" && why.verdict !== "unexplained") return null;
+  const options = why.verdict === "ambiguous" ? q.options.filter((o) => !o.criterionId || why.explains.some((f) => f.criterionId === o.criterionId)) : q.options;
+  return options.length ? { ...q, options, guess: null } : null;
+}
+
 /**
- * A session with the question after unclear swaps, answered by the simulated pilot from its true preferences: the
- * offered priority that truly pulled hardest for the line it put higher; or, when that wasn't offered, the real reason
- * "typed" (standing in for the reason route matching their words); or "about equal" when nothing truly favoured it (a
- * noisy swap). The same timing rules as the app (`pickSwapQuestion`).
+ * A session with the question after swaps, answered by the simulated pilot from its true preferences: the priority (or
+ * hidden factor) that truly pulled hardest for the line it put higher — picked if offered, else "typed" (standing in for
+ * the reason route matching their words) — or "about equal" when nothing truly favoured it (a noisy swap). Shown a
+ * guess, it says yes when the guess is that reason; when it isn't, it still says yes `accept` of the time.
  */
-function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: PilotModel, lines: string[], perceived: (l: string) => number, shownCount: number) {
+function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: PilotModel, lines: string[], perceived: (l: string) => number, shownCount: number, mode: AskMode, r: () => number) {
   let base = interview;
   let model = interview;
   const choices: LineChoice[] = [];
   const answers: SwapAnswer[] = [];
   const placements: Placement[] = [];
   const seen = new Set<string>();
-  const state: AskState = { swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: false };
+  const rare = { swapsSince: 0, asked: 0, pairs: new Set<string>() };
+  const tally = { asked: 0, confirmed: 0, wrongYes: 0, swaps: 0 };
   const truthScores = new Map(scorePackV2(bp, truth, { pack: pm }).map((s) => [s.lineNumber, s]));
   let named = false;
+  // A measure never named, as the priority it becomes once the pilot agrees to it.
+  const adopt = (o: FactorOption) => {
+    const c = criterionFromAnswer(o, "typed");
+    if (!base.criteria.some((x) => x.id === c.id)) base = { ...base, criteria: [...base.criteria, c] };
+    return c.id;
+  };
   for (let k = 0; k < SWAPS; k++) {
     const s = scores(bp, model, pm);
     const ranked = [...lines].sort((a, b) => s.get(b)! - s.get(a)! || a.localeCompare(b));
@@ -220,6 +273,7 @@ function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: 
       if (best !== shown[i]) drag = { from: shown.indexOf(best), to: i };
     }
     if (!drag) break;
+    tally.swaps++;
     const id = `swap-${k}`;
     const placement = placementFromDrag(shown, drag.from, drag.to, id)!;
     placements.push(placement);
@@ -227,29 +281,46 @@ function askSession(bp: BidPack, pm: PackMetrics, interview: PilotModel, truth: 
     choices.push(...choicesFromSwap(placement.order, id));
     const before = new Map(scorePackV2(bp, model, { pack: pm }).map((x) => [x.lineNumber, x]));
     const why = explainSwap(before.get(higher)!, before.get(lower)!);
-    state.swapsSince++;
-    const untracked = why.verdict === "unexplained" ? untrackedFactor(bp, pm, model, higher, lower) : null;
-    const question = pickSwapQuestion(why, { dragId: id, higher, lower }, state, untracked);
+    rare.swapsSince++;
+    const untracked = why.verdict === "limit" ? null : untrackedFactor(bp, pm, model, higher, lower);
+    const every = pickSwapQuestion(why, { dragId: id, higher, lower }, false, mode.kind === "rare" && why.verdict !== "unexplained" ? null : untracked);
+    const pair = [higher, lower].sort().join("|");
+    const question = mode.kind === "rare" ? rareQuestion(every, why, rare, pair) : every;
     if (question?.kind === "factors") {
-      state.asked++;
-      state.swapsSince = 0;
-      state.askedPairs.add([higher, lower].sort().join("|"));
+      tally.asked++;
+      rare.asked++;
+      rare.swapsSince = 0;
+      rare.pairs.add(pair);
       // The pilot's real main reason: the priority (or hidden factor) that truly pulled hardest for the higher line.
       const truly = explainSwap(truthScores.get(higher)!, truthScores.get(lower)!).factors.filter((f) => f.share > 0)[0];
       const offered = question.options.flatMap((o) => (o.criterionId ? [o.criterionId] : []));
-      if (!truly) answers.push({ dragId: id, higher, lower, kind: "equal" });
-      else if (truly.criterionId.startsWith("hidden-")) {
-        const metric = truly.criterionId.slice("hidden-".length);
+      const guess = question.guess;
+      const hiddenMetric = truly?.criterionId.startsWith("hidden-") ? truly.criterionId.slice("hidden-".length) : null;
+      const guessRight = !!guess && !!truly && (guess.criterionId ? guess.criterionId === truly.criterionId : guess.metric === hiddenMetric);
+      const guessedId = guess ? (guess.criterionId ?? criterionFromAnswer(guess, "typed").id) : undefined;
+      const says = guess && (guessRight || (truly && r() < mode.accept));
+      if (says) {
+        // A tap on the guess: the right reason, or (agreeable) a wrong one.
+        tally.confirmed++;
+        if (!guessRight) tally.wrongYes++;
+        const cid = guess.criterionId ?? adopt(guess);
+        answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: cid, offered: [...new Set([...offered, cid])], guessed: cid });
+        if (guessRight && hiddenMetric) named = true;
+      } else if (!truly) answers.push({ dragId: id, higher, lower, kind: "equal" });
+      else if (hiddenMetric) {
         const kind = truth.criteria.find((c) => c.id === truly.criterionId)!.shape.kind as "more" | "less";
-        const c = criterionFromAnswer({ metric, direction: kind, label: metric, amounts: "" }, "typed");
-        if (!base.criteria.some((x) => x.id === c.id)) base = { ...base, criteria: [...base.criteria, c] };
-        answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: c.id, offered: [...offered, c.id] });
+        const cid = adopt({ metric: hiddenMetric, direction: kind, label: hiddenMetric, amounts: "" });
+        const picked = question.options.some((o) => o.metric === hiddenMetric);
+        answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: cid, offered: [...offered, cid], ...(guessedId ? { guessed: guessedId } : {}), ...(picked ? {} : { text: "typed" }) });
         named = true;
-      } else answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: truly.criterionId, offered: [...new Set([...offered, truly.criterionId])] });
+      } else {
+        const picked = offered.includes(truly.criterionId);
+        answers.push({ dragId: id, higher, lower, kind: "factor", criterionId: truly.criterionId, offered: [...new Set([...offered, truly.criterionId])], ...(guessedId ? { guessed: guessedId } : {}), ...(picked ? {} : { text: "typed" }) });
+      }
     }
-    model = learnFromChoices(bp, base, choices, pm, SETTINGS_LIST[0], answers).model;
+    model = learnFromChoices(bp, base, choices, pm, mode.settings, answers).model;
   }
-  return { model, seen, named };
+  return { model, seen, named, tally, placements };
 }
 
 function expilot() {
@@ -292,6 +363,12 @@ function expilot() {
   const wholeAcross: Record<string, number[]> = Object.fromEntries(Object.keys(LEARNERS).map((n) => [n, []]));
   const wholeBefore: number[] = [];
   const wholeAcrossBefore: number[] = [];
+  // The question after a swap, answered as his whole real order implies (his reasons themselves were never asked): a
+  // stand-in "true" model fitted to every pair of his 20 lines, which answers each question as askSession's pilots do.
+  const ASKS = askModes();
+  const asked: Record<string, number[]> = Object.fromEntries(ASKS.map((a) => [a.name, []]));
+  const askedWhole: Record<string, number[]> = Object.fromEntries(ASKS.map((a) => [a.name, []]));
+  const fullOrder: LineChoice[] = truth.flatMap((a, i) => truth.slice(i + 1).map((b) => ({ preferred: a, other: b, strength: "slightly" as const })));
   for (const [ri, base] of readings.entries()) for (let split = 0; split < 6; split++) {
     const r = rng(77 + 13 * ri + split);
     const shownLines = [...truth].sort(() => r() - 0.5).slice(0, 10);
@@ -312,7 +389,22 @@ function expilot() {
         wholeAcrossBefore.push(acrossPiles(bidList(bp, pm, model, truth, []), truth));
       }
     }
+    const oracle = learnFromChoices(bp, base, fullOrder, pm).model;
+    for (const a of ASKS) {
+      const run = askSession(bp, pm, base, oracle, shownLines, (l) => -rank.get(l)!, 10, a, rng(31 * ri + split + 5));
+      asked[a.name].push(pairAgreement(scores(bp, run.model, pm), held));
+      askedWhole[a.name].push(pairAgreement(bidList(bp, pm, run.model, truth, run.placements), truth));
+    }
   }
+  const vsRare = (title: string, xs: Record<string, number[]>) => {
+    console.log(`\n${title}`);
+    for (const a of ASKS) {
+      const d = xs[a.name].map((x, i) => x - xs.rare[i]);
+      console.log(`  ${a.name.padEnd(22)} ${(100 * mean(xs[a.name])).toFixed(1)}% ± ${(100 * se(xs[a.name])).toFixed(1)}${a.name === "rare" ? "" : `   vs rare ${(100 * mean(d)).toFixed(2)} ± ${(100 * se(d)).toFixed(2)} (better in ${d.filter((x) => x > 1e-9).length}, worse in ${d.filter((x) => x < -1e-9).length})`}`);
+    }
+  };
+  vsRare("The ex-pilot with the question after swaps, answered as his whole order implies: the 10 held out", asked);
+  vsRare("  … his whole list as he'd bid it", askedWhole);
   report(`The ex-pilot's real order, ${SWAPS} swaps on 10 lines: the 10 held out, every pair`, results, baseline);
   report(`  … only pairs from different piles`, across, acrossBaseline);
   report(`His whole list as he'd bid it (all 20 lines, his swaps kept), every pair`, whole, wholeBefore, "before step 1");

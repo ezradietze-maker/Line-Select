@@ -2,7 +2,7 @@ import { applyCityRatings } from "@/lib/brain/city-ratings";
 import { fitTripWeights, shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import { withHomeFacts } from "@/lib/brain/model-upgrade";
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
-import { criterionFromAnswer, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
+import { criterionFromAnswer, sameOption, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
 import { fourWeekFactor } from "@/lib/metrics/line-length";
@@ -133,11 +133,14 @@ export function answerSwap(profile: PreferenceProfile, bidPack: BidPack, questio
   switch (reply.kind) {
     case "factor": {
       const offered = question.kind === "factors" ? question.options.flatMap((o) => (o.criterionId ? [o.criterionId] : [])) : [];
-      if (reply.option.criterionId) return add({ kind: "factor", criterionId: reply.option.criterionId, offered, ...(reply.text ? { text: reply.text } : {}) });
+      const guess = question.kind === "factors" ? question.guess : null;
+      // The guess, as the priority it is (or becomes, for a measure never named): it's what a confirmed answer names.
+      const guessedId = (option: FactorOption, id: string) => (guess && sameOption(guess, option) ? { guessed: id } : guess?.criterionId ? { guessed: guess.criterionId } : {});
+      if (reply.option.criterionId) return add({ kind: "factor", criterionId: reply.option.criterionId, offered, ...guessedId(reply.option, reply.option.criterionId), ...(reply.text ? { text: reply.text } : {}) });
       // A measure they never named: added as a new priority (they've just agreed to it), and named as the reason.
       const criterion = criterionFromAnswer(reply.option, reply.text ?? `Put line ${higher} above ${lower}`);
       const nextBase = base.criteria.some((c) => c.id === criterion.id) ? base : { ...base, criteria: [...base.criteria, criterion] };
-      return add({ kind: "factor", criterionId: criterion.id, offered: [...offered, criterion.id], ...(reply.text ? { text: reply.text } : {}) }, nextBase);
+      return add({ kind: "factor", criterionId: criterion.id, offered: [...offered, criterion.id], ...guessedId(reply.option, criterion.id), ...(reply.text ? { text: reply.text } : {}) }, nextBase);
     }
     case "equal":
       return add({ kind: "equal" });

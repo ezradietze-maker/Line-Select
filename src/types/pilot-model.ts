@@ -163,6 +163,11 @@ export interface SwapAnswer {
   offered?: string[];
   /** Their own words, when they typed a reason. */
   text?: string;
+  /**
+   * The priority the card guessed (`SwapQuestion.guess`), when it showed one. A "factor" answer naming the same one is a
+   * confirmed guess, which counts for less than a reason the pilot picked or typed themselves (`LEARNER.answer.confirmed`).
+   */
+  guessed?: string;
 }
 
 /** A trip-versus-trip choice from the interview: which of two real trips the pilot would rather fly. Trips by `tripKey`. */

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requestSwapReason } from "@/lib/brain/client";
 import type { SwapReply } from "@/lib/brain/profile-model";
-import { optionFromReason, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
+import { optionFromReason, sameOption, type FactorOption, type SwapQuestion } from "@/lib/brain/swap-question";
 import type { ReasonOption } from "@/lib/brain/swap-reason";
 
 interface Props {
@@ -20,8 +20,10 @@ const chip =
 const quiet = "text-sm font-medium text-ink-muted underline-offset-2 hover:text-ink hover:underline";
 
 /**
- * The one question after an unclear swap (`lib/brain/swap-question.ts`): the real differences to pick from, nothing
- * chosen for the pilot, and every way out a single tap. Sits under the swap's message — never in the way of the list.
+ * The question after every swap (`lib/brain/swap-question.ts`), in a small box that pops up at the side of the screen
+ * (along the foot on a phone) and leaves the list free to swap again: the brain's guess with both lines' numbers and one
+ * tap to say it's right, the other real differences to pick instead, "something else" in their own words, "about equal",
+ * and every way out a single tap — Escape or × to skip this one, or turn the questions off.
  */
 export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop }: Props) {
   const [mode, setMode] = useState<"choose" | "type" | "confirm">("choose");
@@ -29,6 +31,12 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  // Escape skips this one, as × does — the box never holds the keyboard.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onDismiss();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
 
   function pick(option: FactorOption, said?: string) {
     // A measure they never named becomes a new priority only if they say so.
@@ -62,11 +70,23 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
   const heading =
     question.kind === "limit"
       ? `Line ${question.higher} breaks your limit on ${question.label.toLowerCase()} (${question.amounts}). Should that still put it at the bottom of your list?`
-      : `Why does line ${question.higher} beat ${question.lower} for you?`;
+      : `Why did you put line ${question.higher} above ${question.lower}?`;
+  const guess = question.kind === "factors" ? question.guess : null;
+  const others = question.kind === "factors" ? question.options.filter((o) => !guess || !sameOption(o, guess)) : [];
 
   return (
-    <section aria-label="Why did you swap these lines?" className="mt-3 rounded-xl border border-hairline bg-surface-raised px-4 py-3 animate-fade-in print:hidden">
-      <p className="text-sm font-semibold text-ink">{heading}</p>
+    <section
+      role="dialog"
+      aria-label="Why did you swap these lines?"
+      data-swap-question
+      className="animate-toast-in fixed inset-x-3 bottom-[calc(var(--shell-bottom,0px)+4.25rem)] z-40 max-h-[min(70vh,32rem)] overflow-y-auto rounded-xl border border-accent/40 bg-surface px-4 py-3 shadow-elevated-lg sm:left-auto sm:right-6 sm:w-[26rem] print:hidden"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-semibold text-ink">{heading}</p>
+        <button type="button" aria-label="Skip this one" className="-mr-1 -mt-0.5 shrink-0 px-1 text-lg leading-none text-ink-muted hover:text-ink" onClick={onDismiss}>
+          &times;
+        </button>
+      </div>
 
       {mode === "confirm" && adding ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -93,19 +113,36 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
           </button>
         </div>
       ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {question.options.map((o) => (
-            <button key={o.criterionId ?? o.metric} type="button" className={chip} onClick={() => pick(o)}>
-              {o.label} ({o.amounts}){o.criterionId ? "" : " · new"}
+        <>
+          {guess && (
+            <div className="mt-2" data-swap-guess>
+              <p className="text-2xs font-medium text-ink-faint">Our guess</p>
+              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/50 bg-accent/10 px-3 py-2">
+                <span className="text-sm text-ink">
+                  {guess.label} <span className="font-mono text-xs text-ink-muted">({guess.amounts})</span>
+                  {guess.criterionId ? "" : <span className="text-xs text-ink-muted"> · new</span>}
+                </span>
+                <button type="button" className={`${chip} border-accent font-semibold`} onClick={() => pick(guess)} data-swap-yes>
+                  Yes, that&rsquo;s it
+                </button>
+              </div>
+            </div>
+          )}
+          <p className="mt-2 text-2xs font-medium text-ink-faint">{guess ? "Or was it something different?" : "Pick what made the difference:"}</p>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {others.map((o) => (
+              <button key={o.criterionId ?? o.metric} type="button" className={chip} onClick={() => pick(o)}>
+                {o.label} ({o.amounts}){o.criterionId ? "" : " · new"}
+              </button>
+            ))}
+            <button type="button" className={chip} onClick={() => setMode("type")} aria-expanded={mode === "type"}>
+              Something else&hellip;
             </button>
-          ))}
-          <button type="button" className={chip} onClick={() => setMode("type")} aria-expanded={mode === "type"}>
-            Something else&hellip;
-          </button>
-          <button type="button" className={chip} onClick={() => onReply({ kind: "equal" })}>
-            About equal
-          </button>
-        </div>
+            <button type="button" className={chip} onClick={() => onReply({ kind: "equal" })}>
+              About equal
+            </button>
+          </div>
+        </>
       )}
 
       {mode === "type" && (
@@ -138,12 +175,12 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
         </p>
       )}
 
-      <div className="mt-2 flex gap-4">
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
         <button type="button" className={quiet} onClick={onDismiss}>
           Not sure
         </button>
-        <button type="button" className={quiet} onClick={onStop}>
-          Stop asking
+        <button type="button" className={quiet} onClick={onStop} data-swap-ask-off>
+          Turn off these questions
         </button>
       </div>
     </section>

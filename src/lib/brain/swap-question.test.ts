@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { explainSwap } from "@/lib/brain/explain-swap";
 import { answerSwap, choicesFromSwap, withModel, withoutDrag } from "@/lib/brain/profile-model";
 import { learnFromChoices } from "@/lib/brain/reorder-learner";
-import { ASK, optionFromReason, pickSwapQuestion, untrackedFactor, type AskState, type SwapQuestion } from "@/lib/brain/swap-question";
+import { optionFromReason, pickSwapQuestion, untrackedFactor, type SwapQuestion } from "@/lib/brain/swap-question";
 import { cleanSwapReason } from "@/lib/brain/swap-reason";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -18,7 +18,6 @@ const pack = {
 } as unknown as BidPack;
 const crit = (id: string, metric: string, weight: number): Criterion => ({ id, metric, shape: { kind: "more" }, tier: "medium", weight, confidence: 1, label: id === "off" ? "Days off" : "Credit", evidence: [], status: "settled" });
 const model: PilotModel = { version: 2, home: null, threads: [], notMeasurable: [], synopsis: "", criteria: [crit("credit", "creditHours", 1), crit("off", "daysOff", 0.55)] };
-const fresh = (): AskState => ({ swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: false });
 const scored = (m: PilotModel) => new Map(scorePackV2(pack, m, {}).map((s) => [s.lineNumber, s]));
 const profile: PreferenceProfile = {
   weights: { ...DEFAULT_WEIGHTS }, deepRoundCompleted: false, tradeoffAnswers: [], explicitTargets: {}, isCommuter: false, hasCrashPad: null, cityPreferences: {},
@@ -26,7 +25,7 @@ const profile: PreferenceProfile = {
   pilotModel: model, brainInterview: { exchanges: [], choices: choicesFromSwap(["A", "B"], "s1"), reviewedModel: model },
 };
 
-describe("whether to ask why a swap happened", () => {
+describe("asking why after every swap", () => {
   // F loses to D on both priorities: no weighting of them puts F ahead.
   const unclear = explainSwap(scored(model).get("F")!, scored(model).get("D")!);
 
@@ -36,31 +35,39 @@ describe("whether to ask why a swap happened", () => {
     expect(untrackedFactor(pack, prepareMetrics(pack), model, "F", "D")).toBeNull();
     // D over E: D has far less time away from base, which the pilot never named.
     expect(untrackedFactor(pack, prepareMetrics(pack), model, "D", "E")).toMatchObject({ metric: "tafbHours", direction: "less" });
-    const q = pickSwapQuestion(unclear, { dragId: "s1", higher: "F", lower: "D" }, fresh(), { metric: "tafbHours", direction: "less", label: "Time away from base", amounts: "230 vs 160" });
-    expect(q).toMatchObject({ kind: "factors", options: [expect.objectContaining({ metric: "tafbHours" })] });
+    const q = pickSwapQuestion(unclear, { dragId: "s1", higher: "F", lower: "D" }, false, { metric: "tafbHours", direction: "less", label: "Time away from base", amounts: "230 vs 160" });
+    // Nothing the pilot named favours F: the measure never named is the guess.
+    expect(q).toMatchObject({ kind: "factors", options: [expect.objectContaining({ metric: "tafbHours" })], guess: expect.objectContaining({ metric: "tafbHours" }) });
   });
 
-  it("doesn't ask when the brain already agreed or one priority explains it, nor too often, nor after 'stop asking'", () => {
+  it("asks every time, even when one priority explains it: that one is the guess, first, and the pilot can still say otherwise", () => {
     const s = scored(model);
-    expect(pickSwapQuestion(explainSwap(s.get("D")!, s.get("B")!), { dragId: "s", higher: "D", lower: "B" }, fresh(), null)).toBeNull();
-    const swap = { dragId: "s", higher: "C", lower: "D" };
-    expect(pickSwapQuestion(unclear, swap, { ...fresh(), asked: 1, swapsSince: ASK.swapsBetween - 1 }, null)).toBeNull();
-    expect(pickSwapQuestion(unclear, swap, { ...fresh(), asked: ASK.perVisit, swapsSince: 99 }, null)).toBeNull();
-    expect(pickSwapQuestion(unclear, swap, { ...fresh(), stopped: true }, null)).toBeNull();
-    expect(pickSwapQuestion(unclear, swap, { ...fresh(), askedPairs: new Set(["C|D"]) }, null)).toBeNull();
-    expect(pickSwapQuestion(unclear, swap, fresh(), null)).toBeNull(); // nothing to offer: it doesn't ask an empty question
+    const clear = explainSwap(s.get("D")!, s.get("B")!);
+    const q = pickSwapQuestion(clear, { dragId: "s", higher: "D", lower: "B" }, false, null);
+    expect(q?.kind).toBe("factors");
+    if (q?.kind !== "factors") return;
+    const best = clear.explains[0] ?? clear.factors.find((f) => f.share > 0);
+    expect(q.guess?.criterionId).toBe(best?.criterionId);
+    expect(q.options[0]).toEqual(q.guess);
+    // The same two lines swapped again are asked about again; nothing to offer still asks (something else / about equal).
+    expect(pickSwapQuestion(clear, { dragId: "s2", higher: "D", lower: "B" }, false, null)).not.toBeNull();
+    expect(pickSwapQuestion(unclear, { dragId: "s3", higher: "C", lower: "D" }, false, null)).toMatchObject({ kind: "factors", options: [], guess: null });
+  });
+
+  it("doesn't ask once the pilot turned the questions off", () => {
+    expect(pickSwapQuestion(unclear, { dragId: "s", higher: "C", lower: "D" }, true, null)).toBeNull();
   });
 
   it("asks about a dealbreaker the pilot overrode", () => {
     const limited: PilotModel = { ...model, criteria: [model.criteria[0], { ...model.criteria[1], hardLimit: { op: "min", value: 14 } }] };
     const s = scored(limited);
-    const q = pickSwapQuestion(explainSwap(s.get("B")!, s.get("A")!), { dragId: "s", higher: "B", lower: "A" }, fresh(), null);
+    const q = pickSwapQuestion(explainSwap(s.get("B")!, s.get("A")!), { dragId: "s", higher: "B", lower: "A" }, false, null);
     expect(q).toMatchObject({ kind: "limit", criterionId: "off", value: 12, op: "min" });
   });
 });
 
 describe("what an answer does", () => {
-  const question = (options: Extract<SwapQuestion, { kind: "factors" }>["options"]): SwapQuestion => ({ kind: "factors", dragId: "s1", higher: "A", lower: "B", options });
+  const question = (options: Extract<SwapQuestion, { kind: "factors" }>["options"], guess = options[0] ?? null): SwapQuestion => ({ kind: "factors", dragId: "s1", higher: "A", lower: "B", options, guess });
 
   it("counts a named priority as evidence: it comes to count for more against the others offered", () => {
     // Days off and less time away both favour A over B; the pilot says it was the days off.
@@ -69,6 +76,26 @@ describe("what an answer does", () => {
     const swapOnly = learnFromChoices(pack, three, choicesFromSwap(["A", "B"], "s1")).model;
     const answered = learnFromChoices(pack, three, choicesFromSwap(["A", "B"], "s1"), undefined, {}, [{ dragId: "s1", higher: "A", lower: "B", kind: "factor", criterionId: "off", offered: ["off", "away"] }]).model;
     expect(ratio(answered)).toBeGreaterThan(ratio(swapOnly) * 1.1);
+  });
+
+  it("keeps which reason was guessed, and counts a tap on the guess for less than a reason the pilot picked or typed", () => {
+    const off = { criterionId: "off", label: "Days off", amounts: "14 vs 12" };
+    const credit = { criterionId: "credit", label: "Credit", amounts: "80 vs 75" };
+    const yes = answerSwap(profile, pack, question([off, credit]), { kind: "factor", option: off });
+    expect(yes.brainInterview!.swapAnswers).toEqual([expect.objectContaining({ criterionId: "off", guessed: "off" })]);
+    const other = answerSwap(profile, pack, question([off, credit]), { kind: "factor", option: credit });
+    expect(other.brainInterview!.swapAnswers).toEqual([expect.objectContaining({ criterionId: "credit", guessed: "off" })]);
+
+    const three: PilotModel = { ...model, criteria: [...model.criteria, { ...crit("away", "tafbHours", 0.55), shape: { kind: "less" }, label: "Time away" }] };
+    const ratio = (m: PilotModel) => m.criteria.find((c) => c.id === "off")!.weight / m.criteria.find((c) => c.id === "away")!.weight;
+    const fit = (extra: object) => learnFromChoices(pack, three, choicesFromSwap(["A", "B"], "s1"), undefined, {}, [{ dragId: "s1", higher: "A", lower: "B", kind: "factor", criterionId: "off", offered: ["off", "away"], ...extra }]).model;
+    const swapOnly = learnFromChoices(pack, three, choicesFromSwap(["A", "B"], "s1")).model;
+    const picked = ratio(fit({ guessed: "away" }));
+    const confirmed = ratio(fit({ guessed: "off" }));
+    const typed = ratio(fit({ guessed: "off", text: "the days off" }));
+    expect(confirmed).toBeGreaterThan(ratio(swapOnly));
+    expect(confirmed).toBeLessThan(picked);
+    expect(typed).toBeCloseTo(picked, 6);
   });
 
   it("learns nothing from a swap the pilot calls about equal", () => {

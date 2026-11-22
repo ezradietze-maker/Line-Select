@@ -170,14 +170,17 @@ export function explainSwap(higher: V2LineScore, lower: V2LineScore): SwapExplan
   return { verdict, gap, factors, explains, against, limit, limitDetail };
 }
 
-/** The swap's reason in a sentence or two, contrasted with what the brain had the other line ahead for. */
-export function describeSwap(e: SwapExplanation, higherLine: string, lowerLine: string): string {
+/**
+ * The swap's reason in a sentence or two, contrasted with what the brain had the other line ahead for. `asking`: the
+ * question after the swap is up, so the message doesn't also send the pilot to Your priorities to say why.
+ */
+export function describeSwap(e: SwapExplanation, higherLine: string, lowerLine: string, asking = false): string {
   const name = (f: SwapFactor) => f.label.charAt(0).toLowerCase() + f.label.slice(1);
   // The lower line's advantage, its own number first ("I had 1003 higher on layovers (145 vs 111)").
   const had = e.against ? `I had ${lowerLine} higher on ${name(e.against)} (${e.against.amounts.split(" vs ").reverse().join(" vs ")}).` : "";
   switch (e.verdict) {
     case "limit":
-      return `${higherLine} breaks your limit on ${e.limit!.toLowerCase()}, so your priorities stay as they were — if that limit shouldn't sink a line, change it under Your priorities.`;
+      return `${higherLine} breaks your limit on ${e.limit!.toLowerCase()}, so your priorities stay as they were${asking ? "." : " — if that limit shouldn't sink a line, change it under Your priorities."}`;
     case "agreed":
       return "That's the order I'd have expected.";
     case "clear": {
@@ -189,6 +192,6 @@ export function describeSwap(e: SwapExplanation, higherLine: string, lowerLine: 
       return `${had} ${higherLine} wins on ${name(f)} (${f.amounts}) and ${name(g)} (${g.amounts}) — either could be why.`.trim();
     }
     case "unexplained":
-      return `${had} Nothing you've told us puts ${higherLine} ahead by that much — tell us why under Your priorities, and it'll count.`.trim();
+      return `${had} Nothing you've told us puts ${higherLine} ahead by that much${asking ? "." : " — tell us why under Your priorities, and it'll count."}`.trim();
   }
 }

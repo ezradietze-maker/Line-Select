@@ -62,16 +62,18 @@ export const LEARNER = {
   /**
    * A pilot's answer to "why?": how much it counts (in swaps' worth of evidence — the behavioural research puts a stated
    * reason at 2–3 swaps, and behaviour that keeps pointing the other way still wins), and how sharply a priority's share
-   * of the gap decides which one they'd name (per score point; Basu et al. 2018 used 2.5 on their scale).
+   * of the gap decides which one they'd name (per score point; Basu et al. 2018 used 2.5 on their scale). `confirmed`:
+   * the share of that a tap on the card's own guess counts — people say yes to a plausible suggestion that wasn't their
+   * reason (Hall et al. 2010), so agreeing is weaker evidence than picking another or typing it.
    */
-  answer: { weight: 2.5, beta: 0.4 },
+  answer: { weight: 2.5, beta: 0.4, confirmed: 0.5 },
 };
 
 export interface LearnerSettings {
   priorSd: number;
   maxFactor: number;
   swap: { evidence: number; primaryShare: number; margin: number; lapse: number; temperatures: number[]; noisePenalty: number };
-  answer: { weight: number; beta: number };
+  answer: { weight: number; beta: number; confirmed: number };
 }
 
 /**
@@ -90,7 +92,7 @@ type Term =
   | { kind: "strongly" | "slightly" | "legacy"; a: Row; b: Row }
   | { kind: "swap"; a: Row; b: Row; weight: number }
   /** "This priority is why": `picked` out of the `offered` priorities (indices), for the swap of line a over line b. */
-  | { kind: "reason"; a: Row; b: Row; offered: number[]; picked: number };
+  | { kind: "reason"; a: Row; b: Row; offered: number[]; picked: number; confirmed: boolean };
 
 /**
  * Each priority's share of the score gap between two lines, in score points (positive favours `a`) — the exact split
@@ -123,7 +125,7 @@ function reasonLoss(t: Extract<Term, { kind: "reason" }>, w: number[], answer: L
   const z = t.offered.map((i) => answer.beta * c[i]);
   const top = Math.max(...z);
   const logSum = top + Math.log(z.reduce((s, x) => s + Math.exp(x - top), 0));
-  return answer.weight * (logSum - answer.beta * c[t.picked]);
+  return (t.confirmed ? answer.confirmed : 1) * answer.weight * (logSum - answer.beta * c[t.picked]);
 }
 
 /** Each swap's pairs, weighted: `evidence` in all, `primaryShare` of it on the pair of lines the pilot swapped. */
@@ -356,7 +358,9 @@ export function learnFromChoices(
   for (const r of reasons) {
     // Weighed against the others they were shown (or every priority, if that wasn't kept).
     const offered = [...new Set([...(r.offered ?? ids), r.criterionId!])].filter((id) => ids.includes(id)).map((id) => ids.indexOf(id));
-    if (offered.length > 1) terms.push({ kind: "reason", a: rowOf(r.higher), b: rowOf(r.lower), offered, picked: ids.indexOf(r.criterionId!) });
+    // A tap on the card's own guess (not typed): counts `answer.confirmed` of a reason they named themselves.
+    const confirmed = r.guessed === r.criterionId && !r.text;
+    if (offered.length > 1) terms.push({ kind: "reason", a: rowOf(r.higher), b: rowOf(r.lower), offered, picked: ids.indexOf(r.criterionId!), confirmed });
   }
 
   // Each noise level fitted; the one the swaps make most likely wins, leaning toward the quietest.
