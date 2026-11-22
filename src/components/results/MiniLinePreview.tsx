@@ -68,8 +68,11 @@ function creditFits(day: DetailedDay): string {
 }
 
 function cellClass(day: DetailedDay, selected: boolean): string {
+  // The padding in px, as the grid's gap is: the bars' width, how far they run on past midnight (`CELL_BLEED`) and the
+  // trip's rail are worked out in px from them. In rem, with a phone's text set larger, they grew while all that didn't,
+  // and a day narrowed to almost nothing between them.
   const base =
-    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-1 text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
+    "@container relative flex min-h-[4.75rem] min-w-0 flex-col gap-0.5 rounded-md p-[4px] text-left leading-none transition-colors focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[6.25rem]";
   const ring = selected ? " ring-2 ring-brand ring-offset-1 ring-offset-surface" : "";
   switch (day.kind) {
     case "off":
@@ -243,7 +246,8 @@ function Cell({
       )}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
-        <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
+        {/* Grows with the text up to 150%, like the weekday names: at 200% a phone's dates ran together ("282930"). */}
+        <span className={`text-[length:min(var(--text-2xs),16.5px)] leading-4 tabular-nums ${isOff ? "" : "font-semibold"}`}>
           {day.label}
           {/* Too narrow for it beside the date (a phone), "26 NOV27 NOV" ran together: the carry bar along the bottom says it. */}
           {day.nextMonth && <span className="ml-0.5 hidden text-2xs font-semibold uppercase tracking-wide text-carry @min-[2.5rem]:inline">{day.nextMonth.slice(0, 3)}</span>}
@@ -293,15 +297,17 @@ function Cell({
             </span>
           )}
           {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
-            <span className="text-2xs font-medium leading-tight">
+            // Up to 150% as the date is: at 200% "off" ran into the next day.
+            <span className="text-[length:min(var(--text-2xs),16.5px)] font-medium leading-tight">
               {day.offRun.length}
               <span className="hidden @min-[4.75rem]:inline"> days</span> off
             </span>
           )}
           {day.fullDay && (
             // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
-            // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
-            <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+            // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day. Narrower than
+            // "Full" itself (a phone with its text at 200%), so is all of it: "FullFull dayday" ran across two days.
+            <span className="hidden text-2xs font-semibold leading-tight text-layover @min-[1.25rem]:inline" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
               Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
             </span>
           )}
@@ -767,13 +773,14 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
         {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-[4px] text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}
           </div>
         )}
-        <div ref={gridRef} className={`cal-grid grid grid-cols-7 gap-1 ${revealed ? "is-revealed" : ""}`}>
+        {/* The gap in px, as `barWidth` and the day's padding are (see `cellClass`). */}
+        <div ref={gridRef} className={`cal-grid grid grid-cols-7 gap-[4px] ${revealed ? "is-revealed" : ""}`}>
           {month.days.map((day, i) => (
             <Cell
               key={day.dayIndex}

@@ -33,29 +33,33 @@ function Caption({ children }: { children: React.ReactNode }) {
 export function ParseVisual({ active }: { active: boolean }) {
   return (
     <div>
-      <div className="panel-glass flex gap-6 p-6">
-        {/* A page of the pack, its rows racking in one after another as they're read. */}
-        <div className="relative h-44 w-32 shrink-0 overflow-hidden rounded-[3px] border border-border bg-surface-raised">
-          <div key={active ? "reading" : "waiting"} className="space-y-2 p-3" aria-hidden>
-            {[90, 70, 84, 60, 92, 75, 66, 88, 58, 80].map((w, i) => (
-              <div key={i} className={`h-1 rounded-[1px] bg-ink/20 ${active ? "rack" : ""}`} style={{ width: `${w}%`, animationDelay: `${i * 90}ms` }} />
-            ))}
-          </div>
-        </div>
-        <dl className="grid flex-1 content-center gap-4">
-          {[
-            ["Pages read", PACK.pages],
-            ["Pairings", PACK.pairings],
-            ["Lines", PACK.lines],
-          ].map(([label, value]) => (
-            <div key={label as string}>
-              <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
-              <dd className="text-readout text-3xl font-semibold">
-                {active ? <NumberTicker key="on" value={value as number} duration={1.4} /> : <span>0</span>}
-              </dd>
+      {/* The numbers go under the page where they won't fit beside it (a phone with its text set larger): beside it, the
+          page ran off the panel and pushed them out of sight. The page is a picture, the same size at any text size. */}
+      <div className="panel-glass @container p-6">
+        <div className="flex flex-col gap-6 @min-[11rem]:flex-row">
+          {/* A page of the pack, its rows racking in one after another as they're read. */}
+          <div className="relative h-[176px] w-[128px] shrink-0 overflow-hidden rounded-[3px] border border-border bg-surface-raised">
+            <div key={active ? "reading" : "waiting"} className="space-y-[8px] p-[12px]" aria-hidden>
+              {[90, 70, 84, 60, 92, 75, 66, 88, 58, 80].map((w, i) => (
+                <div key={i} className={`h-[4px] rounded-[1px] bg-ink/20 ${active ? "rack" : ""}`} style={{ width: `${w}%`, animationDelay: `${i * 90}ms` }} />
+              ))}
             </div>
-          ))}
-        </dl>
+          </div>
+          <dl className="grid flex-1 content-center gap-4">
+            {[
+              ["Pages read", PACK.pages],
+              ["Pairings", PACK.pairings],
+              ["Lines", PACK.lines],
+            ].map(([label, value]) => (
+              <div key={label as string}>
+                <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
+                <dd className="text-readout text-3xl font-semibold">
+                  {active ? <NumberTicker key="on" value={value as number} duration={1.4} /> : <span>0</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
       </div>
       <motion.div
         className="mt-3 inline-flex items-center gap-2 rounded-[3px] border border-good/40 bg-good-soft px-2.5 py-1 text-2xs text-good font-medium"
@@ -169,7 +173,8 @@ export function RankVisual({ active }: { active: boolean }) {
                 size={40}
                 tone={{ stroke: "var(--color-accent)", track: "var(--color-accent-soft)", text: "text-readout" }}
                 label={`Illustrative score ${l.score}`}
-                readoutClassName="text-2xs font-semibold"
+                // The ring is the same size at any text size, so its score grows only to 150%: at 200% it ran over the ring.
+                readoutClassName="text-[length:min(var(--text-2xs),16.5px)] font-semibold"
               />
             ) : (
               <div className="h-10 w-10" />
@@ -197,15 +202,23 @@ export function CalendarVisual({ active }: { active: boolean }) {
   const reduce = useStill();
   const start = new Date(Date.UTC(2026, 8, 28));
   let trip = -1;
+  // With a phone's text at 200%, seven days to a row, "Mon" ran into "Tue", the dates into each other and "CDG" into
+  // "DUB". The calendar's spacing is a picture's, the same at any text size; the weekday names and dates grow up to 150%;
+  // a weekday is its first letter where its column won't hold three, and a day's city is left off where it won't fit
+  // (its three letters, 1.24rem, into the day's padding at most).
+  const cap = "text-[length:min(var(--text-2xs),16.5px)] leading-[min(1rem,24px)]";
   return (
     <div>
-      <div className="panel-glass p-5">
-        <div className="mb-2 grid grid-cols-7 text-center text-2xs text-ink-faint font-medium">
+      <div className="panel-glass p-[20px]">
+        <div className={`mb-2 grid grid-cols-7 text-center ${cap} text-ink-faint font-medium`}>
           {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
-            <div key={d}>{d}</div>
+            <div key={d} className="@container">
+              <span className="@min-[1.4rem]:hidden">{d[0]}</span>
+              <span className="hidden @min-[1.4rem]:inline">{d}</span>
+            </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="grid grid-cols-7 gap-[6px]">
           {MONTH.map((code, i) => {
             const date = new Date(start.getTime() + i * 86_400_000).getUTCDate();
             const flying = code !== null;
@@ -213,15 +226,15 @@ export function CalendarVisual({ active }: { active: boolean }) {
             return (
               <motion.div
                 key={i}
-                className={`flex h-12 flex-col justify-between rounded-[3px] border p-1 text-left ${
+                className={`@container flex h-[min(3rem,72px)] flex-col justify-between rounded-[3px] border p-[4px] text-left ${
                   flying ? "border-accent/50" : "border-dashed border-border"
                 }`}
                 initial={false}
                 animate={{ backgroundColor: flying && active ? "var(--color-accent-soft)" : "rgba(0,0,0,0)" }}
                 transition={{ delay: flying && active && !reduce ? 0.2 + trip * 0.08 : 0, duration: reduce ? 0 : 0.35 }}
               >
-                <span className="font-mono text-2xs text-ink-faint">{date}</span>
-                {code && <span className="font-mono text-2xs font-semibold text-accent">{code}</span>}
+                <span className={`font-mono ${cap} text-ink-faint`}>{date}</span>
+                {code && <span className="hidden font-mono text-2xs font-semibold text-accent @min-[calc(1.24rem_-_8px)]:inline">{code}</span>}
               </motion.div>
             );
           })}
