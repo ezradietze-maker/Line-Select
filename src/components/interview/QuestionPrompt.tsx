@@ -46,7 +46,8 @@ export function QuestionPrompt({ eyebrow, title, help }: { eyebrow?: string; tit
           {eyebrow}
         </motion.div>
       )}
-      <h2 ref={heading} tabIndex={-1} aria-label={title} className="mt-2.5 outline-none font-display text-2xl font-semibold leading-tight tracking-tight text-ink sm:text-[1.75rem]">
+      {/* A word wider than the question's box (a phone, its text set large) breaks rather than push the page sideways. */}
+      <h2 ref={heading} tabIndex={-1} aria-label={title} className="mt-2.5 outline-none font-display text-2xl font-semibold leading-tight tracking-tight text-ink wrap-anywhere sm:text-[1.75rem]">
         {words.map((w, i) => (
           <motion.span
             key={i}

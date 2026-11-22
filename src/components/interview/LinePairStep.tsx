@@ -172,7 +172,7 @@ export function LinePairStep({ prompt, helpText, eyebrow, pair, bidPack, onAnswe
         />
         {error && <p role="alert" className="mt-2 text-xs text-danger">{error}</p>}
 
-        <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <button type="button" onClick={onSkip} disabled={busy} className="text-sm text-ink-faint underline decoration-dotted underline-offset-4 hover:text-ink-muted">
             Skip this one
           </button>

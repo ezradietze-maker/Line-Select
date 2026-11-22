@@ -303,7 +303,8 @@ function RatedSummary({ cities, scoreOf, untried }: { cities: CityFacts[]; score
         {groups.map((g) => (
           <div key={g.score} className="flex gap-2">
             <dt className={`w-16 shrink-0 font-medium ${g.score > 0 ? "text-good" : g.score === 0 ? "text-accent" : g.score === -1 ? "text-warn" : "text-danger"}`}>{g.label}</dt>
-            <dd className="text-ink">{g.names.join(", ")}</dd>
+            {/* Its own words break when nothing else will fit beside the grade (text set large): "Guangzhou" pushed a phone's page sideways. */}
+            <dd className="min-w-0 break-words text-ink">{g.names.join(", ")}</dd>
           </div>
         ))}
       </dl>
