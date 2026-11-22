@@ -130,7 +130,7 @@ import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib
 import { VacationGoal } from "@/components/results/VacationGoal";
 import { YourMonth, carrySummary, vacationSummary } from "@/components/results/YourMonth";
 import { ListMenu, MenuAction, MenuCheck, MenuSection } from "@/components/results/ListMenu";
-import { VacationGainNote, VacationLineControl } from "@/components/results/VacationLineControl";
+import { VacationOnLine } from "@/components/results/VacationLineControl";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
@@ -202,11 +202,11 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
-/** The colour key over the lines, shown from the toolbar's ⋯ (off until the pilot turns it on), on this device. */
+/** The colour key over the lines: on until the pilot turns it off from the toolbar's ⋯, on this device. */
 const COLOUR_KEY_KEY = "line-select:show-colour-key:v1";
 function readColourKey(): boolean {
   try {
-    return typeof window !== "undefined" && window.localStorage.getItem(COLOUR_KEY_KEY) === "1";
+    return typeof window === "undefined" || window.localStorage.getItem(COLOUR_KEY_KEY) !== "0";
   } catch {
     return false;
   }
@@ -2146,9 +2146,12 @@ export function ResultsView({
                                       openExtra: (
                                         <>
                                           <TierMoveRow tiers={tiers} lineId={id} />
-                                          <VacationLineControl
+                                          {/* The vacation on this line, said in one place when the line is opened, not under every line in the list. */}
+                                          <VacationOnLine
+                                            reason={shownVacationLines.get(id)?.reason}
                                             line={vacationOptions.options?.get(id)}
                                             placement={vacationPlacements.get(id)}
+                                            goal={!!vacationGoal}
                                             overridden={!!vacationOverrides?.[id]}
                                             onPlace={(p) => placeVacation(id, p)}
                                             onReset={() => placeVacation(id, null)}
@@ -2160,8 +2163,7 @@ export function ResultsView({
                               }
                             />
                           </ErrorBoundary>
-                          <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={shownVacationLines.get(id)} />
-                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} goal={!!vacationGoal} />
+                          <CarryInLineNote flown={carry.flown.lines.get(id)} />
                           <TotalChLineNote line={printedById.get(id)} total={totals.get(id)} />
                           <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>

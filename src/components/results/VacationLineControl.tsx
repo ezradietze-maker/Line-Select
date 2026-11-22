@@ -16,7 +16,7 @@ export function optionAt(line: LineVacationOptions, placement: VacationPlacement
  * Under a line whose vacation the goal (or the pilot) moved: what that gains against where the pack has it, in the terms
  * a pilot weighs. Nothing for a line it leaves where it was.
  */
-export function VacationGainNote({ line, placement, goal = false }: { line: LineVacationOptions | undefined; placement: VacationPlacement | undefined; goal?: boolean }) {
+export function VacationGainNote({ line, placement, goal = false, className = "mt-0.5 px-3" }: { line: LineVacationOptions | undefined; placement: VacationPlacement | undefined; goal?: boolean; className?: string }) {
   // A line the goal leaves where the pack has it has no placement of its own.
   if (!line || (!placement && !goal)) return null;
   const awarded = line.options[0];
@@ -29,7 +29,7 @@ export function VacationGainNote({ line, placement, goal = false }: { line: Line
     if (line.options.length < 2 || !stuck.length) return null;
     const trips = stuck.map((p) => `trip ${p}`).join(" and ");
     return (
-      <p className="mt-0.5 px-3 text-xs text-ink-muted" data-vacation-stuck>
+      <p className={`${className} text-xs text-ink-muted`} data-vacation-stuck>
         {trips[0].toUpperCase() + trips.slice(1)} {stuck.length === 1 ? "is" : "are"} under your vacation wherever it can slide on this line (up to 5 days either
         way), so no slide keeps {stuck.length === 1 ? "it" : "them"}.
       </p>
@@ -44,7 +44,7 @@ export function VacationGainNote({ line, placement, goal = false }: { line: Line
   if (run) parts.push(`longest stretch ${run > 0 ? "+" : "−"}${Math.abs(run)}`);
   if (at.waived) parts.push("a trip kept by waiving the 24 hours free before it");
   return (
-    <p className="mt-0.5 px-3 text-xs font-medium text-accent" data-vacation-gain>
+    <p className={`${className} text-xs font-medium text-accent`} data-vacation-gain>
       Against where the pack has it: {parts.length ? parts.join(", ") : "the same days off and bank, on other days"}.
     </p>
   );
@@ -60,18 +60,21 @@ export function VacationLineControl({
   overridden,
   onPlace,
   onReset,
+  bare = false,
 }: {
   line: LineVacationOptions | undefined;
   placement: VacationPlacement | undefined;
   overridden: boolean;
   onPlace: (placement: VacationPlacement) => void;
   onReset: () => void;
+  /** Inside "Your vacation on this line", which is its frame. */
+  bare?: boolean;
 }) {
   if (!line || line.options.length < 2) return null;
   const current = optionAt(line, placement) ?? line.options[0];
   const ids = Object.keys(current.placement.offsets);
   return (
-    <div className="mt-2 space-y-1 rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-xs text-ink" data-vacation-control>
+    <div className={`space-y-1 text-xs text-ink ${bare ? "mt-2 border-t border-accent/30 pt-2" : "mt-2 rounded-md border border-accent/40 bg-accent/5 px-3 py-2"}`} data-vacation-control>
       {ids.map((id, n) => {
         const offset = current.placement.offsets[id];
         // The legal spots for this vacation with the other where it is now.
@@ -84,7 +87,7 @@ export function VacationLineControl({
         const step = (to: number | undefined) => to !== undefined && onPlace({ offsets: { ...current.placement.offsets, [id]: to } });
         return (
           <div key={id} className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">{ids.length > 1 ? `Vacation ${n + 1}` : "Your vacation"} on this line:</span>
+            <span className="font-medium">{ids.length > 1 ? `Slide vacation ${n + 1}` : bare ? "Slide it" : "Your vacation on this line"}{ids.length > 1 && !bare ? " on this line" : ""}:</span>
             <button type="button" className="rounded border border-hairline px-1.5 disabled:opacity-40" disabled={earlier === undefined} onClick={() => step(earlier)} aria-label="A day earlier">
               ◀
             </button>
@@ -104,5 +107,38 @@ export function VacationLineControl({
         )}
       </p>
     </div>
+  );
+}
+
+/**
+ * In an opened line, everything the pilot's vacation does on it, in one place (it used to sit under every line in the
+ * list): what it takes off and why (`reason`, from `flyVacationsOnLine`, free time a long trip needs included), what the
+ * goal's slide gains against where the pack has it or why no slide helps, and the ◀▶ to step it here.
+ */
+export function VacationOnLine({
+  reason,
+  line,
+  placement,
+  goal,
+  overridden,
+  onPlace,
+  onReset,
+}: {
+  reason: string | null | undefined;
+  line: LineVacationOptions | undefined;
+  placement: VacationPlacement | undefined;
+  goal: boolean;
+  overridden: boolean;
+  onPlace: (placement: VacationPlacement) => void;
+  onReset: () => void;
+}) {
+  if (!reason && !(line && line.options.length > 1)) return null;
+  return (
+    <section aria-label="Your vacation on this line" data-vacation-on-line className="mx-5 my-3 rounded-md border border-accent/40 bg-accent/5 px-3 py-2.5 sm:mx-6">
+      <p className="text-2xs font-medium text-accent">Your vacation on this line</p>
+      {reason && <p className="mt-1 text-xs text-ink">{reason}</p>}
+      <VacationGainNote line={line} placement={placement} goal={goal} className="mt-1" />
+      <VacationLineControl bare line={line} placement={placement} overridden={overridden} onPlace={onPlace} onReset={onReset} />
+    </section>
   );
 }
