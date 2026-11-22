@@ -111,6 +111,7 @@ const TOKEN_TONE: Record<PackToken["kind"], string> = {
   deadhead: "text-deadhead",
   layover: "text-layover",
   standby: "text-standby",
+  arrival: "text-ink-muted",
 };
 
 function gridColumns(count: number, layout: StripLayout): string {
@@ -280,7 +281,7 @@ function DayCell({ col, day, font, labelRoom, credit }: { col: PackColumn; day: 
       {/* Clipped to its own day: whatever still doesn't fit is cut at the column's edge, never run into the next day. */}
       <div className="relative flex flex-col items-center overflow-hidden pt-[4px] font-mono font-medium" style={{ fontSize: font, lineHeight: `${ROW_PX}px` }}>
         {day.tokens.map((t, i) => (
-          <span key={i} className={`whitespace-nowrap ${TOKEN_TONE[t.kind]}`}>
+          <span key={i} className={`whitespace-nowrap ${TOKEN_TONE[t.kind]}`} title={t.kind === "arrival" ? "Trip released" : undefined}>
             {t.text}
           </span>
         ))}
