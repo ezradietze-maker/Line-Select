@@ -152,7 +152,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
         </>
       ) : view === "pack" ? (
         <>
-          {item(word("1875", "text-leg"), "flight, on the day it leaves")}
+          {item(word("1875", "text-leg"), "flight, on the day the pack prints it")}
           {item(word("D/H", "text-deadhead"), "deadhead")}
           {item(word("HNL", "text-layover"), "where you lay over")}
           {item(word("HSBY", "text-standby"), "hotel standby")}
