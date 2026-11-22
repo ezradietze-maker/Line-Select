@@ -64,23 +64,23 @@ const RouteMap = dynamic(() => import("@/components/results/RouteMap").then((m) 
 type DetailTab = "calendar" | "breakdown" | "circadian" | "route" | "reviews";
 
 /** Each line's open tab, trip details and month, by pack and line: kept while its card isn't drawn (see `LineCard`). */
-const cardViews = new Map<string, { expanded: boolean | null; activeTab: DetailTab; monthOpen: boolean | null }>();
+const cardViews = new Map<string, { expanded: boolean | null; activeTab: DetailTab; monthOpen: boolean | null; vacationOpen: boolean | null }>();
 
 /**
  * Which of an opened line's two drop-downs — its month (the calendar and the summary) and its trips — the pilot keeps
  * open, on this device: a line opened for the first time opens them the way the pilot last left one.
  */
 const LINE_PARTS_KEY = "line-select:line-parts-open:v1";
-function readLineParts(): { month: boolean; trips: boolean } {
+function readLineParts(): { month: boolean; trips: boolean; vacation: boolean } {
   try {
     const raw = typeof window === "undefined" ? null : window.localStorage.getItem(LINE_PARTS_KEY);
-    const v = raw ? (JSON.parse(raw) as { month?: unknown; trips?: unknown }) : null;
-    return { month: v?.month === true, trips: v?.trips === true };
+    const v = raw ? (JSON.parse(raw) as { month?: unknown; trips?: unknown; vacation?: unknown }) : null;
+    return { month: v?.month === true, trips: v?.trips === true, vacation: v?.vacation === true };
   } catch {
-    return { month: false, trips: false };
+    return { month: false, trips: false, vacation: false };
   }
 }
-function saveLinePart(part: "month" | "trips", open: boolean) {
+function saveLinePart(part: "month" | "trips" | "vacation", open: boolean) {
   try {
     window.localStorage.setItem(LINE_PARTS_KEY, JSON.stringify({ ...readLineParts(), [part]: open }));
   } catch {
@@ -114,6 +114,8 @@ export interface LineCardDetails {
   sortedValue?: string | null;
   /** Controls shown at the top of the opened line. */
   openExtra?: ReactNode;
+  /** The pilot's vacation on this line, as a drop-down beside Month and Trips: a few words closed, the slide open. */
+  vacationPart?: { hint: string; content: ReactNode } | null;
 }
 
 /**
@@ -197,9 +199,11 @@ export const LineCard = memo(function LineCard({
   const [tripsChoice, setTripsChoice] = useState<boolean | null>(() => cardViews.get(viewKey)?.expanded ?? null);
   const [activeTab, setActiveTab] = useState<DetailTab>(() => cardViews.get(viewKey)?.activeTab ?? "calendar");
   const [monthChoice, setMonthChoice] = useState<boolean | null>(() => cardViews.get(viewKey)?.monthOpen ?? null);
+  const [vacationChoice, setVacationChoice] = useState<boolean | null>(() => cardViews.get(viewKey)?.vacationOpen ?? null);
   useEffect(() => {
-    cardViews.set(viewKey, { expanded: tripsChoice, activeTab, monthOpen: monthChoice });
-  }, [viewKey, tripsChoice, activeTab, monthChoice]);
+    cardViews.set(viewKey, { expanded: tripsChoice, activeTab, monthOpen: monthChoice, vacationOpen: vacationChoice });
+  }, [viewKey, tripsChoice, activeTab, monthChoice, vacationChoice]);
+  const vacationOpen = vacationChoice ?? (open && readLineParts().vacation);
   const expanded = tripsChoice ?? (open && readLineParts().trips);
   const monthOpen = monthChoice ?? (open && readLineParts().month);
   const setExpanded: Dispatch<SetStateAction<boolean>> = useCallback((v) => setTripsChoice((prev) => (typeof v === "function" ? v(prev ?? readLineParts().trips) : v)), []);
@@ -303,6 +307,8 @@ export const LineCard = memo(function LineCard({
               setExpanded={setExpanded}
               monthOpen={monthOpen}
               setMonthOpen={setMonthOpen}
+              vacationOpen={vacationOpen}
+              setVacationOpen={setVacationChoice}
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               showEveryDimension={showEveryDimension}
@@ -329,6 +335,8 @@ function LineDetails({
   setExpanded,
   monthOpen,
   setMonthOpen,
+  vacationOpen,
+  setVacationOpen,
   activeTab,
   setActiveTab,
   showEveryDimension,
@@ -346,6 +354,8 @@ function LineDetails({
   setExpanded: Dispatch<SetStateAction<boolean>>;
   monthOpen: boolean;
   setMonthOpen: Dispatch<SetStateAction<boolean>>;
+  vacationOpen: boolean;
+  setVacationOpen: (open: boolean) => void;
   activeTab: DetailTab;
   setActiveTab: Dispatch<SetStateAction<DetailTab>>;
   showEveryDimension: boolean;
@@ -354,7 +364,7 @@ function LineDetails({
   heat: Map<number, TripHeat> | null;
   vacation: LineVacationMark | null;
 }) {
-  const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra } = details;
+  const { rank, lineScore, profile, implicitValuesByLine, homeBaseOffsetMinutes, isComparing, starred, forecast, heldBy, flights, tripScores, sortedBy, sortedValue, openExtra, vacationPart } = details;
   const reduceMotion = useReducedMotion();
   const {
     explanation,
@@ -392,6 +402,10 @@ function LineDetails({
   const toggleMonth = () => {
     saveLinePart("month", !monthOpen);
     setMonthOpen(!monthOpen);
+  };
+  const toggleVacation = () => {
+    saveLinePart("vacation", !vacationOpen);
+    setVacationOpen(!vacationOpen);
   };
   const longestTrip = line.trips.reduce((m, t) => Math.max(m, t.days), 0);
 
@@ -581,6 +595,16 @@ function LineDetails({
             {/* The line's two views, each its own drop-down, so neither takes the whole screen: its month (the calendar and
                 the summary under it) and its trips, day by day, with the score, body clock, route and reviews. */}
             <div className="space-y-2">
+              {vacationPart && (
+                <>
+                  <LinePartToggle label="Vacation" hint={vacationPart.hint} open={vacationOpen} onClick={toggleVacation} part="vacation" />
+                  {vacationOpen && (
+                    <div className="animate-fade-in" data-line-part-body="vacation">
+                      {vacationPart.content}
+                    </div>
+                  )}
+                </>
+              )}
               {!lineScore.estimated && (
                 <>
                   <LinePartToggle label="Month" hint="the calendar and the month at a glance" open={monthOpen} onClick={toggleMonth} part="month" />
@@ -823,7 +847,7 @@ function FactChip({ chip }: { chip: LineFactChip }) {
 }
 
 /** One of an opened line's two drop-downs: what it holds, and a chevron. */
-function LinePartToggle({ label, hint, open, onClick, part }: { label: string; hint: string; open: boolean; onClick: () => void; part: "month" | "trips" }) {
+function LinePartToggle({ label, hint, open, onClick, part }: { label: string; hint: string; open: boolean; onClick: () => void; part: "month" | "trips" | "vacation" }) {
   return (
     <button
       type="button"

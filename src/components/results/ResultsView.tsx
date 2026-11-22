@@ -130,7 +130,7 @@ import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib
 import { VacationGoal } from "@/components/results/VacationGoal";
 import { YourMonth, carrySummary, vacationSummary } from "@/components/results/YourMonth";
 import { ListMenu, MenuAction, MenuCheck, MenuSection } from "@/components/results/ListMenu";
-import { VacationOnLine } from "@/components/results/VacationLineControl";
+import { VacationOnLine, vacationHint } from "@/components/results/VacationLineControl";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
 import { usePayOrder } from "@/lib/pay/pay-order";
@@ -2143,19 +2143,32 @@ export function ResultsView({
                                       tripScores,
                                       sortedBy: lineSort.def.label,
                                       sortedValue: lineSort.valueFor(id),
+                                      // The vacation on this line, its own drop-down when the line is opened, not under every line in the list.
+                                      vacationPart: (() => {
+                                        const vl = shownVacationLines.get(id);
+                                        const options = vacationOptions.options?.get(id);
+                                        const canSlide = !!options && options.options.length > 1;
+                                        if (!vl?.reason && !canSlide) return null;
+                                        const trips = new Set((vl?.removed ?? []).map((r) => `${r.trip.id}@${r.trip.startDayIndex}`)).size;
+                                        return {
+                                          hint: vacationHint(trips, vacationPlacements.get(id), canSlide),
+                                          content: (
+                                            <VacationOnLine
+                                              bare
+                                              reason={vl?.reason}
+                                              line={options}
+                                              placement={vacationPlacements.get(id)}
+                                              goal={!!vacationGoal}
+                                              overridden={!!vacationOverrides?.[id]}
+                                              onPlace={(p) => placeVacation(id, p)}
+                                              onReset={() => placeVacation(id, null)}
+                                            />
+                                          ),
+                                        };
+                                      })(),
                                       openExtra: (
                                         <>
                                           <TierMoveRow tiers={tiers} lineId={id} />
-                                          {/* The vacation on this line, said in one place when the line is opened, not under every line in the list. */}
-                                          <VacationOnLine
-                                            reason={shownVacationLines.get(id)?.reason}
-                                            line={vacationOptions.options?.get(id)}
-                                            placement={vacationPlacements.get(id)}
-                                            goal={!!vacationGoal}
-                                            overridden={!!vacationOverrides?.[id]}
-                                            onPlace={(p) => placeVacation(id, p)}
-                                            onReset={() => placeVacation(id, null)}
-                                          />
                                         </>
                                       ),
                                     }
