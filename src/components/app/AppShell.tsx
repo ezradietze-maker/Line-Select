@@ -21,6 +21,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { ToastStack } from "@/components/ui/Toast";
 import { openStrategy, type StrategyMenuId } from "@/lib/strategy-menu";
 import { AppStateProvider, useAppState } from "@/lib/app-state";
+import { hasAccess } from "@/lib/membership";
 import { navTargetForPath } from "@/lib/nav-target";
 import { waitsForSavedState } from "@/lib/site-pages";
 import { followThemeFromOtherTabs } from "@/lib/theme";
@@ -355,6 +356,7 @@ function Chrome({ children }: { children: React.ReactNode }) {
         bidPackId={bidPack?.id ?? null}
         hasProfile={!!profile}
         hasBidPack={!!bidPack}
+        rankedLinesOnly={!hasAccess(user)}
         onNavigate={navProps.onNavigate}
         onOpenLine={(lineNumber) => router.push(`/results?line=${encodeURIComponent(lineNumber)}`, { scroll: false })}
         onOpenHowItWorks={() => setHowItWorksOpen(true)}

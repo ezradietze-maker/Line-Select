@@ -145,7 +145,7 @@ export function VacationChoicePanel({
         </div>
         {top.length > 0 && (
           <p className="mt-3 text-sm text-ink">
-            {losing} of your top {top.length} lines lose a trip to it.
+            {losing} of your top {top.length} lines {losing === 1 ? "loses" : "lose"} a trip to it.
           </p>
         )}
         <p className="mt-2 text-xs text-ink-faint">

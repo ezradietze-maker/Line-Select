@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { timezoneForAirport } from "@/lib/airport-timezones";
 import { buildLineMonthCalendar } from "@/lib/line-month";
 import { lineLengthDays } from "@/lib/metrics/line-length";
+import { standbyPlace } from "@/lib/standby";
 import { lineByDay } from "@/lib/trip-anchor";
 import type { BidPack, Line } from "@/types/bidpack";
 
@@ -144,7 +145,8 @@ function buildPackRowFresh(whole: Line, bidPeriodStart: string | null, bidPeriod
       let last: number | null = null;
       for (const leg of duty.legs) {
         last = dayOf(leg.depTimeZulu, leg.depAirport);
-        if (leg.isStandby) put(last, { text: "HSBY", kind: "standby" });
+        // An hour or two on call at the airport (STARPT) is "ASBY" on the line page; a hotel's is "HSBY".
+        if (leg.isStandby) put(last, { text: standbyPlace(leg.flightNumber) === "airport" ? "ASBY" : "HSBY", kind: "standby" });
         else if (leg.isDeadhead || leg.equipment === "CAB") put(last, { text: "D/H", kind: "deadhead" });
         else put(last, { text: leg.flightNumber, kind: "flight" });
       }

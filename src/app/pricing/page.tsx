@@ -39,7 +39,8 @@ export default function PricingPage() {
       {/* Pro, the paid way in, lit in amber. */}
       <div className="panel-glass relative mt-6 overflow-hidden p-5 sm:p-6">
         <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
-        <div className="flex items-baseline justify-between">
+        {/* Wrapped: at 200% text on a 320 px phone the price ran past the card's edge and was cut. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
           <h2 className="text-lg font-semibold text-ink">Pro</h2>
           {/* As the Membership page and Stripe's checkout have it (`MembershipScreen`, `TRIAL_DAYS`). */}
           <span className="font-mono text-lg font-semibold text-accent">{MEMBERSHIP_PRICE}</span>
@@ -71,7 +72,7 @@ export default function PricingPage() {
       </div>
 
       <div className="mt-4 rounded-xl border border-border-strong bg-canvas p-5 sm:p-6">
-        <div className="flex items-baseline justify-between">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
           <h2 className="text-lg font-semibold text-ink">Free membership</h2>
           <span className="font-mono text-lg font-semibold text-ink-muted">$0</span>
         </div>

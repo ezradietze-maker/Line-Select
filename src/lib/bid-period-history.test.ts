@@ -78,6 +78,24 @@ describe("bid period history", () => {
       expect(summary?.previousTopLineNowRank).toBe(2);
     });
 
+    it("reads the top pick and its place from the pilot's own order, as each line's #rank shows it", () => {
+      // Last month the pilot moved 1002 above a line scoring more; this month too, and 1001 sits third in their order.
+      saveBidPeriodSnapshot(null, "AUG26", [fakeScore("1002", 70), fakeScore("1001", 85)]);
+      const previous = loadPreviousPeriodSnapshot(null, "SEP26");
+      expect(previous?.ranked[0]).toMatchObject({ lineNumber: "1002", rank: 1 });
+      const summary = summarizeBidPeriodChange(previous, [fakeScore("1003", 60), fakeScore("1002", 95), fakeScore("1001", 90)]);
+      expect(summary).toMatchObject({ currentTopLine: "1003", previousTopLine: "1002", sameTopLine: false, previousTopLineNowRank: 2 });
+    });
+
+    it("keeps the Satisfaction Index to its tenth, and doesn't set it beside a score kept on the old scale", () => {
+      saveBidPeriodSnapshot(null, "AUG26", [fakeScore("1001", 96.4)]);
+      const summary = summarizeBidPeriodChange(loadPreviousPeriodSnapshot(null, "SEP26"), [fakeScore("1001", 97.3)]);
+      expect(summary).toMatchObject({ currentTopScore: 97.3, previousTopScore: 96.4 });
+      // A month kept before the index: its fit score, 82, isn't last month's index.
+      window.localStorage.setItem("line-select:bid-period-history:guest:v1", JSON.stringify([{ month: "JUL26", savedAt: "2026-08-01T00:00:00Z", ranked: [{ lineNumber: "1001", rank: 1, score: 82 }] }]));
+      expect(summarizeBidPeriodChange(loadPreviousPeriodSnapshot(null, "SEP26"), [fakeScore("1001", 97.3)])?.previousTopScore).toBeNull();
+    });
+
     it("says the old top line isn't in this bid pack at all, rather than guessing a rank", () => {
       saveBidPeriodSnapshot(null, "AUG26", [fakeScore("1001", 85)]);
       const previous = loadPreviousPeriodSnapshot(null, "SEP26");

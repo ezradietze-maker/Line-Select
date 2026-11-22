@@ -86,6 +86,27 @@ describe("buildPackRow", () => {
     expect(row[7].tokens.map((t) => t.kind)).toEqual(["layover", "flight", "flight", "layover"]);
   });
 
+  it("prints airport standby as the line page does, ASBY, not hotel standby's HSBY", () => {
+    // B767 MEM pairing 171: a couple of hours on call at GDL right after landing (STARPT), "ASBY" on the line page.
+    const gdl = tripFrom(
+      [
+        "171 MO TU WE TH REPORT AT 0831 (0331) STANDARD CREW",
+        "EFFECTIVE SEPTEMBER 28 - OCTOBER 22",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "1 0065 76 MEM 0931(0431) GDL 1246(0646) 03:15 BMI",
+        "1 STARPT GDL 1446(0846) GDL 1635(1035) 01:49 S 03:15 05:23 08:04 GDL 31:50",
+        "Hotel: F. AMERICANA 011523338253434 (GDL), +52-33-3818-1400",
+        "*3 0066 76 GDL 0125(1925) MEM 0438(2338) 03:13 03:13 03:13 04:43",
+        "LDGS: 2 BLOCK HRS: 06:28 CREDIT HRS: 11:54 T TAFB: 44:37",
+      ],
+      0,
+      "MEM"
+    );
+    const words = buildPackRow(lineOf([gdl]), start, 28, 35).flatMap((d) => d.tokens.map((t) => t.text));
+    expect(words).toContain("ASBY");
+    expect(words).not.toContain("HSBY");
+  });
+
   it("never prints more than a day's cell holds", () => {
     expect(Math.max(...row.map((d) => d.tokens.length))).toBeLessThanOrEqual(PACK_TOKENS_PER_DAY);
   });

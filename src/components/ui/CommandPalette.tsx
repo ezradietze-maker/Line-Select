@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { NAV_ITEMS, disabledReason, type NavTarget } from "@/components/nav/nav-items";
 import { FlipText } from "@/components/ui/FlipText";
 import { SearchIcon } from "@/components/ui/icons";
-import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
+import { linesToOffer, rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { lockScroll } from "@/lib/scroll-lock";
 import { setStoredTheme, type ThemeMode } from "@/lib/theme";
 import type { Line } from "@/types/bidpack";
@@ -31,6 +31,8 @@ interface CommandPaletteProps {
   bidPackId: string | null;
   hasProfile: boolean;
   hasBidPack: boolean;
+  /** No membership: offer only the lines they can see on their rankings, their top ten (`linesToOffer`). */
+  rankedLinesOnly?: boolean;
   onNavigate: (target: NavTarget) => void;
   onOpenLine: (lineNumber: string) => void;
   onOpenHowItWorks: () => void;
@@ -58,7 +60,7 @@ const MAX_LINES = 8;
  * reading a line number off a crew-room sheet gets to it in two keystrokes
  * instead of scrolling a list of three hundred.
  */
-export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, hasBidPack, onNavigate, onOpenLine, onOpenHowItWorks, onOpenFeedback }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, hasBidPack, rankedLinesOnly = false, onNavigate, onOpenLine, onOpenHowItWorks, onOpenFeedback }: CommandPaletteProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -111,7 +113,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
     const digits = q.replace(/^line\s*/, "").replace(/\D/g, "");
     const lineHits: Command[] =
       hasProfile && lines && digits && /^(line\s*)?\d+$/.test(q)
-        ? lines
+        ? linesToOffer(lines, ranking, rankedLinesOnly)
             .filter((l) => l.lineNumber.includes(digits))
             // A line whose number starts with what was typed first, then the rest in order.
             .sort((a, b) => Number(!b.lineNumber.startsWith(digits)) - Number(!a.lineNumber.startsWith(digits)) || a.lineNumber.localeCompare(b.lineNumber, undefined, { numeric: true }))
@@ -134,7 +136,7 @@ export function CommandPalette({ open, onClose, lines, bidPackId, hasProfile, ha
       return words.every((w) => hay.includes(w));
     });
     return [...lineHits, ...rest];
-  }, [query, lines, ranking, hasProfile, commands, onClose, onOpenLine]);
+  }, [query, lines, ranking, rankedLinesOnly, hasProfile, commands, onClose, onOpenLine]);
 
   const active = Math.min(cursor, Math.max(0, results.length - 1));
 

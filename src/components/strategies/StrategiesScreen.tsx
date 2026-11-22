@@ -17,7 +17,7 @@ import { PageHeader, packEyebrow } from "@/components/ui/PageHeader";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextField } from "@/components/ui/TextField";
 import { fetchAwardSummary, summaryForSeniority } from "@/lib/award-history";
-import { rankingAsShown } from "@/lib/ranking-as-shown";
+import { lineTotalsAsShown, rankingAsShown } from "@/lib/ranking-as-shown";
 import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
 import { attachScoreContext, computeStanding, generateStrategies, rankStrategiesByPreference, type Standing } from "@/lib/strategy-engine";
 import { SENIORITY_BANDS } from "@/lib/seniority-bands";
@@ -332,10 +332,12 @@ function StrategyResults({
   const strategies = useMemo(() => {
     // VIPS's own header, as the pilot copied it into Send to VIPS: "for Pay Purposes" makes the pay-only month theirs.
     const payPurposes = parseVipsHeader(loadVipsHeaderText(bidPack.id))?.purpose === "pay";
-    const generated = generateStrategies(bidPack, seniority, awardSummary, { lineScores: ranked, isCommuter: profile?.isCommuter ?? null, payPurposes });
+    // Each line's Total CH with the pilot's carry-in and vacation, as My Rankings says it and orders the pay-only list.
+    const lineTotals = lineTotalsAsShown(bidPack, profile, userId);
+    const generated = generateStrategies(bidPack, seniority, awardSummary, { lineScores: ranked, isCommuter: profile?.isCommuter ?? null, payPurposes, lineTotals });
     const preferenceRanked = rankStrategiesByPreference(generated);
     return attachScoreContext(preferenceRanked, ranked);
-  }, [bidPack, seniority, profile, ranked, awardSummary]);
+  }, [bidPack, seniority, profile, ranked, awardSummary, userId]);
   const standing = useMemo(() => computeStanding(bidPack, seniority), [bidPack, seniority]);
 
   // What's showing: a strategy's id. It's the page's address

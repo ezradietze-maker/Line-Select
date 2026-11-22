@@ -113,7 +113,8 @@ export function MembershipScreen() {
   return (
     <div ref={keepFocusIn} className="mx-auto w-full max-w-xl space-y-6">
       <header className="space-y-1">
-        <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
+        {/* Broken, not run off the side: one word at its largest (200% text) was wider than a 320 px phone. */}
+        <h1 className="break-words font-display text-3xl font-extrabold tracking-tight text-ink">Membership</h1>
         <p className="text-sm text-ink-muted">A free spot while they last, or Line Select Pro at {MEMBERSHIP_PRICE}. Your first membership starts with a free month.</p>
       </header>
 

@@ -43,7 +43,7 @@ import { WheelsDown } from "@/components/results/WheelsDown";
 import { ResultsStatusPanel } from "@/components/results/ResultsStatusPanel";
 import { ScoreRing } from "@/components/results/ScoreRing";
 import { BidPackHeader, PRINT_LIST_PX, StripKey, StripViewToggle, TIMELINE_LEFT_W, printStripLayout, stripLayout } from "@/components/results/BidPackStrip";
-import { setRailCollapsed } from "@/lib/rail";
+import { railFoldKept, setRailCollapsed } from "@/lib/rail";
 import { stripViewFor, useStripView, type StripViewMode } from "@/lib/strip-view-storage";
 import { heatModelOf } from "@/lib/line-heat";
 import { cityGradesOf } from "@/lib/ask-pack-run";
@@ -193,7 +193,7 @@ function describeLearn(updates: DimensionUpdate[]): string {
 function DragPreview({ lineScore }: { lineScore: LineScore }) {
   return (
     <div className="flex w-64 cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
-      <ScoreRing score={lineScore.score} />
+      <ScoreRing score={lineScore.score} index />
       <span className="text-sm font-semibold text-ink">Line {lineScore.line.lineNumber}</span>
     </div>
   );
@@ -754,10 +754,21 @@ export function ResultsView({
   // shows its true position in the full ranking, not a renumbered index into
   // whatever subset currently matches the filters.
   const rankById = useMemo(() => new Map(ranked.map((r, i) => [r.line.id, i + 1] as const)), [ranked]);
+  // A non-member's ten are taken from the pilot's own order before tiers and pay-only order: taken after them, each line
+  // moved to Backup or Not bid brought the next one in, and the whole ranking could be walked ten at a time.
+  const previewRankById = useMemo(() => new Map(placed.map((r, i) => [r.line.id, i + 1] as const)), [placed]);
+  const isPreviewed = useCallback((id: string) => inPreview(previewRankById.get(id), previewLimit), [previewRankById, previewLimit]);
+  // The panels above the list name lines by their place: for a non-member, only the top of the ranking they can see.
+  const panelOrder = useMemo(() => {
+    const end = ranked.findIndex((r) => !isPreviewed(r.line.id));
+    return (end === -1 ? ranked : ranked.slice(0, end)).map((r) => r.line.lineNumber);
+  }, [ranked, isPreviewed]);
   useEffect(() => {
     if (!listReady) return;
-    setRankingSnapshot({ bidPackId: bidPack.id, byLineId: new Map(ranked.map((r, i) => [r.line.id, { rank: i + 1, score: r.score }])) });
-  }, [ranked, listReady, bidPack.id]);
+    // The ⌘K palette shows each line's place and Satisfaction Index from this: a non-member's, for their ten only.
+    const byLineId = new Map(ranked.flatMap((r, i) => (isPreviewed(r.line.id) ? [[r.line.id, { rank: i + 1, score: r.score }] as const] : [])));
+    setRankingSnapshot({ bidPackId: bidPack.id, byLineId });
+  }, [ranked, listReady, bidPack.id, isPreviewed]);
 
   // The pilot's chance at every line, given where their seniority number puts them in bid order — held until the ranking has settled, since it's a forecast of *this* ranking.
   const rankingLineIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
@@ -782,12 +793,12 @@ export function ResultsView({
     () =>
       ranked.filter(
         (r) =>
-          inPreview(rankById.get(r.line.id), previewLimit) &&
+          isPreviewed(r.line.id) &&
           lineMatchesFilters(r.line, filters, filterCtx) &&
           matchesLineSearch(r.line, search) &&
           (!hotelFilter || lineHasHotel(r.line, hotelFilter))
       ),
-    [ranked, filters, filterCtx, search, hotelFilter, previewLimit, rankById]
+    [ranked, filters, filterCtx, search, hotelFilter, isPreviewed]
   );
   // "Show the N lines you hid" counts only those it would bring into this view (`listedLines`).
   const { lines: listable, hiddenInView: hiddenMatchingCount } = useMemo(
@@ -954,16 +965,17 @@ export function ResultsView({
   const leftW = stripView === "timeline" ? TIMELINE_LEFT_W : undefined;
   const layout = useMemo(() => (printing ? printStripLayout(columns.length) : stripLayout(listWidth, columns.length, textScale, leftW)), [printing, listWidth, columns.length, textScale, leftW]);
   // The sidebar folds while the Timeline shows, for the days' room, and comes back as it was when the Timeline goes (or
-  // this page does). Opened again by the pilot while it shows, it stays open.
+  // this page does). Opened again by the pilot while it shows, it stays open; folded again by them, it stays folded. Not
+  // kept as their choice: kept, a reload on the Timeline left the sidebar folded on every page after, and on the Bid pack.
   const railFoldedHere = useRef(false);
   useEffect(() => {
     if (stripView !== "timeline" || printing) return;
     if (document.documentElement.getAttribute("data-rail") !== "collapsed") {
-      setRailCollapsed(true);
+      setRailCollapsed(true, { keep: false });
       railFoldedHere.current = true;
     }
     return () => {
-      if (railFoldedHere.current && document.documentElement.getAttribute("data-rail") === "collapsed") setRailCollapsed(false);
+      if (railFoldedHere.current && document.documentElement.getAttribute("data-rail") === "collapsed" && !railFoldKept()) setRailCollapsed(false, { keep: false });
       railFoldedHere.current = false;
     };
   }, [stripView, printing]);
@@ -1546,7 +1558,8 @@ export function ResultsView({
           response: forecast.result,
           loading: forecast.loading,
           failed: forecast.failed,
-          realisticCount: realisticIds.size,
+          // A non-member's view lists only their ten: the count is of those, not of the whole pack.
+          realisticCount: previewLimit === null ? realisticIds.size : [...realisticIds].filter(isPreviewed).length,
           showingRealistic: view === "realistic",
           onToggleRealistic: () => setView((v) => (v === "realistic" ? "all" : "realistic")),
           canShare: forecast.canShare,
@@ -1562,9 +1575,9 @@ export function ResultsView({
         moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null}
         total={bidPack.lines.length}
       />
-      <VacationChoicePanel bidPack={bidPack} carry={carry} order={ranked.map((r) => r.line.lineNumber)} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
-      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={ranked.map((r) => r.line.lineNumber)} />
-      <BlockLimitsPanel pack={bidPack} flownPack={rankingFlown.pack} order={ranked.map((r) => r.line.lineNumber)} before={flownSoFar} findings={blockFindings} />
+      <VacationChoicePanel bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
+      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} />
+      <BlockLimitsPanel pack={bidPack} flownPack={rankingFlown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />

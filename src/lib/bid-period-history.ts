@@ -13,8 +13,13 @@ import type { LineScore } from "@/lib/scoring";
 export interface BidPeriodSnapshot {
   month: string;
   savedAt: string;
+  /** In the pilot's own order, #1 first, each with its Satisfaction Index. */
   ranked: { lineNumber: string; rank: number; score: number }[];
+  /** The scores are the Satisfaction Index (`lib/satisfaction-index.ts`); a month kept before it holds fit scores. */
+  index?: true;
 }
+
+const tenth = (n: number) => Math.round(n * 10) / 10;
 
 const MAX_SNAPSHOTS = 6;
 const TOP_N = 10;
@@ -57,11 +62,12 @@ export function loadPreviousPeriodSnapshot(userId: string | null, currentMonth: 
 export function saveBidPeriodSnapshot(userId: string | null, month: string, lineScores: LineScore[]): void {
   if (typeof window === "undefined" || month === SAMPLE_MONTH) return;
   const others = loadHistory(userId).filter((s) => s.month !== month);
-  const ranked = [...lineScores].sort((a, b) => b.score - a.score);
+  // As the pilot ordered them, hand moves and tiers in: re-sorted by score, a line they'd moved to #1 wasn't their top pick.
   const entry: BidPeriodSnapshot = {
     month,
     savedAt: new Date().toISOString(),
-    ranked: ranked.slice(0, TOP_N).map((r, i) => ({ lineNumber: r.line.lineNumber, rank: i + 1, score: Math.round(r.score) })),
+    ranked: lineScores.slice(0, TOP_N).map((r, i) => ({ lineNumber: r.line.lineNumber, rank: i + 1, score: tenth(r.score) })),
+    index: true,
   };
   const next = [entry, ...others]
     .sort((a, b) => b.savedAt.localeCompare(a.savedAt))
@@ -78,7 +84,8 @@ export interface BidPeriodChangeSummary {
   currentTopLine: string;
   currentTopScore: number;
   previousTopLine: string;
-  previousTopScore: number;
+  /** Null for a month kept before the Satisfaction Index, whose fit score isn't on the same scale. */
+  previousTopScore: number | null;
   sameTopLine: boolean;
   /** This period's rank of what was the top line last period — null when that line isn't in this bid pack at all (retired, or the pack genuinely changed shape), never guessed at. */
   previousTopLineNowRank: number | null;
@@ -90,16 +97,16 @@ export function summarizeBidPeriodChange(
   currentRanked: LineScore[]
 ): BidPeriodChangeSummary | null {
   if (!previous || previous.ranked.length === 0 || currentRanked.length === 0) return null;
-  const sorted = [...currentRanked].sort((a, b) => b.score - a.score);
-  const currentTop = sorted[0];
+  // The pilot's order as given: "#1" and "#N" here are the #rank each line shows.
+  const currentTop = currentRanked[0];
   const previousTop = previous.ranked[0];
-  const previousTopNowIndex = sorted.findIndex((r) => r.line.lineNumber === previousTop.lineNumber);
+  const previousTopNowIndex = currentRanked.findIndex((r) => r.line.lineNumber === previousTop.lineNumber);
   return {
     previousMonth: previous.month,
     currentTopLine: currentTop.line.lineNumber,
-    currentTopScore: Math.round(currentTop.score),
+    currentTopScore: tenth(currentTop.score),
     previousTopLine: previousTop.lineNumber,
-    previousTopScore: previousTop.score,
+    previousTopScore: previous.index ? previousTop.score : null,
     sameTopLine: currentTop.line.lineNumber === previousTop.lineNumber,
     previousTopLineNowRank: previousTopNowIndex === -1 ? null : previousTopNowIndex + 1,
   };

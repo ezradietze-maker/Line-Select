@@ -3,6 +3,8 @@ import { attachScoreContext, computeStanding, generateStrategies } from "@/lib/s
 import { SAMPLE_BID_PACK } from "@/lib/sample-bidpack";
 import { buildProfile, emptyWeights } from "@/lib/preference-logic";
 import { rankLines, type LineScore } from "@/lib/scoring";
+import { formatHoursValue } from "@/lib/interview-config";
+import { lineTotal } from "@/lib/pay/line-total";
 import type { BidPack, SeniorityEntry } from "@/types/bidpack";
 
 /**
@@ -181,6 +183,20 @@ describe("generateStrategies", () => {
     const rlg = pack().info!.rlgHours!;
     expect(reserve.lines.length).toBeGreaterThan(0);
     for (const l of reserve.lines) expect(l.totalCreditHours).toBeLessThan(rlg);
+  });
+
+  it("bids a pay-only month by what each line pays with the pilot's carry-in, as My Rankings counts it", () => {
+    // Lines paying 80, 82, 84 … CH, the last line the most.
+    const p = pack({ lines: SAMPLE_BID_PACK.lines.map((l, i) => ({ ...l, totalCreditHours: 80 + 2 * i, carryOverCreditHours: 0 })) });
+    const [top, second] = [...p.lines].reverse();
+    // The carry-in drops the top line's first trip: 30 CH it no longer pays (4.I.1.a).
+    const dropped = { ...top, totalCreditHours: top.totalCreditHours - 30 };
+    const lineTotals = new Map(p.lines.map((l) => [l.id, lineTotal(p, l, l.id === top.id ? dropped : null)]));
+    const payOnly = generateStrategies(p, at(12), null, { lineTotals }).find((m) => m.id === "pay-only")!;
+    const said = (l: typeof top) => payOnly.lines.find((r) => r.lineNumber === l.lineNumber)?.headline;
+    expect(payOnly.lines[0].lineNumber).toBe(second.lineNumber);
+    expect(payOnly.tagline).toContain(`line ${second.lineNumber}`);
+    if (said(top)) expect(said(top)).toBe(`${formatHoursValue(lineTotals.get(top.id)!.total)} Total CH`);
   });
 
   it("leaves out the sweep move when no line flies a sweep aircraft", () => {
