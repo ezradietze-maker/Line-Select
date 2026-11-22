@@ -32,7 +32,7 @@ const MONTH_RE = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|ju
 /** The phrases for each simple aim, in the words pilots use. */
 const SIMPLE: { kind: "credit" | "keep-bank" | "days-off" | "stretch" | "weekends" | "as-awarded"; re: RegExp }[] = [
   { kind: "as-awarded", re: /\b(leave it where it is|leave it alone|leave it|where it is|don'?t (move|slide)|no slide|as awarded|as it was awarded|keep it where)\b/ },
-  { kind: "keep-bank", re: /\b((keep|save|protect|preserve|hold on to)\s+(my\s+)?(vacation\s+)?bank|least credit|use (the )?least|keep (my )?flying|min(imum|imi[sz]e)?\s+(my\s+)?credit)\b/ },
+  { kind: "keep-bank", re: /\b((keep|save|protect|preserve|hold on to)\s+(my\s+)?(vacation\s+)?bank|least credit|use (the )?least|keep (my )?flying|min(imum|imi[sz]e)?\s+(my\s+)?credit|(work|fly)( as)? (much|many hours) as (i can|possible)|(work|fly) (the )?most|(work|fly) more|most flying|as little (time )?off( as (i can|possible))?)\b/ },
   { kind: "credit", re: /\b(max(imum|imi[sz]e|ing)?( out)?( my)?( the)? (credit|pay|ch|hours|money)|most (credit|pay|ch|money|hours)|biggest trips?|cover (the )?(most|biggest|big)|more (credit|pay|money)|get paid|pay ?max)\b/ },
   { kind: "stretch", re: /\b((longest|longer)( (stretch|block|run|break))?( (of days )?(off|at home|home))?|(days )?in a row|consecutive( days)?|block of (days )?off|stretch( (off|at home|home))?|straight days)\b/ },
   { kind: "weekends", re: /\bweekends?\b/ },
@@ -171,7 +171,7 @@ export function aimLabel(a: GoalAim): string {
     case "credit":
       return "Most credit under your vacation";
     case "keep-bank":
-      return "Keep your vacation bank";
+      return "Fly the most: keep your vacation bank";
     case "days-off":
       return "Most days off";
     case "stretch":

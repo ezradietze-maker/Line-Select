@@ -1979,7 +1979,7 @@ export function ResultsView({
                             />
                           </ErrorBoundary>
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={shownVacationLines.get(id)} />
-                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} />
+                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} goal={!!vacationGoal} />
                           <TotalChLineNote line={printedById.get(id)} total={totals.get(id)} />
                           <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>

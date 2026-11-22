@@ -18,6 +18,8 @@ describe("reading what a pilot wants from their vacation, on the device", () => 
     expect(kinds("Longest stretch at home")).toEqual(["stretch"]);
     expect(kinds("Weekends off")).toEqual(["weekends"]);
     expect(kinds("Keep my bank")).toEqual(["keep-bank"]);
+    // Working more is flying more: the vacation should cover the least, never "most credit", which covers the most.
+    for (const t of ["I want to work as much as possible", "fly as much as I can", "work the most", "as little off as possible"]) expect(kinds(t), t).toEqual(["keep-bank"]);
     expect(kinds("Leave it where it is")).toEqual(["as-awarded"]);
   });
 

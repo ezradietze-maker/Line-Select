@@ -41,7 +41,7 @@ const SYSTEM = `You read what a FedEx pilot wants from their vacation this bid m
 
 Aims (use only these):
 - credit: cover the most trip credit with the vacation ("max my credit", "most pay", "cover the big trips").
-- keep-bank: cover the least, keeping vacation bank hours.
+- keep-bank: cover the least trip credit, so the pilot flies the most and keeps vacation bank hours ("keep my bank", "work as much as possible", "fly the most", "keep my flying"). Wanting to work or fly more is always keep-bank, never credit: credit takes the most flying off the line.
 - days-off: the most days off in the month.
 - stretch: the longest run of days off in a row.
 - weekends: the most weekend days off.

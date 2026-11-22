@@ -4,7 +4,7 @@ import { formatHoursValue } from "@/lib/interview-config";
 import type { CarryInState } from "@/lib/carry-in-storage";
 import { findMyVacation, type MyVacation } from "@/lib/my-vacation";
 import { namedWithHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import { CH_PER_VACATION_DAY, chargedToBank, shifted, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, chargedToBank, freeTimeReasons, shifted, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -104,7 +104,7 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   } else {
     const trips = namedWithHours(removed.map((r) => ({ trip: r.trip, creditHours: r.trip.creditHours })), name);
     const pay = active.every((v) => v.choice === "keep-flying") ? "still paid from your bank, but this line ranks lower since you want to keep your flying" : "paid from your bank";
-    reason = `${slid}our vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${formatHoursValue(overCH)} CH more than this vacation's ${formatHoursValue(value)} CH.` : ""}`;
+    reason = `${slid}our vacation takes off ${trips}, ${pay}: ${off}.${overCH > 0 ? ` That's ${formatHoursValue(overCH)} CH more than this vacation's ${formatHoursValue(value)} CH.` : ""}${freeTimeReasons(removed).map((s) => ` ${s}`).join("")}`;
   }
   const printedCredit = line.totalCreditHours + (line.carryOverCreditHours ?? 0);
   const keepFlyingLoss = printedCredit > 0 ? Math.min(1, keepFlyingCH / printedCredit) : 0;

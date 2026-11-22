@@ -36,6 +36,11 @@ export interface LineVacationMark {
   removedStarts: number[];
   /** The grid day each of those trips starts on (`Trip.startDayIndex`), to mark it in the line's trip list. */
   removedDays: number[];
+  /**
+   * The free time the contract wants beside the vacation where a trip that isn't under it fell in (`RemovedTrip.free`),
+   * in minutes and as day columns: drawn, so a trip taken off past the vacation's end shows why.
+   */
+  freeWindows: { start: number; end: number; firstDay: number; lastDay: number; title: string }[];
 }
 
 /** The day column a minute falls in, base day to base day (a day starts at 0130 at a US base, CBA 2026 25.A.2). */
@@ -83,7 +88,14 @@ export function lineVacationMark(pack: BidPack, vl: VacationLine | undefined, va
     return report === null ? [] : [minute(report)];
   });
   const removedDays = vl.removed.flatMap((r) => (r.trip.startDayIndex === null ? [] : [r.trip.startDayIndex]));
-  return { pieces, removedStarts, removedDays };
+  const freeWindows = vl.removed.flatMap((r) => {
+    if (!r.free) return [];
+    const [start, end] = [minute(r.free.window.start), minute(r.free.window.end)];
+    const hours = Math.round((r.free.window.end - r.free.window.start) / 3_600_000);
+    const title = `${hours} hours free ${r.rule === "buffer-before" ? "before" : "after"} trip ${r.trip.pairingNumber ?? ""}: it falls in them, so it comes off too`;
+    return [{ start, end, firstDay: dayColumn(start, dayStart), lastDay: dayColumn(end - 1, dayStart), title }];
+  });
+  return { pieces, removedStarts, removedDays, freeWindows };
 }
 
 /**
