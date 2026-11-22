@@ -2,7 +2,7 @@
 
 import { reachSpans, type LineVacationMark } from "@/lib/vacation-marks";
 import { useInView } from "motion/react";
-import { memo, useMemo, useState } from "react";
+import { memo, useMemo, useState, type ReactNode } from "react";
 import { BedIcon } from "@/components/ui/icons";
 import { CalendarDayBars } from "@/components/results/CalendarDayBars";
 import { HeatKey, heatOfTrips, heatPiecesOn, HeatReasons, type HeatOf } from "@/components/results/HeatReasons";
@@ -544,16 +544,20 @@ function DayDetail({ day, mode, heatOf }: { day: DetailedDay; mode: TimeMode; he
   );
 }
 
-function fmtRuns(runs: number[]): string {
-  return runs.length === 0 ? "none" : runs.join(" · ");
+/** Each run of days off, said: "7 and 7", "10, 3 and 5". */
+export function fmtRuns(runs: number[]): string {
+  if (runs.length === 0) return "none";
+  if (runs.length === 1) return String(runs[0]);
+  return `${runs.slice(0, -1).join(", ")} and ${runs[runs.length - 1]}`;
 }
 
-function SummaryItem({ label, value, tone = "" }: { label: string; value: string; tone?: string }) {
+/** One fact: its name on the left, the value beside it, every row on the same two columns so the box reads as one list. */
+function Row({ label, children, tone = "", labelTone = "text-ink-faint", full = false }: { label: ReactNode; children: ReactNode; tone?: string; labelTone?: string; full?: boolean }) {
   return (
-    <div className="min-w-0">
+    <div className={`grid min-w-0 grid-cols-[7.25rem_minmax(0,1fr)] items-baseline gap-x-2 ${full ? "sm:col-span-2" : ""}`}>
       {/* Wraps rather than cutting off: at 200% text "Days off in a row" lost its last words. */}
-      <dt className="text-2xs text-ink-faint font-medium">{label}</dt>
-      <dd className={`break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{value}</dd>
+      <dt className={`text-2xs font-medium ${labelTone}`}>{label}</dt>
+      <dd className={`min-w-0 break-words font-mono text-xs font-medium ${tone || "text-readout"}`}>{children}</dd>
     </div>
   );
 }
@@ -562,14 +566,16 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
   const cities = s.cities.slice(0, 5);
   const [whyOpen, setWhyOpen] = useState(false);
   return (
-    <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 rounded-lg border border-hairline bg-canvas/70 px-3 py-2 sm:grid-cols-3">
+    <dl className="mt-2 grid grid-cols-1 gap-y-1 rounded-lg border border-hairline bg-canvas/70 px-3 py-2 sm:grid-cols-2 sm:gap-x-6">
       {/* Duty periods, landings and time away are already on the card above, so this space goes to what isn't. */}
-      <SummaryItem label="Trips" value={`${line.trips.length}${s.departures < line.trips.length ? ` · ${s.departures} departures` : ""} · longest ${s.longestTripDays}d`} />
-      <SummaryItem label="Days off in a row" value={`${fmtRuns(s.offRuns)}`} />
-      <SummaryItem label="Weekends off" value={s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"} />
+      <Row label="Trips">{`${line.trips.length}${s.departures < line.trips.length ? ` · ${s.departures} departures` : ""} · longest ${s.longestTripDays}d`}</Row>
+      <Row label="Days off in a row">{fmtRuns(s.offRuns)}</Row>
+      <Row label="Weekends off">{s.weekendsTotal > 0 ? `${s.weekendsOff} of ${s.weekendsTotal}` : "—"}</Row>
       {/* A line of nothing but hotel standby prints BLK. 0:00, and its strip says so: "—" read as not known. */}
-      <SummaryItem label="Block hours" value={line.totalBlockHours !== undefined ? hm(line.totalBlockHours * 60) : "—"} />
-      <SummaryItem label="Hotel standby" value={s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"} tone={s.standbyDays > 0 ? "text-standby" : ""} />
+      <Row label="Block hours">{line.totalBlockHours !== undefined ? hm(line.totalBlockHours * 60) : "—"}</Row>
+      <Row label="Hotel standby" tone={s.standbyDays > 0 ? "text-standby" : ""}>
+        {s.standbyDays > 0 ? `${s.standbyDays} day${s.standbyDays === 1 ? "" : "s"}` : "none"}
+      </Row>
       {/* The body clock: one score, and under it why — the line's report and landing times among the reasons. */}
       {bodyClock && (
         // A container, so the badge can put its score under its name in a cell this narrow (see `BodyClockBadge`).
@@ -581,7 +587,7 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         </div>
       )}
       {bodyClock && whyOpen && (
-        <div className="col-span-2 rounded-md border border-hairline bg-surface/70 px-3 py-2 sm:col-span-3">
+        <div className="rounded-md border border-hairline bg-surface/70 px-3 py-2 sm:col-span-2">
           <BodyClockReasons
             result={bodyClock}
             facts={
@@ -595,67 +601,44 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
         </div>
       )}
       {s.base && (
-        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-2xs text-ink-faint font-medium">Commuting · </dt>
-          <dd className="inline">
+        <Row full label="Commuting">
           {s.base.commutes} {s.base.code} commute{s.base.commutes === 1 ? "" : "s"} · {s.base.nights === 0 ? `no nights in ${s.base.code}` : `${s.base.nights} night${s.base.nights === 1 ? "" : "s"} in ${s.base.code}`}
           {s.base.jumpseatIns > 0 ? ` · ${s.base.jumpseatIns} jumpseat-in${s.base.jumpseatIns === 1 ? "" : "s"}` : ""}
-        </dd>
-        </div>
+        </Row>
+      )}
+      {s.home && (
+        <Row full label="At home">
+          {s.home.between.length ? `${s.home.between.map((b) => `${Math.round(b.hours)}h`).join(", ")} between departures · ` : ""}
+          {s.home.nightsHome} night{s.home.nightsHome === 1 ? "" : "s"} in your own bed
+          {s.home.shortGaps > 0 ? <span className="text-warn">{` · ${s.home.shortGaps} short stay${s.home.shortGaps === 1 ? "" : "s"} (under ${s.home.minBreakNights} nights)`}</span> : ""}
+        </Row>
+      )}
+      {s.hubTurns && (
+        <Row full label="Hub turns">
+          {s.hubTurns.all} at {s.hubTurns.hubs.join(", ")}
+          {s.hubTurns.night ? ` · ${s.hubTurns.night === s.hubTurns.all ? "all" : s.hubTurns.night} at night` : " · by day"}
+          {s.hubTurns.longestRun > 1 ? ` · up to ${s.hubTurns.longestRun} nights in a row` : ""}
+          {s.hubTurns.withRestHotel ? ` · ${s.hubTurns.withRestHotel} with a crew-rest hotel` : ""}
+        </Row>
       )}
       {s.carryOver && (
-        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-2xs text-carry font-medium">Carries into {s.carryOver.month} · </dt>
-          <dd className="inline">
+        <Row full label={`Into ${s.carryOver.month}`} labelTone="text-carry">
           {s.carryOver.days} day{s.carryOver.days === 1 ? "" : "s"}
           {s.carryOver.dutyPeriods > 0 ? ` · ${s.carryOver.dutyPeriods} duty period${s.carryOver.dutyPeriods === 1 ? "" : "s"}` : ""}
           {s.carryOver.landings > 0 ? ` · ${s.carryOver.landings} landing${s.carryOver.landings === 1 ? "" : "s"}` : ""}
           {s.carryOver.creditHours > 0 ? ` · ${hm(s.carryOver.creditHours * 60)} C/O credit` : ""}
           {s.carryOver.blockHours > 0 ? ` · ${hm(s.carryOver.blockHours * 60)} C/O block` : ""}
-          <span className="font-sans text-ink-faint"> — not counted in this month</span>
-        </dd>
-        </div>
+          <span className="font-sans font-normal text-ink-faint"> · not counted in this month</span>
+        </Row>
       )}
-      {s.home && (
-        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-2xs text-ink-faint font-medium">At home · </dt>
-          <dd className="inline">
-          {s.home.between.length ? `${s.home.between.map((b) => `${Math.round(b.hours)}h`).join(", ")} between departures · ` : ""}
-          {s.home.nightsHome} night{s.home.nightsHome === 1 ? "" : "s"} in your own bed
-          {s.home.shortGaps > 0 ? (
-            <span className="text-warn">{` · ${s.home.shortGaps} short stay${s.home.shortGaps === 1 ? "" : "s"} (under ${s.home.minBreakNights} nights)`}</span>
-          ) : (
-            ""
-          )}
-        </dd>
-        </div>
-      )}
-      {s.hubTurns && (
-        <div className="col-span-2 font-mono text-xs text-readout sm:col-span-3">
-          <dt className="inline font-sans text-2xs text-ink-faint font-medium">Hub turns · </dt>
-          <dd className="inline">
-          {s.hubTurns.all} at {s.hubTurns.hubs.join(", ")}
-          {s.hubTurns.night ? ` · ${s.hubTurns.night === s.hubTurns.all ? "all" : s.hubTurns.night} at night` : " · by day"}
-          {s.hubTurns.longestRun > 1 ? ` · up to ${s.hubTurns.longestRun} nights in a row` : ""}
-          {s.hubTurns.withRestHotel ? ` · ${s.hubTurns.withRestHotel} with a crew-rest hotel` : ""}
-        </dd>
-        </div>
-      )}
-      {s.daysOff !== s.printedDaysOff && (
-        <div className="col-span-2 text-2xs leading-snug text-ink-faint sm:col-span-3">
-          <dt className="sr-only">Note</dt>
-          <dd>
-          The bid pack prints {s.printedDaysOff} days off for this line; the calendar draws {s.daysOff} from the trips&rsquo; dates, so a day at either end of a trip can differ.
-        </dd>
-        </div>
-      )}
-      <div className="col-span-2 min-w-0 sm:col-span-3">
-        <dt className="text-2xs text-ink-faint font-medium">
-          Layovers · {s.layoverNights} night{s.layoverNights === 1 ? "" : "s"}
-          {s.internationalLayoverNights > 0 ? ` (${s.internationalLayoverNights} international)` : ""}
-          {s.fullDays > 0 ? ` · ${s.fullDays} full day${s.fullDays === 1 ? "" : "s"}` : ""}
-        </dt>
-        <dd className="mt-0.5 flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs font-medium text-ink">
+      <Row full label="Layovers">
+        <span className="font-sans font-normal text-ink-muted">
+          {s.layoverNights} night{s.layoverNights === 1 ? "" : "s"}
+          {s.internationalLayoverNights > 0 ? `, ${s.internationalLayoverNights} international` : ""}
+          {s.fullDays > 0 ? `, ${s.fullDays} full day${s.fullDays === 1 ? "" : "s"}` : ""}
+          {cities.length ? " · " : ""}
+        </span>
+        <span className="inline-flex flex-wrap gap-x-2.5 gap-y-0.5 font-sans text-ink">
           {cities.length === 0 && <span className="text-ink-muted">none</span>}
           {cities.map((c) => (
             <span key={c.code} className="inline-flex items-center gap-0.5">
@@ -665,8 +648,16 @@ function Summary({ s, line, bodyClock }: { s: MonthSummary; line: Line; bodyCloc
             </span>
           ))}
           {s.cities.length > cities.length && <span className="font-normal text-ink-muted">+{s.cities.length - cities.length} more</span>}
-        </dd>
-      </div>
+        </span>
+      </Row>
+      {s.daysOff !== s.printedDaysOff && (
+        <div className="text-2xs leading-snug text-ink-faint sm:col-span-2">
+          <dt className="sr-only">Note</dt>
+          <dd>
+            The bid pack prints {s.printedDaysOff} days off for this line; the calendar draws {s.daysOff} from the trips&rsquo; dates, so a day at either end of a trip can differ.
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }
