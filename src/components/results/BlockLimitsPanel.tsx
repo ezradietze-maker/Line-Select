@@ -77,8 +77,11 @@ export function BlockLimitsPanel({
   if (!pack.bidPeriodStart) return null;
   const zone = timezoneForAirport(pack.base) ?? "UTC";
   const start = DateTime.fromISO(pack.bidPeriodStart, { zone });
-  const monthName = start.toFormat("LLLL");
   const startWords = start.toFormat("LLL d");
+  // The bid month by name (the calendar month most of its days are in), and the days of the calendar month before it
+  // starts: "Sep 1–27" for an October bid period from Sep 28. None when it starts on the 1st.
+  const bidMonthName = start.plus({ days: Math.floor(pack.bidPeriodDays / 2) }).toFormat("LLLL");
+  const earlierDays = start.day > 1 ? `${start.toFormat("LLL")} 1${start.day > 2 ? `–${start.minus({ days: 1 }).day}` : ""}` : null;
 
   const byNumber = new Map(flownPack.lines.map((l) => [l.lineNumber, l]));
   // A non-member's order is their ten (or a small pack's every line): "your top 20" would count lines it never checked.
@@ -106,7 +109,9 @@ export function BlockLimitsPanel({
               : top.length
                 ? `${top.length} of your top ${topCount} lines ${top.length === 1 ? "comes" : "come"} close to a federal limit.`
                 : before.monthHours === undefined
-                  ? `Add what you've flown in ${monthName} before ${startWords}, and your lines are checked against the 100-hour month.`
+                  ? earlierDays
+                    ? `Tell us what you flew ${earlierDays}, and your lines are checked against the 100 hours a month too.`
+                    : "Your lines are checked against the federal limits. Add your year so far to check the 1,000 hours too."
                   : `None of your top ${topCount} lines comes near a limit we can check.`}
           </p>
         </div>
@@ -117,9 +122,23 @@ export function BlockLimitsPanel({
 
       {open && (
         <div className="mt-3 space-y-3">
+          {/* The rule first, in one breath, then why we ask: what the pack can't know. */}
+          <p className="text-sm text-ink">
+            Federal limits: 100 block hours in a calendar month, 1,000 in a year, and 30 in any 7 days (32 on two-pilot
+            international flying).{" "}
+            {earlierDays ? (
+              <>
+                Your {bidMonthName} line starts {startWords}, so its first days count toward {start.toFormat("LLLL")}&rsquo;s 100 hours
+                along with what you flew {earlierDays}. Tell us that, and your year so far, and your top lines are checked.
+              </>
+            ) : (
+              <>Add your year so far, and your top lines are checked against the 1,000 hours too.</>
+            )}
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
+            {earlierDays && (
             <label className="block text-xs text-ink-muted">
-              Block hours flown in {monthName} before {startWords}
+              Block hours flown {earlierDays}
               <input
                 className={`${FIELD} mt-1 w-full`}
                 inputMode="decimal"
@@ -131,8 +150,9 @@ export function BlockLimitsPanel({
                 }}
               />
             </label>
+            )}
             <label className="block text-xs text-ink-muted">
-              This year so far, before {startWords} (optional)
+              Block hours this year before {startWords} (optional)
               <input
                 className={`${FIELD} mt-1 w-full`}
                 inputMode="decimal"
@@ -155,10 +175,9 @@ export function BlockLimitsPanel({
             </ul>
           )}
           <p className="text-xs leading-relaxed text-ink-faint">
-            FedEx flies under 14 CFR Part 121: 100 block hours in a calendar month and 1,000 in a year, and 30 in any 7 days
-            (32 on two-pilot international flying). Only flying you operate counts. Duties over 8 block hours have a relief
-            pilot and their own limits, so a week or month with one isn&rsquo;t checked here. The rest of the month after
-            this bid period is next month&rsquo;s line, so it isn&rsquo;t counted. Crew scheduling has the final say.
+            14 CFR Part 121. The 7-day limit is checked from the line alone. Only flying you operate counts, not deadheads.
+            Duties over 8 block hours have a relief pilot and their own limits, so a week or month with one isn&rsquo;t
+            checked here. Flying after this bid period is next month&rsquo;s line. Crew scheduling has the final say.
           </p>
         </div>
       )}
