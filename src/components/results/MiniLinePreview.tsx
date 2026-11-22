@@ -771,9 +771,10 @@ export const MiniLinePreview = memo(function MiniLinePreview({
       )}
       {!compact && (heat ? <HeatKey className="mb-1.5" /> : <ColorKey variant="calendar" className="mb-1.5" />)}
       <div role="group" aria-label={`Bid month at a glance${mode === "zulu" ? ", in Zulu" : ""}. ${month.summary.daysOff} days off, ${month.summary.dutyPeriods} duty periods.`}>
-        {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. */}
+        {/* The weekday names grow with the text up to 150%: at 200% "Mon" ran into "Tue" over a phone's narrow days. And
+            no bigger than a day holds ("Wed" is about 2.2 of its size wide): at 150% on a 320 phone they still ran together. */}
         {month.weekdayHeaders && (
-          <div className="mb-1 grid grid-cols-7 gap-[4px] text-center text-[length:min(var(--text-2xs),16.5px)] leading-4 font-medium text-ink-faint" aria-hidden>
+          <div className="mb-1 grid grid-cols-7 gap-[4px] text-center leading-4 font-medium text-ink-faint" style={{ fontSize: `min(var(--text-2xs), 16.5px, ${((gridWidth - 6 * 4) / 7 / 2.2).toFixed(1)}px)` }} aria-hidden>
             {month.weekdayHeaders.map((d) => (
               <span key={d} className={d === "Sat" || d === "Sun" ? "text-ink-muted" : ""}>{d}</span>
             ))}

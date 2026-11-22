@@ -103,12 +103,13 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       {dayDetail && (
         <div className="mb-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           {/* The words wrap beside the button while their longest fits; then the button goes under them. Kept beside
-              them regardless, with the phone's text at its largest "Open every day" ran off the screen. */}
+              them regardless, with the phone's text at its largest "Open every day" ran off the screen. On a row of its
+              own it is no wider than the row (a 320 phone at 200%): its words wrap rather than run out of the card. */}
           <span className="grow basis-0 text-2xs text-ink-faint">Tap a day for everything the pairing says about it.</span>
           <button
             type="button"
             onClick={() => setOpen(allOpen ? new Set() : new Set(days.map((d) => d.dayNumber)))}
-            className="flex shrink-0 items-center gap-1 text-2xs font-medium text-ink-muted hover:text-ink"
+            className="flex max-w-full shrink-0 items-center gap-1 text-left text-2xs font-medium text-ink-muted hover:text-ink"
             aria-expanded={allOpen}
           >
             {allOpen ? "Close every day" : "Open every day"}
