@@ -241,11 +241,6 @@ function Cell({
         // Along the foot: the top edge is the trip's own rail, in much the same colour.
         <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] rounded-b-md opacity-80" style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)" }} />
       )}
-      {vacation?.first != null && (
-        <span aria-hidden className="pointer-events-none absolute bottom-0.5 right-1 font-mono text-[9px] font-bold leading-none text-accent">
-          VAC {vacation.first}
-        </span>
-      )}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">
         <span className={`text-2xs tabular-nums ${isOff ? "" : "font-semibold"}`}>
@@ -287,26 +282,36 @@ function Cell({
       )}
       {day.preReportTime !== null && <span className="hidden text-2xs leading-tight text-ink-muted @min-[4.75rem]:block">reports next morning</span>}
 
-      <span className="mt-auto flex min-w-0 flex-col gap-px">
-        {standby && (
-          <span className="whitespace-nowrap font-mono text-2xs font-semibold text-standby">
-            SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
+      {/* The day's last words, and its vacation's "VAC 7" beside them where they leave room, else on a line under them: laid
+          over the corner, it ran into "4 off" and "END MEM 07:50" on a phone's narrow days. A day too narrow for "VAC 7"
+          even into its padding (a phone with its text set larger) leaves it to the gold ring. */}
+      <span className="mt-auto flex min-w-0 flex-wrap items-end gap-x-1 gap-y-px">
+        <span className="flex min-w-0 flex-auto flex-col gap-px">
+          {standby && (
+            <span className="whitespace-nowrap font-mono text-2xs font-semibold text-standby">
+              SBY<span className="hidden @min-[3.25rem]:inline"> {standby.from}</span>
+            </span>
+          )}
+          {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
+            <span className="text-2xs font-medium leading-tight">
+              {day.offRun.length}
+              <span className="hidden @min-[4.75rem]:inline"> days</span> off
+            </span>
+          )}
+          {day.fullDay && (
+            // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
+            // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
+            <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
+              Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
+            </span>
+          )}
+          {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
+        </span>
+        {vacation?.first != null && (
+          <span aria-hidden className="ml-auto whitespace-nowrap font-mono text-[9px] font-bold leading-none text-accent @max-[22px]:hidden">
+            VAC {vacation.first}
           </span>
         )}
-        {isOff && day.offRun && day.offRun.length > 1 && day.offRun.isFirst && (
-          <span className="text-2xs font-medium leading-tight">
-            {day.offRun.length}
-            <span className="hidden @min-[4.75rem]:inline"> days</span> off
-          </span>
-        )}
-        {day.fullDay && (
-          // Wraps on a phone rather than run into the next day. A day narrower than "barely" (a 320 px phone, or one with
-          // its text set larger) leaves it to the day's details, a tap away: it ran on into the next day.
-          <span className="text-2xs font-semibold leading-tight text-layover" title={day.fullDay.barely ? "A full day — just barely: up before 6 the next morning" : "A full day free in the city"}>
-            Full day{day.fullDay.barely ? <span className="hidden font-normal @min-[1.875rem]:inline">, barely</span> : null}
-          </span>
-        )}
-        {!isOff && day.finish && <End finish={day.finish} mode={mode} />}
       </span>
     </button>
   );

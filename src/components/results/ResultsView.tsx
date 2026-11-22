@@ -1572,8 +1572,9 @@ export function ResultsView({
         pack={bidPack}
         carry={carry}
         share={vacationOptions.share}
-        moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id]).length : null}
-        total={bidPack.lines.length}
+        // A non-member's view lists only their ten: the count is of those, not of the whole pack.
+        moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id] && (previewLimit === null || isPreviewed(id))).length : null}
+        total={previewLimit === null ? bidPack.lines.length : bidPack.lines.filter((l) => isPreviewed(l.id)).length}
       />
       <VacationChoicePanel bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
       <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} />
