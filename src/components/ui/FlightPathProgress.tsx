@@ -34,6 +34,11 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
   const reduceMotion = useReducedMotion();
   const transition = reduceMotion ? { duration: 0 } : { duration: DURATION.reveal, ease: EASE.emphasized };
   const points = stops ? stops.map((s) => s.at).filter((at) => at > 0 && at < 1) : Array.from({ length: waypoints }, (_, i) => (i + 1) / (waypoints + 1));
+  // The label naming the start, if any: the stop after it is held clear of it — in its own text size, so with a phone's
+  // text set larger "Story" no longer runs into "ANC" (about 0.7em a letter, a gap, then half its own word).
+  const startLabel = stops?.find((s) => s.at <= 0.02)?.label;
+  const clearOfStart = (s: { at: number; label: string }) =>
+    startLabel && s.at > 0.02 && s.at < 0.98 ? `max(${s.at * 100}%, ${(startLabel.length * 0.7 + 0.6 + s.label.length * 0.25).toFixed(2)}em)` : `${s.at * 100}%`;
 
   return (
     <div
@@ -50,7 +55,7 @@ export function FlightPathProgress({ fraction, label, origin, destination, waypo
             <span
               key={s.label}
               className={`absolute top-0 whitespace-nowrap transition-colors duration-300 ${s.wideOnly ? "hidden sm:block" : ""} ${s.at <= 0.02 ? "" : s.at >= 0.98 ? "-translate-x-full" : "-translate-x-1/2"} ${s.at <= f ? "text-ink" : "text-ink-faint"}`}
-              style={{ left: `${s.at * 100}%` }}
+              style={{ left: clearOfStart(s) }}
             >
               {s.label}
             </span>
