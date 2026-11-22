@@ -31,6 +31,16 @@ const URGENCY_TEXT: Record<Urgency, string> = {
 
 const LABEL = "text-2xs text-ink-faint font-medium";
 
+/** The bid box opened to its full detail, or kept to its one line (the default), on this device. */
+const BID_BAR_KEY = "line-select:bid-bar-open:v1";
+function readBidBarOpen(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(BID_BAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /** A tick in a circle: filled when the step's done. */
 /** No date set yet: a departures board's tiles standing blank, waiting for a time to turn over to. */
 function EmptyBoard() {
@@ -181,7 +191,8 @@ interface ResultsStatusPanelProps {
 /**
  * This month's bid, above the first line: when bidding closes (the pilot's own date, counted down, with reminders),
  * the bid's steps ticked off as they're done, and the quieter readouts — your chances, your profile, what changed
- * since last month — each opening its detail underneath. The ranking itself isn't pushed below the fold.
+ * since last month — each opening its detail underneath. Kept to one line until the pilot opens it ("Details"), so the
+ * ranking isn't pushed below the fold; it opens itself in the last day before bidding closes, and when there's no date.
  */
 export function ResultsStatusPanel({
   pack,
@@ -198,6 +209,18 @@ export function ResultsStatusPanel({
   const msLeft = useTimeLeft(deadline.deadline);
   const urgency = msLeft === null ? null : urgencyFor(msLeft);
   const finalCall = urgency === "today" || urgency === "imminent";
+  const [fullChosen, setFullChosen] = useState(readBidBarOpen);
+  // Opened whatever the pilot chose when it needs them: the last day before the close, or no date to count down to.
+  const forced = finalCall || (deadline.loaded && !deadline.deadline);
+  const full = fullChosen || forced;
+  const chooseFull = (on: boolean) => {
+    setFullChosen(on);
+    try {
+      window.localStorage.setItem(BID_BAR_KEY, on ? "1" : "0");
+    } catch {
+      // storage unavailable — kept for this visit only
+    }
+  };
   const time = msLeft !== null && msLeft > 0 ? formatTimeLeft(msLeft) : null;
   const packLabel = `${pack.base} ${pack.aircraft} ${pack.seat} ${pack.month}`;
   const reminders = useInTabReminders(pack.id, deadline.deadline, packLabel);
@@ -229,8 +252,55 @@ export function ResultsStatusPanel({
     URL.revokeObjectURL(url);
   }
 
+  const readouts = (
+    <>
+      {f.hasList && (
+        <Readout
+          id="chances"
+          label="Your chances"
+          open={open === "chances"}
+          onToggle={toggle}
+          tone={!profile.seniorityNumber ? "text-ink-faint" : "text-ink"}
+          value={!profile.seniorityNumber ? "add your seniority" : f.forecast ? `${f.realisticCount} lines you could hold` : f.failed ? "couldn’t estimate" : "estimating…"}
+        />
+      )}
+      <Readout id="profile" label="Your profile" open={open === "profile"} onToggle={toggle} tone={confidenceLevel === "thin" ? "text-warn" : "text-ink"} value={inYourWords > 0 ? `${depth} · ${inYourWords} in your words` : depth} />
+      {bidPeriodChange && (
+        <Readout id="since" label={`Since ${bidPeriodChange.previousMonth}`} open={open === "since"} onToggle={toggle} value={`${bidPeriodChange.sameTopLine ? "same #1" : "new #1"}, line ${bidPeriodChange.currentTopLine}`} />
+      )}
+      {!forced && (
+        <button
+          type="button"
+          onClick={() => chooseFull(!full)}
+          aria-expanded={full}
+          className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-sm text-ink-muted transition-colors hover:bg-ink/[0.05] hover:text-ink"
+          data-bid-details
+        >
+          {full ? "Less" : "Details"}
+          <ChevronDownIcon className={`h-3 w-3 transition-transform ${full ? "rotate-180" : ""}`} />
+        </button>
+      )}
+    </>
+  );
+
   return (
-    <section aria-label="This month's bid" className="panel-glass mt-5 p-4 sm:p-5 print:hidden">
+    <section aria-label="This month's bid" className={`panel-glass print:hidden ${full ? "mt-5 p-4 sm:p-5" : "mt-4 px-3 py-2 sm:px-4"}`} data-bid-bar={full ? "full" : "line"}>
+      {!full ? (
+        // One line: when it closes, the steps done, and the readouts, each still opening its detail below.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="inline-flex items-baseline gap-1.5 px-1.5 py-1 text-sm">
+            <span className="text-ink-muted">{urgency === "closed" ? "Bid closed" : "Bid closes in"}</span>
+            <span className={`font-mono font-semibold tabular-nums ${urgency ? URGENCY_TEXT[urgency] : "text-ink"}`}>
+              {time ? <FlipText text={time.main} /> : deadline.deadline ? closeTimeWords(deadline.deadline).replace(/ at .*/, "") : "—"}
+            </span>
+          </span>
+          <span className="px-1.5 py-1 text-sm text-ink-muted tabular-nums">
+            {doneCount} of {items.length} steps done
+          </span>
+          {readouts}
+        </div>
+      ) : (
+      <>
       <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] md:gap-6">
         {/* When bidding closes — there from the first frame (it reads its saved time a moment later), so nothing below shifts. */}
         <div className="min-w-0">
@@ -349,22 +419,9 @@ export function ResultsStatusPanel({
       {/* Every date of this bid for the pilot's seat, from the close to open time: what's next, opening to the rest. */}
       <BidWeek pack={pack} className="mt-4 border-t border-hairline pt-3" />
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline pt-3">
-        {f.hasList && (
-          <Readout
-            id="chances"
-            label="Your chances"
-            open={open === "chances"}
-            onToggle={toggle}
-            tone={!profile.seniorityNumber ? "text-ink-faint" : "text-ink"}
-            value={!profile.seniorityNumber ? "add your seniority" : f.forecast ? `${f.realisticCount} lines you could hold` : f.failed ? "couldn’t estimate" : "estimating…"}
-          />
-        )}
-        <Readout id="profile" label="Your profile" open={open === "profile"} onToggle={toggle} tone={confidenceLevel === "thin" ? "text-warn" : "text-ink"} value={inYourWords > 0 ? `${depth} · ${inYourWords} in your words` : depth} />
-        {bidPeriodChange && (
-          <Readout id="since" label={`Since ${bidPeriodChange.previousMonth}`} open={open === "since"} onToggle={toggle} value={`${bidPeriodChange.sameTopLine ? "same #1" : "new #1"}, line ${bidPeriodChange.currentTopLine}`} />
-        )}
-      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-hairline pt-3">{readouts}</div>
+      </>
+      )}
       {open && (
         <div id={`status-drawer-${open}`} className="animate-fade-in mt-3 border-t border-hairline px-1 pt-4">
           {open === "deadline" && (

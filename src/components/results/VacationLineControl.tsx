@@ -16,11 +16,25 @@ export function optionAt(line: LineVacationOptions, placement: VacationPlacement
  * Under a line whose vacation the goal (or the pilot) moved: what that gains against where the pack has it, in the terms
  * a pilot weighs. Nothing for a line it leaves where it was.
  */
-export function VacationGainNote({ line, placement }: { line: LineVacationOptions | undefined; placement: VacationPlacement | undefined }) {
-  if (!line || !placement) return null;
+export function VacationGainNote({ line, placement, goal = false }: { line: LineVacationOptions | undefined; placement: VacationPlacement | undefined; goal?: boolean }) {
+  // A line the goal leaves where the pack has it has no placement of its own.
+  if (!line || (!placement && !goal)) return null;
   const awarded = line.options[0];
   const at = optionAt(line, placement);
-  if (!awarded || !at || at === awarded) return null;
+  if (!awarded || !at) return null;
+  if (at === awarded) {
+    // Left where the pack has it, still taking trips off: say when no slide could keep them, or it looked like the goal
+    // was ignored (a pilot who wants to fly the most, watching long trips come off).
+    const stuck = awarded.removedPairings.filter((p) => line.options.every((o) => o.removedPairings.includes(p)));
+    if (line.options.length < 2 || !stuck.length) return null;
+    const trips = stuck.map((p) => `trip ${p}`).join(" and ");
+    return (
+      <p className="mt-0.5 px-3 text-xs text-ink-muted" data-vacation-stuck>
+        {trips[0].toUpperCase() + trips.slice(1)} {stuck.length === 1 ? "is" : "are"} under your vacation wherever it can slide on this line (up to 5 days either
+        way), so no slide keeps {stuck.length === 1 ? "it" : "them"}.
+      </p>
+    );
+  }
   const parts: string[] = [];
   const days = at.daysOff - awarded.daysOff;
   if (days) parts.push(`${days > 0 ? "+" : "−"}${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"} off`);

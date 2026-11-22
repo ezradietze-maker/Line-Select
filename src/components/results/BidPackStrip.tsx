@@ -195,6 +195,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
           )}
           {item(<span aria-hidden className="inline-block h-[5px] w-6 opacity-80" style={{ backgroundImage: HATCH }} />, "how far it can slide")}
           {view !== "heat" && item(<span aria-hidden className="inline-block h-3 w-5 rounded-[3px] border border-dashed border-accent bg-surface/60" />, "a trip it takes off, paid from your bank")}
+          {item(<span aria-hidden className="inline-block h-[3px] w-6 border-t-[3px] border-dotted border-accent" />, "free time a long trip needs beside it")}
         </>
       )}
       <span>{view === "heat" ? `Point at a piece for why. ${hint}` : hint}</span>
@@ -364,6 +365,12 @@ function VacationDays({ mark, columns, layout }: { mark: LineVacationMark; colum
             out.push(<div key={`${p.id}${k}`} className="h-[5px] self-start opacity-80" style={{ gridColumn: `${col(r[0])} / ${col(r[1]) + 1}`, gridRow: 1, backgroundImage: HATCH }} />);
         return out;
       })}
+      {/* The free time a long trip needs beside the vacation, where a trip that isn't under it fell in: why it comes off. */}
+      {mark.freeWindows.map((w, i) =>
+        inView(w.firstDay, w.lastDay) ? (
+          <div key={`free${i}`} className="self-start border-t-[3px] border-dotted border-accent" style={{ gridColumn: `${col(w.firstDay)} / ${col(w.lastDay) + 1}`, gridRow: 1 }} title={w.title} data-vacation-free />
+        ) : null
+      )}
     </div>
   );
 }
@@ -577,6 +584,15 @@ function VacationLayer({ mark, x, height, wash, id }: { mark: LineVacationMark; 
           </g>
         );
       })}
+      {/* The free time a long trip needs beside the vacation, dotted on from its bar: a trip in it comes off too. */}
+      {mark.freeWindows.map((w, i) => (
+        <g key={`free${i}`} data-vacation-free>
+          {wash && <rect x={x(w.start)} y={0} width={Math.max(1, x(w.end) - x(w.start))} height={height} fill="var(--color-accent)" opacity={0.07} />}
+          <line x1={x(w.start)} x2={x(w.end)} y1={1.5} y2={1.5} stroke="var(--color-accent)" strokeWidth={3} strokeDasharray="2 2">
+            <title>{w.title}</title>
+          </line>
+        </g>
+      ))}
     </g>
   );
 }

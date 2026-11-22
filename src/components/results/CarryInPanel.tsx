@@ -35,9 +35,10 @@ function newId(): string {
 }
 
 /** Above the list: what the pilot carries in from last month, how they'll answer the bid's phase-in questions, and what that does to their top lines. */
-export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidPack; profile: PreferenceProfile; carry: CarryIn; order: string[] }) {
+export function CarryInPanel({ bidPack, profile, carry, order, bare = false }: { bidPack: BidPack; profile: PreferenceProfile; carry: CarryIn; order: string[]; bare?: boolean }) {
   const { state, update, flown } = carry;
-  const [open, setOpen] = useState(state.items.length > 0);
+  // Opened from "Your month" (`bare`), it's open: the drawer was the pilot's click to see it.
+  const [open, setOpen] = useState(bare || state.items.length > 0);
   const [adding, setAdding] = useState<"trip" | "rdays" | null>(null);
   const [recommended, setRecommended] = useState<VipsRecommendation[] | null>(null);
   const zone = timezoneForAirport(bidPack.base) ?? "UTC";
@@ -66,7 +67,7 @@ export function CarryInPanel({ bidPack, profile, carry, order }: { bidPack: BidP
   const unchecked = top.filter((t) => t.flown.unchecked);
 
   return (
-    <section aria-label="Carry-in from last month" className="panel-glass mt-4 p-4 sm:p-5 print:hidden">
+    <section aria-label="Carry-in from last month" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-ink">Carry-in from last month</h2>

@@ -7,22 +7,19 @@ import type { BidPack } from "@/types/bidpack";
 import { TIER_WEIGHT, type Criterion, type PilotModel } from "@/types/pilot-model";
 
 /**
- * The one question after a swap (plan: docs/plans/reorder-learning.md §4.4): when the brain can't tell why a pilot put
- * one line above another, it asks — rarely, as a choice of the real differences, never leading with a guess.
+ * The question after every swap (plan: docs/plans/reorder-learning.md §4.4; asked every time since Nov 21 2026, on the
+ * owner's call): the brain's best guess at why the pilot put one line above another, with both lines' numbers, one tap
+ * to say it's right — and every time the chance to say it was something else, or that the two are about equal.
  *
  * Asking people for reasons can backfire: they misreport why they chose (Nisbett & Wilson 1977; Hall et al. 2010) and
- * accept a plausible suggestion, so the card offers the two or three priorities that could each explain the swap, with
- * both lines' numbers, plus "something else" and "about equal", and nothing pre-chosen. A named reason then counts as
- * evidence worth a few swaps (`LEARNER.answer`), not as an order. Feature questions like this learned faster and made
- * later choices less noisy in Basu, Singhal & Dragan (2018).
+ * accept a plausible suggestion. So the guess is offered beside the other real differences, never chosen for them, and a
+ * guess they confirm counts for less than a reason they pick or type themselves (`LEARNER.answer.confirmed`), tuned on
+ * simulated pilots who sometimes say yes to a wrong guess (scripts/eval/drag-bench.ts). Feature questions like this
+ * learned faster and made later choices less noisy in Basu, Singhal & Dragan (2018).
  */
 
 export const ASK = {
-  /** Swaps between one question and the next (the first unclear swap may be asked about at once). */
-  swapsBetween: 5,
-  /** Questions in one visit to the results. */
-  perVisit: 3,
-  /** Choices offered, before "something else" and "about equal". */
+  /** Choices offered, the guess first, before "something else" and "about equal". */
   options: 3,
 };
 
@@ -38,32 +35,30 @@ export interface FactorOption {
 }
 
 export type SwapQuestion =
-  | { kind: "factors"; dragId: string; higher: string; lower: string; options: FactorOption[] }
+  /** `guess`: the brain's best reason (also first in `options`); null when nothing favours the higher line. */
+  | { kind: "factors"; dragId: string; higher: string; lower: string; options: FactorOption[]; guess: FactorOption | null }
   | { kind: "limit"; dragId: string; higher: string; lower: string; criterionId: string; label: string; value: number; limit: number; op: "max" | "min"; amounts: string };
 
-export interface AskState {
-  /** Swaps made since the last question (or in all, before the first). */
-  swapsSince: number;
-  asked: number;
-  /** Pairs already asked about, "higher|lower". */
-  askedPairs: Set<string>;
-  stopped: boolean;
-}
+/** The same option: the same priority, or the same new measure. */
+export const sameOption = (a: FactorOption, b: FactorOption) => (a.criterionId ? a.criterionId === b.criterionId : !!a.metric && a.metric === b.metric);
 
-/** The question to ask about this swap, if it's unclear and it's time to ask; null otherwise. */
-export function pickSwapQuestion(e: SwapExplanation, swap: { dragId: string; higher: string; lower: string }, state: AskState, untracked: FactorOption | null): SwapQuestion | null {
-  if (state.stopped || state.asked >= ASK.perVisit) return null;
-  if (state.asked > 0 && state.swapsSince < ASK.swapsBetween) return null;
-  const key = [swap.higher, swap.lower].sort().join("|");
-  if (state.askedPairs.has(key)) return null;
+/**
+ * The question to ask about this swap — after every one, unless the pilot turned the questions off (`stopped`). The guess
+ * is the priority that most plausibly made the higher line win: the one that alone explains it (or, of several, the one
+ * that needed the least extra weight); when no priority does, the one pulling hardest for it, or else a measure the
+ * pilot never named that clearly favours it (`untracked`).
+ */
+export function pickSwapQuestion(e: SwapExplanation, swap: { dragId: string; higher: string; lower: string }, stopped: boolean, untracked: FactorOption | null): SwapQuestion | null {
+  if (stopped) return null;
   if (e.verdict === "limit" && e.limitDetail)
     return { kind: "limit", ...swap, criterionId: e.limitDetail.criterionId, label: e.limitDetail.label, value: e.limitDetail.value, limit: e.limitDetail.limit, op: e.limitDetail.op, amounts: e.limitDetail.amounts };
-  if (e.verdict !== "ambiguous" && e.verdict !== "unexplained") return null;
-  // Ambiguous: the priorities that could each explain it. Unexplained: what pulled the higher line up most, and a
-  // measure they never named that clearly favours it — the reason may be something the brain doesn't track yet.
-  const tracked = (e.verdict === "ambiguous" ? e.explains : e.factors.filter((f) => f.share > 0)).slice(0, untracked ? ASK.options - 1 : ASK.options);
-  const options: FactorOption[] = [...tracked.map((f) => ({ criterionId: f.criterionId, label: f.label, amounts: f.amounts })), ...(untracked ? [untracked] : [])];
-  return options.length ? { kind: "factors", ...swap, options } : null;
+  const option = (f: { criterionId: string; label: string; amounts: string }): FactorOption => ({ criterionId: f.criterionId, label: f.label, amounts: f.amounts });
+  // What could each explain it first (`explains`, best first), then whatever else pulled the higher line up.
+  const pulling = e.factors.filter((f) => f.share > 0);
+  const tracked = [...e.explains, ...pulling.filter((f) => !e.explains.some((x) => x.criterionId === f.criterionId))].map(option);
+  const guess = tracked[0] ?? untracked ?? null;
+  const options = [...tracked.slice(0, untracked ? ASK.options - 1 : ASK.options), ...(untracked ? [untracked] : [])];
+  return { kind: "factors", ...swap, options, guess };
 }
 
 /**

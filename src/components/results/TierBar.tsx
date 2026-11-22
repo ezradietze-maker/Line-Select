@@ -130,10 +130,30 @@ export interface OrderUndo {
 }
 
 /** Tiers above the list: what's in each, undo and redo, the scratch area, and the bar for moving a selection. */
-export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: LineScore[]; history: OrderUndo }) {
+export function TierBar({
+  tiers,
+  lines,
+  history,
+  compact = false,
+  managing: managingAsked,
+  onManaging,
+}: {
+  tiers: LineTiers;
+  lines: LineScore[];
+  history: OrderUndo;
+  /**
+   * Under the list's toolbar, which has Undo and Redo and opens "Rename or add" from its ⋯ menu (`managing`): the bar
+   * shows only once there's something to show — tiers in use, Not bid lines, lines set aside.
+   */
+  compact?: boolean;
+  managing?: boolean;
+  onManaging?: (on: boolean) => void;
+}) {
   const { state, selected } = tiers;
   const { undo, redo } = history;
-  const [managing, setManaging] = useState(false);
+  const [ownManaging, setOwnManaging] = useState(false);
+  const managing = managingAsked ?? ownManaging;
+  const setManaging = onManaging ?? setOwnManaging;
   const counts = new Map<string, number>();
   for (const id of Object.keys(state.assigned)) counts.set(state.assigned[id], (counts.get(state.assigned[id]) ?? 0) + 1);
   const numberOf = (id: string) => lines.find((r) => r.line.id === id)?.line.lineNumber ?? id;
@@ -157,7 +177,11 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
   const notBidCount = tiers.notBid.size;
 
   return (
-    <div data-tier-control className="mt-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm print:hidden">
+    <div
+      data-tier-control
+      className={!compact || tiers.inUse || notBidCount > 0 || state.setAside.length > 0 ? "mt-3 rounded-lg border border-border bg-surface px-3 py-2 text-sm print:hidden" : "contents"}
+    >
+      {(!compact || tiers.inUse) && (
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="font-medium text-ink">Tiers</span>
         {tiers.inUse ? (
@@ -171,17 +195,22 @@ export function TierBar({ tiers, lines, history }: { tiers: LineTiers; lines: Li
         <span className="ml-auto flex flex-wrap items-center gap-1">
           {/* Dimmed, not disabled, when there's nothing to take back: a disabled button lets go of focus, and the last
               Undo pressed dropped the keyboard on the page. */}
-          <button type="button" data-order-undo onClick={() => history.canUndo && undo()} aria-disabled={!history.canUndo} className={small}>
-            Undo
-          </button>
-          <button type="button" onClick={() => history.canRedo && redo()} aria-disabled={!history.canRedo} className={small}>
-            Redo
-          </button>
+          {!compact && (
+            <>
+              <button type="button" data-order-undo onClick={() => history.canUndo && undo()} aria-disabled={!history.canUndo} className={small}>
+                Undo
+              </button>
+              <button type="button" onClick={() => history.canRedo && redo()} aria-disabled={!history.canRedo} className={small}>
+                Redo
+              </button>
+            </>
+          )}
           <button type="button" onClick={() => setManaging(true)} className={small}>
             Rename or add
           </button>
         </span>
       </div>
+      )}
       {notBidCount > 0 && <p className="mt-1 text-xs text-ink-muted">Send to VIPS and Copy follow these tiers and leave out {notBidCount === 1 ? "the 1 Not bid line" : `the ${notBidCount} Not bid lines`}.</p>}
 
       {state.setAside.length > 0 && (

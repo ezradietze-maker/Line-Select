@@ -33,7 +33,7 @@ import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Heading } from "@/components/ui/Heading";
 import { Spinner } from "@/components/ui/Spinner";
-import { BlockLimitLineNote, BlockLimitsPanel, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
+import { BlockLimitLineNote, BlockLimitsPanel, limitSummary, useBlockFindings, useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { CarryInLineNote, CarryInPanel } from "@/components/results/CarryInPanel";
 import { VacationChoicePanel } from "@/components/results/VacationChoicePanel";
 import { LineCard, type LineCardActions } from "@/components/results/LineCard";
@@ -100,7 +100,7 @@ import {
 } from "@/lib/rank-learning";
 import { addDragChoices, answerSwap, choicesFromSwap, describeChanges, withModel, withoutDrag, type SwapReply } from "@/lib/brain/profile-model";
 import { describeSwap, explainSwap } from "@/lib/brain/explain-swap";
-import { pickSwapQuestion, reasonOptions, untrackedFactor, type AskState, type SwapQuestion } from "@/lib/brain/swap-question";
+import { pickSwapQuestion, reasonOptions, untrackedFactor, type SwapQuestion } from "@/lib/brain/swap-question";
 import type { ReasonOption } from "@/lib/brain/swap-reason";
 import { shareChanges } from "@/lib/brain/fit-choices";
 import { SwapQuestionCard } from "@/components/results/SwapQuestionCard";
@@ -112,7 +112,7 @@ import { LineContextMenu, type LineMenu } from "@/components/results/LineContext
 import { tierHeadings } from "@/lib/line-tiers";
 import { useLineSort } from "@/lib/use-line-sort";
 import { useLineTiers, useTiersWithin, type TeachTiers } from "@/lib/use-line-tiers";
-import { applyPlacements, placementFromDrag, placementsKey, placementsStore, prunePlacements, type Placement } from "@/lib/line-placements";
+import { applyPlacements, heldPlacement, placementFromDrag, placementsKey, placementsStore, prunePlacements, releaseHolds, swapOf, withPlacement, type Placement } from "@/lib/line-placements";
 import { EMPTY_ORDER_HISTORY, dropSwaps, recordStep, takeRedo, takeUndo, type OrderHistory } from "@/lib/order-history";
 import type { LineChoice } from "@/types/pilot-model";
 import type { PackMetrics } from "@/lib/metrics/compute";
@@ -128,6 +128,8 @@ import { bestPlacements } from "@/lib/vacation-engine";
 import { toEngineGoal } from "@/lib/vacation-goal";
 import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib/vacation-lines";
 import { VacationGoal } from "@/components/results/VacationGoal";
+import { YourMonth, carrySummary, vacationSummary } from "@/components/results/YourMonth";
+import { ListMenu, MenuAction, MenuCheck, MenuSection } from "@/components/results/ListMenu";
 import { VacationGainNote, VacationLineControl } from "@/components/results/VacationLineControl";
 import { SatisfactionIndexKey } from "@/components/results/SatisfactionIndexKey";
 import { lineTotal, payOnlyOrder } from "@/lib/pay/line-total";
@@ -200,7 +202,30 @@ function DragPreview({ lineScore }: { lineScore: LineScore }) {
 }
 
 /** Whether the pilot expressed any opinion at all about their layover hotel — gates fetching hotel quality data at all, so a pilot who left every hotel slider at 0 doesn't pay for network calls that can't affect their score. */
-/** A pilot who chose "Stop asking" on the question after a swap isn't asked again on this device. */
+/** The colour key over the lines, shown from the toolbar's ⋯ (off until the pilot turns it on), on this device. */
+const COLOUR_KEY_KEY = "line-select:show-colour-key:v1";
+function readColourKey(): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(COLOUR_KEY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** The toolbar's small Undo and Redo. */
+const TOOL_SMALL = "min-h-10 rounded-md px-2 text-xs font-semibold text-accent underline-offset-2 hover:underline aria-disabled:cursor-default aria-disabled:text-ink-faint aria-disabled:no-underline";
+
+/** "Keep the rest of my list where it is when I swap": on unless the pilot turned it off on this device. */
+const HOLD_LIST_KEY = "line-select:swap-holds-list:v1";
+function readHoldList(): boolean {
+  try {
+    return typeof window === "undefined" || window.localStorage.getItem(HOLD_LIST_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+/** A pilot who turned off the question after a swap isn't asked on this device until they turn it back on. */
 const STOP_ASKING_KEY = "line-select:swap-questions-off:v1";
 
 function readStopAsking(): boolean {
@@ -392,7 +417,25 @@ export function ResultsView({
   const recordTierStep = useCallback(() => setOrderHistory((h) => recordStep(h, { kind: "tier" })), [setOrderHistory]);
   // The one question after an unclear swap, and how often it's been asked this visit (see `lib/brain/swap-question.ts`).
   const [swapQuestion, setSwapQuestion] = useState<{ question: SwapQuestion; options: { priorities: ReasonOption[]; measures: ReasonOption[] } } | null>(null);
-  const askRef = useRef<AskState>({ swapsSince: 0, asked: 0, askedPairs: new Set(), stopped: readStopAsking() });
+  // The question after every swap, unless the pilot turned it off (kept on this device; they can turn it back on).
+  const [askingOff, setAskingOff] = useState(readStopAsking);
+  // "Keep the rest of my list where it is when I swap" (`HOLD_LIST_KEY`), and the list as it was before a re-sort, for Undo.
+  const [holdList, setHoldList] = useState(readHoldList);
+  // From the toolbar's ⋯: tiers renamed or added, the colour key (kept on this device), how the index is scored.
+  const [managingTiers, setManagingTiers] = useState(false);
+  const [showColourKey, setShowColourKey] = useState(readColourKey);
+  const [showIndexGuide, setShowIndexGuide] = useState(false);
+  const chooseColourKey = (on: boolean) => {
+    setShowColourKey(on);
+    try {
+      window.localStorage.setItem(COLOUR_KEY_KEY, on ? "1" : "0");
+    } catch {
+      // storage unavailable — kept for this visit only
+    }
+  };
+  const [released, setReleased] = useState<Placement[] | null>(null);
+  // Read by the swap's work after paint, which may run after a toggle in the same moment.
+  const askingOffRef = useRef(askingOff);
   const [pageState, setPageState] = useState({ key: "", shown: PAGE_SIZE });
   // Which lines are open under their strips — as many as the pilot likes, to read side by side.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
@@ -644,8 +687,15 @@ export function ResultsView({
     const at = new Map(payPlan.order.map((id, i) => [id, i]));
     return [...myRanked].sort((a, b) => (at.get(a.line.id) ?? Infinity) - (at.get(b.line.id) ?? Infinity));
   }, [payOrderOn, myRanked, payPlan]);
-  // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order.
-  const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [p.order[0], p.order[p.order.length - 1]])), [validPlacements]);
+  // Both lines of every swap the pilot made: tagged "Your order", since their scores can now read out of order. The
+  // swap itself — never every line of a held list.
+  const swappedIds = useMemo(() => new Set(validPlacements.flatMap((p) => [swapOf(p)[0], swapOf(p)[swapOf(p).length - 1]])), [validPlacements]);
+  // A held list: how many lines Line Select's ranking would now put somewhere else, swaps kept — what "Re-sort" moves.
+  const heldMoves = useMemo(() => {
+    if (!validPlacements.some((p) => p.swapped)) return 0;
+    const learned = applyPlacements(scoredLines, releaseHolds(validPlacements), (r) => r.line.id);
+    return learned.reduce((n, r, i) => (placed[i]?.line.id === r.line.id ? n : n + 1), 0);
+  }, [validPlacements, scoredLines, placed]);
   const rankedIds = useMemo(() => ranked.map((r) => r.line.id), [ranked]);
   // Every trip's own score, from the same priorities that rank the lines — shown on each trip in an opened line's trip
   // list. On the ranking's own measured pack, so a refit re-scores trips without re-measuring them. Only an open line
@@ -759,6 +809,10 @@ export function ResultsView({
   const previewRankById = useMemo(() => new Map(placed.map((r, i) => [r.line.id, i + 1] as const)), [placed]);
   const isPreviewed = useCallback((id: string) => inPreview(previewRankById.get(id), previewLimit), [previewRankById, previewLimit]);
   // The panels above the list name lines by their place: for a non-member, only the top of the ranking they can see.
+  // Lines the vacation goal slid the vacation on (not the ones the pilot placed by hand); null until worked out. A
+  // non-member's view lists only their ten: the count is of those, not of the whole pack.
+  const vacationMoved = vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id] && isPreviewed(id)).length : null;
+  const vacationLineCount = previewLimit === null ? bidPack.lines.length : bidPack.lines.filter((l) => isPreviewed(l.id)).length;
   const panelOrder = useMemo(() => {
     const end = ranked.findIndex((r) => !isPreviewed(r.line.id));
     return (end === -1 ? ranked : ranked.slice(0, end)).map((r) => r.line.lineNumber);
@@ -1291,8 +1345,12 @@ export function ResultsView({
     const swapId = `swap-${Date.now().toString(36)}`;
     const placement = placementFromDrag(sorted.map((r) => r.line.id), fromIndex, toIndex, swapId);
     if (placement) {
-      updatePlacements((p) => [...p, placement]);
-      setOrderHistory((h) => recordStep(h, { kind: "swap", swap: { placement } }));
+      // Held: every line as it stands, the swap made, so the refit below moves nothing else. The brain still learns from
+      // `placement`, the swap alone.
+      const stored = holdList ? heldPlacement(placed.map((r) => r.line.id), placement) : placement;
+      updatePlacements((p) => withPlacement(p, stored));
+      setOrderHistory((h) => recordStep(h, { kind: "swap", swap: { placement: stored } }));
+      setReleased(null);
     }
     const moved = sorted[fromIndex].line.lineNumber;
     const target = sorted[toIndex].line.lineNumber;
@@ -1325,15 +1383,12 @@ export function ResultsView({
         onUpdateProfile(next);
         setLastSwap({ id: swapId, before: current, after: next });
         const said = why?.verdict === "limit" || why?.verdict === "agreed" ? null : describeChanges(changes);
-        setLearnMessage([kept, why ? describeSwap(why, higher, lower) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
-        // When the brain can't tell why, and it's time to ask: one question.
-        const ask = askRef.current;
-        ask.swapsSince += 1;
+        setLearnMessage([kept, why ? describeSwap(why, higher, lower, !askingOffRef.current) : null, said ? `Now ${said}.` : null].filter(Boolean).join(" "));
+        // After every swap, the question: the brain's guess at why, and the chance to say it was something else.
         if (!why || !packMetrics) return;
-        const untracked = why.verdict === "unexplained" ? untrackedFactor(bidPack, packMetrics, current.pilotModel, higher, lower) : null;
-        const question = pickSwapQuestion(why, { dragId: swapId, higher, lower }, ask, untracked);
+        const untracked = why.verdict === "limit" ? null : untrackedFactor(bidPack, packMetrics, current.pilotModel, higher, lower);
+        const question = pickSwapQuestion(why, { dragId: swapId, higher, lower }, askingOffRef.current, untracked);
         if (!question) return;
-        askRef.current = { ...ask, asked: ask.asked + 1, swapsSince: 0, askedPairs: new Set(ask.askedPairs).add([higher, lower].sort().join("|")) };
         setSwapQuestion({ question, options: reasonOptions(bidPack, packMetrics, current.pilotModel, before, higher, lower) });
       });
       return;
@@ -1420,7 +1475,8 @@ export function ResultsView({
     const lesson = step.lesson?.length ? step.lesson : (swapLessons.current.get(placement.id) ?? []);
     updatePlacements((p) => [...p.filter((x) => x.id !== placement.id), placement]);
     const numberOf = (lineId: string) => bidPack.lines.find((l) => l.id === lineId)?.lineNumber ?? "";
-    setLearnMessage(`Swapped ${numberOf(placement.order[0])} and ${numberOf(placement.order[placement.order.length - 1])} again.`);
+    const swap = swapOf(placement);
+    setLearnMessage(`Swapped ${numberOf(swap[0])} and ${numberOf(swap[swap.length - 1])} again.`);
     afterPaint(() => {
       if (!placementsList.current().some((x) => x.id === placement.id)) return;
       const current = profileRef.current;
@@ -1474,7 +1530,35 @@ export function ResultsView({
   }
 
   /** Puts the list back in the brain's order. What it learned from the swaps stays; undo a swap to take that back too. */
+  /** "Re-sort with what I've taught": the swaps stay, the rest of the list goes where Line Select now ranks it. */
+  function releaseList() {
+    const before = placementsList.current();
+    if (!before.some((p) => p.swapped)) return;
+    updatePlacements(releaseHolds);
+    // Said, with Undo, only when the list actually moves; with nothing to move it lets go quietly.
+    setReleased(heldMoves > 0 ? before : null);
+  }
+
+  function undoRelease() {
+    if (!released) return;
+    const back = released;
+    updatePlacements(() => back);
+    setReleased(null);
+  }
+
+  function setHolding(on: boolean) {
+    setHoldList(on);
+    try {
+      window.localStorage.setItem(HOLD_LIST_KEY, on ? "1" : "0");
+    } catch {
+      // storage unavailable — kept for this visit only
+    }
+    // Turned off: the list re-sorts once, the swaps kept, with Undo.
+    if (!on) releaseList();
+  }
+
   function clearPlacements() {
+    setReleased(null);
     updatePlacements(() => []);
     setOrderHistory((h) => dropSwaps(h, () => true));
     setLastSwap(null);
@@ -1509,13 +1593,15 @@ export function ResultsView({
     setLearnMessage([said, moved ? `Now ${moved}.` : null].filter(Boolean).join(" "));
   }
 
-  function stopAsking() {
-    askRef.current = { ...askRef.current, stopped: true };
-    setSwapQuestion(null);
+  function setAsking(on: boolean) {
+    askingOffRef.current = !on;
+    setAskingOff(!on);
+    if (!on) setSwapQuestion(null);
     try {
-      window.localStorage.setItem(STOP_ASKING_KEY, "1");
+      if (on) window.localStorage.removeItem(STOP_ASKING_KEY);
+      else window.localStorage.setItem(STOP_ASKING_KEY, "1");
     } catch {
-      // storage unavailable — it just asks again next visit
+      // storage unavailable — kept for this visit only
     }
   }
 
@@ -1569,23 +1655,51 @@ export function ResultsView({
           onSharingChange: forecast.setSharing,
         }}
       />
-      {/* The vacation first: found in the pack by the pilot's number, it changes every line. */}
-      <VacationGoal
-        pack={bidPack}
-        carry={carry}
-        share={vacationOptions.share}
-        // A non-member's view lists only their ten: the count is of those, not of the whole pack.
-        moved={vacationOptions.options ? [...vacationPlacements.keys()].filter((id) => !vacationOverrides?.[id] && (previewLimit === null || isPreviewed(id))).length : null}
-        total={previewLimit === null ? bidPack.lines.length : bidPack.lines.filter((l) => isPreviewed(l.id)).length}
+      {/* What changes how this month's lines fly, as one row of drawers: the vacation first (found in the pack by the
+          pilot's number, it changes every line), then what carries in, then the flight-time limits. */}
+      <YourMonth
+        tabs={[
+          ...(bidPack.bidPeriodStart
+            ? [
+                {
+                  id: "vacation",
+                  label: "Vacation",
+                  ...(() => {
+                    const v = vacationSummary(bidPack, carry, vacationMoved);
+                    return { summary: v.text, attention: v.attention };
+                  })(),
+                  content: (
+                    <>
+                      <VacationChoicePanel bare bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
+                      {carry.chosen.some((v) => v.choice !== "not-taking") && (
+                        <div className="mt-4 border-t border-hairline pt-4">
+                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={vacationLineCount} />
+                        </div>
+                      )}
+                    </>
+                  ),
+                },
+              ]
+            : []),
+          { id: "carry", label: "Carry-in", summary: carrySummary(carry), content: <CarryInPanel bare bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} /> },
+          ...(bidPack.bidPeriodStart
+            ? [
+                {
+                  id: "limits",
+                  label: "Flight time",
+                  ...(() => {
+                    const l = limitSummary(rankingFlown.pack, panelOrder, flownSoFar, blockFindings);
+                    return { summary: l.text, attention: l.attention };
+                  })(),
+                  content: <BlockLimitsPanel bare pack={bidPack} flownPack={rankingFlown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />,
+                },
+              ]
+            : []),
+        ]}
       />
-      <VacationChoicePanel bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
-      <CarryInPanel bidPack={bidPack} profile={profile} carry={carry} order={panelOrder} />
-      <BlockLimitsPanel pack={bidPack} flownPack={rankingFlown.pack} order={panelOrder} before={flownSoFar} findings={blockFindings} />
       {payOrderOn && <PayOrderBanner packId={bidPack.id} averageBlg={payPlan.averageBlg} rlg={payPlan.rlg} />}
       <FirstVisitTour ready={listReady} skip={lineAsked} />
       <WheelsDown />
-      {/* A filter in words, a member's like the rest: its answers were lines from the whole pack, past a non-member's ten. */}
-      {!filtersLocked && <AskPackPanel key={bidPack.id} bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} />}
       {confirmingStartOver && (
         <ConfirmModal
           title="Start over from scratch?"
@@ -1609,11 +1723,19 @@ export function ResultsView({
       {learnMessage && !promptJudgment && (
         <div role="status" data-for-lines className="mt-4 flex items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent-soft px-4 py-2.5 text-sm text-accent animate-fade-in">
           <span>{learnMessage}</span>
-          {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
-            <button type="button" onClick={() => undoSwap(lastSwap.id)} className="shrink-0 font-semibold underline underline-offset-2 hover:text-ink print:hidden">
-              Undo
-            </button>
-          )}
+          <span className="flex shrink-0 items-center gap-3 print:hidden">
+            {/* Turned off, the question after a swap can come back from the swap's own message. */}
+            {askingOff && profile.pilotModel && (
+              <button type="button" onClick={() => setAsking(true)} className="font-medium underline underline-offset-2 hover:text-ink" data-swap-ask-on>
+                Ask me why after each swap
+              </button>
+            )}
+            {lastSwap && validPlacements.some((p) => p.id === lastSwap.id) && (
+              <button type="button" onClick={() => undoSwap(lastSwap.id)} className="font-semibold underline underline-offset-2 hover:text-ink">
+                Undo
+              </button>
+            )}
+          </span>
         </div>
       )}
 
@@ -1637,7 +1759,7 @@ export function ResultsView({
             options={swapQuestion.options}
             onReply={replyToSwap}
             onDismiss={() => setSwapQuestion(null)}
-            onStop={stopAsking}
+            onStop={() => setAsking(false)}
           />
         </div>
       )}
@@ -1706,61 +1828,97 @@ export function ResultsView({
               </button>
             </div>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 print:hidden">
-            {!filtersLocked && (
-              <div className="relative min-w-[9rem] flex-1 sm:max-w-[14rem]">
-                <input
-                  type="search"
-                  inputMode="numeric"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Line #"
-                  aria-label="Find a line by number"
-                  className="w-full rounded-md border border-field-edge bg-canvas/50 px-3 py-2 font-mono text-sm text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent focus:outline-none"
-                />
-              </div>
-            )}
-            <SortMenu sort={lineSort} lines={listable} />
-            {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
-                Their focus ring is drawn inside: the rounded box clips anything outside it. */}
-            <div className="ml-auto flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
-              <button
-                type="button"
-                aria-pressed={view === "all"}
-                onClick={() => setView("all")}
-                className={`relative px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
-              >
-                {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative z-10">All lines</span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={view === "shortlist"}
-                data-shortlist-tab
-                onClick={() => setView("shortlist")}
-                className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
-              >
-                {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                <span className="relative z-10">
-                  Shortlist (<FlipText text={String(validMarks.starred.length)} />)
-                </span>
-              </button>
-              {forecastLines && (
+          {/* One toolbar over the list: ask your pack or find a line by number, then sort, which lines, the view, Undo and
+              Redo, and ⋯ for what's set once (tiers, the key, scoring, swaps). A non-member's has no search: those come
+              with a membership. */}
+          {(() => {
+            const controls = (
+              <div className="flex flex-wrap items-center gap-2">
+                <SortMenu sort={lineSort} lines={listable} />
+              {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
+                  Their focus ring is drawn inside: the rounded box clips anything outside it. */}
+              <div className="flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
                 <button
                   type="button"
-                  aria-pressed={view === "realistic"}
-                  onClick={() => setView("realistic")}
-                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                  aria-pressed={view === "all"}
+                  onClick={() => setView("all")}
+                  className={`relative px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "all" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
                 >
-                  {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
-                  <span className="relative z-10">Realistic ({realisticShown})</span>
+                  {view === "all" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative z-10">All lines</span>
                 </button>
-              )}
-            </div>
-          </div>
+                <button
+                  type="button"
+                  aria-pressed={view === "shortlist"}
+                  data-shortlist-tab
+                  onClick={() => setView("shortlist")}
+                  className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "shortlist" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                >
+                  {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                  <span className="relative z-10">
+                    Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                  </span>
+                </button>
+                {forecastLines && (
+                  <button
+                    type="button"
+                    aria-pressed={view === "realistic"}
+                    onClick={() => setView("realistic")}
+                    className={`relative border-l border-hairline px-3 py-2 font-medium transition-colors duration-300 focus-visible:-outline-offset-2 ${view === "realistic" ? "text-accent" : "text-ink-muted hover:text-ink"}`}
+                  >
+                    {view === "realistic" && <PillHighlight group="results-view" className={VIEW_PILL} />}
+                    <span className="relative z-10">Realistic ({realisticShown})</span>
+                  </button>
+                )}
+              </div>
+                <StripViewToggle view={stripView} onChange={chooseStripView} />
+                {/* Undo, Redo and ⋯ wrap as one: on a phone ⋯ alone on a row read as a stray button. */}
+                <span className="flex items-center gap-1">
+                  {/* Dimmed, not disabled, when there's nothing to take back: a disabled button lets go of focus. */}
+                  <button type="button" data-order-undo onClick={() => orderHistory.past.length > 0 && undoOrder()} aria-disabled={orderHistory.past.length === 0} className={TOOL_SMALL}>
+                    Undo
+                  </button>
+                  <button type="button" onClick={() => orderHistory.future.length > 0 && redoOrder()} aria-disabled={orderHistory.future.length === 0} className={TOOL_SMALL}>
+                    Redo
+                  </button>
+                <ListMenu>
+                  <MenuSection title="Tiers">
+                    <MenuAction onClick={() => setManagingTiers(true)}>Rename or add tiers</MenuAction>
+                    <p className="text-xs text-ink-muted">Open a line and pick a tier, or press 1&ndash;{Math.min(tiers.state.tiers.length, 9)} on it. Shift-click (long-press on a phone) to pick several.</p>
+                  </MenuSection>
+                  <MenuSection title="Reading the lines">
+                    <MenuCheck checked={showColourKey} onChange={chooseColourKey} label="Show the colour key" hint="What each bar, colour and mark on a line means." data="menu-key" />
+                    <MenuCheck checked={showIndexGuide} onChange={setShowIndexGuide} label="Show how the Satisfaction Index is scored" data="menu-index" />
+                  </MenuSection>
+                  {dragEnabled && (
+                    <MenuSection title="Swapping lines">
+                      <p className="text-xs text-ink-muted">Drag a line by its handle onto another to swap them. They stay where you put them, and each swap teaches Line Select what you care about.</p>
+                      <MenuCheck checked={holdList} onChange={setHolding} label="Keep the rest of my list where it is when I swap" hint="Only the two lines you swap move." data="hold-list" />
+                      {profile.pilotModel && <MenuCheck checked={!askingOff} onChange={setAsking} label="Ask me why after each swap" data="menu-ask" />}
+                      {validPlacements.length > 0 && <MenuAction onClick={clearPlacements}>Back to Line Select&rsquo;s order</MenuAction>}
+                    </MenuSection>
+                  )}
+                  <MenuSection title="Keyboard">
+                    <MenuCheck checked={showKeys} onChange={setShowKeys} label="Show keyboard shortcuts" hint="Or press ? on the list." />
+                  </MenuSection>
+                </ListMenu>
+                </span>
+              </div>
+            );
+            return (
+              <div className="mt-3 print:hidden" data-list-toolbar>
+                {filtersLocked ? (
+                  controls
+                ) : (
+                  // A filter in words, a member's like the rest: its answers were lines from the whole pack, past a non-member's ten.
+                  <AskPackPanel key={bidPack.id} bare bidPack={bidPack} profile={profile} rankedIds={rankedIds} packMetrics={packMetrics} onLineNumber={setSearch} trailing={controls} />
+                )}
+              </div>
+            );
+          })()}
 
           <SortNote sort={lineSort} />
-          <TierBar tiers={tiers} lines={placed} history={{ undo: undoOrder, redo: redoOrder, canUndo: orderHistory.past.length > 0, canRedo: orderHistory.future.length > 0 }} />
+          <TierBar compact managing={managingTiers} onManaging={setManagingTiers} tiers={tiers} lines={placed} history={{ undo: undoOrder, redo: redoOrder, canUndo: orderHistory.past.length > 0, canRedo: orderHistory.future.length > 0 }} />
 
           {/* A small staggered beat behind the header above — the page reads as "header settles, then controls, then the list below" instead of everything landing in one flat instant. */}
           <div className="animate-rise-in print:hidden" style={{ animationDelay: "60ms" }}>
@@ -1806,15 +1964,13 @@ export function ResultsView({
 
           {/* The switch keeps its place whichever strip is picked: in a row that wraps, a key that grew or shrank with the view
               took it from the right edge to under the key and back. Its own column on the right (on top on a phone). */}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:gap-4">
-            <div className="order-2 min-w-0 flex-1 sm:order-1">
+          {/* The colour key and the index's guide, when the pilot asks for them from ⋯. */}
+          {showColourKey && (
+            <div className="mt-3" data-colour-key>
               <StripKey view={stripView} vacation={carry.chosen.some((v) => v.choice !== "not-taking")} />
             </div>
-            <div className="order-1 max-w-full shrink-0 self-end sm:order-2 sm:self-start">
-              <StripViewToggle view={stripView} onChange={chooseStripView} />
-            </div>
-          </div>
-          <SatisfactionIndexKey model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />
+          )}
+          {showIndexGuide && <SatisfactionIndexKey defaultOpen model={pilotModel} lines={ranked.length} best={indexRange?.best ?? null} worst={indexRange?.worst ?? null} />}
           {noTimelineSaid && stripView !== chosenStripView && (
             <p role="status" className="mt-1.5 text-right text-xs text-ink-muted print:hidden">
               This pack prints no bid period dates, so there&rsquo;s no timeline to put its trips on. Lines show as the bid pack prints them.
@@ -1843,12 +1999,26 @@ export function ResultsView({
             </div>
           )}
 
-          {dragEnabled && (
-            <p className="mt-2 hidden text-xs text-ink-faint sm:block print:hidden">
-              Ranked something wrong? Drag a line by its handle onto another to swap them &mdash; they stay where you put
-              them, and each swap teaches Line Select what you actually care about. Press{" "}
-              <kbd className="rounded border border-hairline px-1 font-mono">?</kbd> for keyboard shortcuts.
-            </p>
+          {dragEnabled && (heldMoves > 0 || released) && (
+            <div data-for-lines role="status" className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-xs text-ink print:hidden" data-held-note>
+              {released ? (
+                <>
+                  <span>Re-sorted with what you&rsquo;ve taught. Your swaps stayed where you put them.</span>
+                  <button type="button" onClick={undoRelease} className="font-semibold text-accent underline-offset-2 hover:underline">
+                    Undo
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span>
+                    Your list is held as you left it. What you&rsquo;ve taught since would move {heldMoves === 1 ? "1 line" : `${heldMoves} lines`}.
+                  </span>
+                  <button type="button" onClick={releaseList} className="font-semibold text-accent underline-offset-2 hover:underline" data-held-resort>
+                    Re-sort with what I&rsquo;ve taught
+                  </button>
+                </>
+              )}
+            </div>
           )}
 
           {dragEnabled && validPlacements.length > 0 && (
@@ -1995,7 +2165,7 @@ export function ResultsView({
                             />
                           </ErrorBoundary>
                           <CarryInLineNote flown={carry.flown.lines.get(id)} vacation={shownVacationLines.get(id)} />
-                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} />
+                          <VacationGainNote line={vacationOptions.options?.get(id)} placement={vacationPlacements.get(id)} goal={!!vacationGoal} />
                           <TotalChLineNote line={printedById.get(id)} total={totals.get(id)} />
                           <BlockLimitLineNote findings={blockFindings.get(id)} />
                         </motion.div>

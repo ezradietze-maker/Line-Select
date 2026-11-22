@@ -30,7 +30,7 @@ function goalContext(pack: BidPack, carry: CarryIn): string {
  * Read on the device when it can be (`readGoalText`), else by a small model, then shown back as chips they can reorder
  * or drop. Every line's vacation then slides to its best legal spot for it (`lib/vacation-engine.ts`).
  */
-export function VacationGoal({ pack, carry, share, moved, total }: { pack: BidPack; carry: CarryIn; share: number; moved: number | null; total: number }) {
+export function VacationGoal({ pack, carry, share, moved, total, bare = false }: { pack: BidPack; carry: CarryIn; share: number; moved: number | null; total: number; bare?: boolean }) {
   const goal = carry.state.vacationGoal;
   const [text, setText] = useState(goal?.text ?? "");
   const [reading, setReading] = useState(false);
@@ -71,7 +71,7 @@ export function VacationGoal({ pack, carry, share, moved, total }: { pack: BidPa
   };
 
   return (
-    <section aria-label="What you want from your vacation" className="panel-glass mt-4 p-4 sm:p-5 print:hidden" data-vacation-goal>
+    <section aria-label="What you want from your vacation" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`} data-vacation-goal>
       <h2 className="text-sm font-semibold text-ink">What do you want from your vacation?</h2>
       <p className="mt-0.5 text-xs text-ink-muted">Say it your way, and your vacation slides to its best legal spot on every line: up to 5 days either way (CBA 2026 7.E.2.a).</p>
       <form

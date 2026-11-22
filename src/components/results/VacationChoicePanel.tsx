@@ -6,7 +6,7 @@ import { checkSeniority, parseSeniorityInput } from "@/components/interview/Seni
 import { Button } from "@/components/ui/Button";
 import { FIELD } from "@/components/ui/field";
 import { resolveBidPosition, seatSize } from "@/lib/forecast/forecast";
-import type { TypedVacation } from "@/lib/my-vacation";
+import { otherMonthsNote, type TypedVacation } from "@/lib/my-vacation";
 import { zoneOf } from "@/lib/phase-in";
 import type { CarryIn } from "@/lib/use-carry-in";
 import { vacationId, type VacationChoice } from "@/lib/vacation-lines";
@@ -38,6 +38,7 @@ export function VacationChoicePanel({
   profile,
   onUpdateProfile,
   onSaveSeniority,
+  bare = false,
 }: {
   bidPack: BidPack;
   carry: CarryIn;
@@ -45,6 +46,8 @@ export function VacationChoicePanel({
   profile: PreferenceProfile;
   onUpdateProfile: (profile: PreferenceProfile) => void;
   onSaveSeniority?: (input: SeniorityInput) => void;
+  /** Inside "Your month"'s drawer, which is its frame. */
+  bare?: boolean;
 }) {
   const { state, update, flown, vacations } = carry;
   const zone = zoneOf(bidPack);
@@ -97,7 +100,7 @@ export function VacationChoicePanel({
   } else if (status === "none") {
     body = (
       <p className="text-xs text-ink-muted">
-        The pack&rsquo;s vacation schedule has no vacation for seniority #{number} in or near this bid month.{" "}
+        {otherMonthsNote(vacations.entry, bidPack) ?? <>The pack&rsquo;s vacation schedule has no vacation for seniority #{number} in or near this bid month.</>}{" "}
         <button type="button" className="font-medium text-brand underline underline-offset-2" onClick={() => setTyping(true)}>
           Not right?
         </button>
@@ -157,7 +160,7 @@ export function VacationChoicePanel({
   }
 
   return (
-    <section aria-label="Your vacation" className="panel-glass mt-4 p-4 sm:p-5 print:hidden" data-vacation-status={status}>
+    <section aria-label="Your vacation" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`} data-vacation-status={status}>
       <h2 className="text-sm font-semibold text-ink">Your vacation</h2>
       <div className="mt-1">{body}</div>
     </section>

@@ -13,6 +13,24 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: WhatsNewEntry[] = [
   {
+    date: "2026-11-21",
+    title: "A tidier My Rankings",
+    body: "Your lines now start near the top. This month's bid is one line (open Details for the countdown and steps), your vacation, carry-in and flight time sit under \"Your month\" with a mark when one needs you, and one toolbar holds the search (ask your pack, or type a line number), sort, views and the strip switch. Tiers, the colour key, how scores work and swap settings are under ⋯.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-21",
+    title: "Swap two lines, and the rest stay put",
+    body: "Swap two lines and only those two move: the rest of your list stays where you left it, while each swap still teaches your ranking. When what you've taught would move other lines, a note says how many, and \"Re-sort with what I've taught\" lets them move, your swaps kept, with Undo. Rather have the list re-sort after every swap? Turn off \"Keep the rest of my list where it is\" above your lines.",
+    href: "/results",
+  },
+  {
+    date: "2026-11-21",
+    title: "Tell us why after every swap",
+    body: "Swap two lines and a small box asks why, with our best guess and both lines' numbers. One tap says the guess is right; or pick another difference, say it in your own words, or say they're about equal. Each answer teaches your ranking what you care about. Rather not be asked? Turn the questions off from the box, and back on from any swap's message.",
+    href: "/results",
+  },
+  {
     date: "2026-11-19",
     title: "Your vacation, slid to its best spot on every line",
     body: "Give your seniority number and the site finds your vacation in the pack, or type it in. It's drawn on every line in the Bid Pack, Timeline, Heat Map and calendar views, with hashes for how far it can slide. Tell it what you want, like most credit or a day off, and it slides to its best legal spot on each line, up to 5 days either way. Step it a day at a time on any line. You choose whether slides change your ranking. The old Vacation slide on Strategies is now part of My Rankings.",

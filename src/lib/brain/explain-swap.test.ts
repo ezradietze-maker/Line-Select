@@ -35,7 +35,9 @@ describe("why a pilot swapped two lines", () => {
     const e = explainSwap(s.get("C")!, s.get("D")!);
     expect(e.verdict).toBe("unexplained");
     expect(e.explains).toEqual([]);
-    expect(describeSwap(e, "C", "D")).toMatch(/Nothing you've told us puts C ahead/);
+    expect(describeSwap(e, "C", "D")).toMatch(/Nothing you've told us puts C ahead.*under Your priorities/);
+    // With the question after the swap up, the message doesn't also send them to Your priorities.
+    expect(describeSwap(e, "C", "D", true)).toMatch(/Nothing you've told us puts C ahead by that much\.$/);
   });
 
   it("leaves out a priority the two lines are equal on, however much it counts", () => {

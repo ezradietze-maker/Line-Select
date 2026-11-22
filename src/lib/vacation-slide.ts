@@ -131,6 +131,11 @@ export interface RemovedTrip {
   section: string;
   /** A front-end buffer from December 2026: the pilot could waive it to keep the trip (CBA 2026 7.G.1). */
   waivable: boolean;
+  /**
+   * For a trip that isn't under the vacation: the hours the contract wants free between them (`window`, beside the
+   * vacation), and the hours there are (`gapHours`). Drawn and said, or the trip looked taken off for nothing.
+   */
+  free?: { window: Span; gapHours: number };
 }
 
 function tripSpan(trip: Trip, pack: BidPack): Span | null {
@@ -167,11 +172,14 @@ export function vacationRemovals(line: Line, pack: BidPack, vacation: Span, opts
     if (span.start < vacation.end && span.end > vacation.start) {
       out.push({ trip, rule: "overlap", section: "CBA 2026 7.G.1", waivable: false });
     } else if (opts.slid && endsInternational(trip) && sinceRelease >= 0 && sinceRelease < AFTER_INTERNATIONAL_HOURS * HOUR) {
-      out.push({ trip, rule: "after-international", section: "CBA 2026 7.E.2.c", waivable: false });
+      const free = { window: { start: vacation.start - AFTER_INTERNATIONAL_HOURS * HOUR, end: vacation.start }, gapHours: sinceRelease / HOUR };
+      out.push({ trip, rule: "after-international", section: "CBA 2026 7.E.2.c", waivable: false, free });
     } else if (long && sinceRelease >= 0 && sinceRelease < BUFFER_AFTER_HOURS * HOUR) {
-      out.push({ trip, rule: "buffer-after", section: "CBA 2026 7.G.1, 12.D.1.d.ii", waivable: false });
+      const free = { window: { start: vacation.start - BUFFER_AFTER_HOURS * HOUR, end: vacation.start }, gapHours: sinceRelease / HOUR };
+      out.push({ trip, rule: "buffer-after", section: "CBA 2026 7.G.1, 12.D.1.d.ii", waivable: false, free });
     } else if (longBefore && untilReport >= 0 && untilReport < BUFFER_BEFORE_HOURS * HOUR) {
-      if (!(waivable && opts.waiveFrontBuffer)) out.push({ trip, rule: "buffer-before", section: "CBA 2026 7.G.1, 12.D.1.d.i", waivable });
+      const free = { window: { start: vacation.end, end: vacation.end + BUFFER_BEFORE_HOURS * HOUR }, gapHours: untilReport / HOUR };
+      if (!(waivable && opts.waiveFrontBuffer)) out.push({ trip, rule: "buffer-before", section: "CBA 2026 7.G.1, 12.D.1.d.i", waivable, free });
     }
   }
   return out;
@@ -189,6 +197,28 @@ export function removedNames(removed: RemovedTrip[], pack: Pick<BidPack, "base" 
     return report === null ? name : `${name} on ${DateTime.fromISO(baseDate(report + 1, zone)).toFormat("LLL d")}`;
   });
   return [...new Set(names)];
+}
+
+/**
+ * Why a trip that isn't under the vacation comes off too, as a pilot reads it: "Trip 452 isn't under your vacation, but it
+ * reports about 8 hours after it ends, and a trip over 120 hours away needs 24 hours free before it (CBA 2026 12.D.1.d.i)."
+ * One sentence a trip; nothing for trips under it.
+ */
+export function freeTimeReasons(removed: RemovedTrip[]): string[] {
+  const about = (h: number) => (h < 1 ? "less than an hour" : `about ${Math.round(h)} hour${Math.round(h) === 1 ? "" : "s"}`);
+  const seen = new Set<string>();
+  return removed.flatMap((r) => {
+    const key = `${r.trip.id}@${r.trip.startDayIndex}`;
+    if (!r.free || seen.has(key)) return [];
+    seen.add(key);
+    const name = r.trip.pairingNumber ? `Trip ${r.trip.pairingNumber}` : "A trip";
+    const gap = about(r.free.gapHours);
+    if (r.rule === "buffer-before")
+      return [`${name} isn't under your vacation, but it reports ${gap} after it ends, and a trip over ${BUFFER_TAFB_HOURS} hours away needs ${BUFFER_BEFORE_HOURS} hours free before it (${r.section.replace("CBA 2026 7.G.1, ", "CBA 2026 ")}).${r.waivable ? " You can waive that to keep it." : ""}`];
+    if (r.rule === "buffer-after")
+      return [`${name} isn't under your vacation, but it ends ${gap} before it starts, and a trip over ${BUFFER_TAFB_HOURS} hours away needs ${BUFFER_AFTER_HOURS} hours free after it (${r.section.replace("CBA 2026 7.G.1, ", "CBA 2026 ")}).`];
+    return [`${name} isn't under your vacation, but it ends ${gap} before it starts, and a slid vacation needs ${AFTER_INTERNATIONAL_HOURS} hours after an international trip (${r.section}).`];
+  });
 }
 
 /** CBA 2026 7.G.1: "The SCH value of the removed trip(s) shall be deducted from the pilot's vacation credit hour bank." */

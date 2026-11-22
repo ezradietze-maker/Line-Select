@@ -5,6 +5,7 @@ import {
   MAX_SLIDE_DAYS,
   chargedToBank,
   findVacationSlides,
+  freeTimeReasons,
   frontBufferWaivable,
   slideChecks,
   slideWhere,
@@ -135,6 +136,15 @@ describe("vacationRemovals (CBA 2026 7.G.1, 7.E.2.c, 12.D.1.d)", () => {
   it("7.G.1, 12.D.1.d.i: the 24-hour buffer before one is a conflict", () => {
     const t = trip("1", 17, { airports: ["MEM", "HKG"], tafb: 130 });
     expect(rules(t, vac(10))).toEqual(["buffer-before"]);
+  });
+  it("says why a trip that isn't under the vacation comes off, with the free time it fell in", () => {
+    const t = { ...trip("1", 17, { airports: ["MEM", "HKG"], tafb: 130 }), pairingNumber: "452" };
+    const v = spanOf(vac(10));
+    const [r] = vacationRemovals(line([t]), pack([]), v, { slid: false });
+    expect(r.free?.window).toEqual({ start: v.end, end: v.end + 24 * 3_600_000 });
+    expect(freeTimeReasons([r])[0]).toMatch(/^Trip 452 isn't under your vacation, but it reports about \d+ hours after it ends, and a trip over 120 hours away needs 24 hours free before it \(CBA 2026 12\.D\.1\.d\.i\)\.$/);
+    // A trip under it needs no reason: it's under it.
+    expect(freeTimeReasons(vacationRemovals(line([trip("2", 10)]), pack([]), v, { slid: false }))).toEqual([]);
   });
   it("7.G.1: that buffer \"may not be waived\" before December 2026, and may from it", () => {
     expect(frontBufferWaivable("NOV26")).toBe(false);
