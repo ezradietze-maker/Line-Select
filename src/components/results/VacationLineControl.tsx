@@ -123,7 +123,10 @@ export function VacationOnLine({
   overridden,
   onPlace,
   onReset,
+  bare = false,
 }: {
+  /** Inside the opened line's Vacation drop-down, which names it: no heading of its own, nor the margins beside it. */
+  bare?: boolean;
   reason: string | null | undefined;
   line: LineVacationOptions | undefined;
   placement: VacationPlacement | undefined;
@@ -134,11 +137,22 @@ export function VacationOnLine({
 }) {
   if (!reason && !(line && line.options.length > 1)) return null;
   return (
-    <section aria-label="Your vacation on this line" data-vacation-on-line className="mx-5 my-3 rounded-md border border-accent/40 bg-accent/5 px-3 py-2.5 sm:mx-6">
-      <p className="text-2xs font-medium text-accent">Your vacation on this line</p>
-      {reason && <p className="mt-1 text-xs text-ink">{reason}</p>}
+    <section aria-label="Your vacation on this line" data-vacation-on-line className={`rounded-md border border-accent/40 bg-accent/5 px-3 py-2.5 ${bare ? "" : "mx-5 my-3 sm:mx-6"}`}>
+      {!bare && <p className="text-2xs font-medium text-accent">Your vacation on this line</p>}
+      {reason && <p className={`${bare ? "" : "mt-1 "}text-xs text-ink`}>{reason}</p>}
       <VacationGainNote line={line} placement={placement} goal={goal} className="mt-1" />
       <VacationLineControl bare line={line} placement={placement} overridden={overridden} onPlace={onPlace} onReset={onReset} />
     </section>
   );
+}
+
+/**
+ * The Vacation drop-down's few words, closed: where it is on this line (slid, or where the pack has it) and what it
+ * takes off, and whether there's anywhere else to slide it.
+ */
+export function vacationHint(removedTrips: number, placement: VacationPlacement | undefined, canSlide: boolean): string {
+  const moved = Object.values(placement?.offsets ?? {}).find((o) => o !== 0);
+  const where = moved ? `slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}` : "where the pack has it";
+  const takes = removedTrips ? `takes off ${removedTrips} trip${removedTrips === 1 ? "" : "s"}` : "takes off no trips";
+  return [where, takes, canSlide ? "slide it" : null].filter(Boolean).join(" · ");
 }
