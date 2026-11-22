@@ -39,10 +39,11 @@ describe("the sample bid pack", () => {
     const days = buildPackRow(line, pack.bidPeriodStart, pack.bidPeriodDays, packColumnCount(pack));
     const words = (i: number) => days[i].tokens.map((t) => t.text);
     // Trip 501 reports Mon Sep 6 (day 7) to LAX and flies home the next day; trip 502 leaves for Paris on Wed Sep 15.
+    // As on a real line grid, the layover city follows the flight in and isn't printed again before the flight out.
     expect(words(7)).toEqual(["101", "LAX"]);
-    expect(words(8)).toEqual(["LAX", "102"]);
+    expect(words(8)).toEqual(["102"]);
     expect(words(16)).toEqual(["205", "CDG"]);
-    expect(words(17)).toEqual(["CDG", "206"]);
+    expect(words(17)).toEqual(["206"]);
     expect(days[7].label).toEqual({ number: "501", creditHours: 7.8 });
   });
 
