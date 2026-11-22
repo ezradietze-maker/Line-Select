@@ -77,7 +77,9 @@ describe("buildPackRow", () => {
     // The 7th still there; out at 0300 on the 8th to Seoul, and home from Seoul on the 9th.
     expect(texts(9)).toEqual(["XMN"]);
     expect(texts(10)).toEqual(["5161", "ICN"]);
-    expect(texts(11)).toEqual(["5163"]);
+    // Released at 0011 on the 9th, Anchorage time, before 5163's own 0740 report in Seoul: the pack's "=>" under it.
+    expect(texts(11)).toEqual(["5163", "=>"]);
+    expect(row[11].tokens.map((t) => t.kind)).toEqual(["flight", "arrival"]);
     expect(row[10].tokens.map((t) => t.kind)).toEqual(["flight", "layover"]);
   });
 
@@ -171,6 +173,184 @@ describe("buildPackRow", () => {
     const words = buildPackRow(lineOf([gdl]), start, 28, 35).flatMap((d) => d.tokens.map((t) => t.text));
     expect(words).toContain("ASBY");
     expect(words).not.toContain("HSBY");
+  });
+
+  const daysOf = (trips: Trip[]) => buildPackRow(lineOf(trips), start, 28, 35).map((d) => d.tokens.map((t) => t.text));
+
+  it("prints the pack's '=>' on the day a night deadhead home releases on (B757 MEM line 1001, trip 102)", () => {
+    const trip102 = tripFrom(
+      [
+        "102 SA REPORT AT 1053 (0553) STANDARD CREW",
+        "EFFECTIVE OCTOBER 3 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "03SA UA6207 JET MEM 1153(0653) IAH 1350(0850) 01:57 S",
+        "03SA UA0253 JET IAH 1515(1015) HNL 2334(1334) 08:19 S 00:00 10:16 13:11 HNL 36:26",
+        "05MO 1005 22 HNL 1330(0330) ITO 1426(0426) 00:56",
+        "05MO 1006 22 ITO 1620(0620) HNL 1714(0714) 00:54 01:50 03:12 05:14 HNL 19:46",
+        "06TU 1001 22 HNL 1430(0430) OGG 1514(0514) 00:44",
+        "06TU 1002 22 OGG 1711(0711) HNL 1751(0751) 00:40 01:24 03:12 04:51 HNL 18:09",
+        "07WE 1005 22 HNL 1330(0330) ITO 1426(0426) 00:56",
+        "07WE 1006 22 ITO 1620(0620) HNL 1714(0714) 00:54 01:50 03:12 05:14 HNL 19:46",
+        "08TH 1001 22 HNL 1430(0430) OGG 1514(0514) 00:44",
+        "08TH 1002 22 OGG 1711(0711) HNL 1751(0751) 00:40 01:24 03:12 04:51 HNL 18:09",
+        "09FR 1005 22 HNL 1330(0330) ITO 1426(0426) 00:56",
+        "09FR 1006 22 ITO 1620(0620) HNL 1714(0714) 00:54 01:50 03:12 05:14 HNL 32:00",
+        "*11SU AA0006 JET HNL 0344(1744) DFW 1100(0600) 07:16 S",
+        "11SU AA1935 JET DFW 1213(0713) MEM 1345(0845) 01:32 S 00:00 08:48 12:31",
+        "LDGS: 10 BLOCK HRS: 08:18 CREDIT HRS: 52:06 T TAFB: 195:22",
+      ],
+      5,
+      "MEM"
+    );
+    const days = daysOf([trip102]);
+    // Both deadheads leave Honolulu on the 10th; home to Memphis at 0845 on the 11th, nothing else printed that day.
+    expect(days.slice(12, 15)).toEqual([["D/H", "D/H"], ["=>"], []]);
+  });
+
+  it("leaves the '=>' off a release before 0130 on the next day (A300 MEM line 1013, trip 71)", () => {
+    const trip71 = tripFrom(
+      [
+        "71 SU REPORT AT 2253 (1753) STANDARD CREW",
+        "EFFECTIVE OCTOBER 25 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "25SU AA4732 JET MEM 2353(1853) DCA 0215(2215) 02:22 S",
+        "*26MO GT9999 CAB DCA 0245(2245) IAD 0345(2345) 01:00 S 00:00 03:15 04:52 IAD 21:55",
+        "*27TU 2204 55 IAD 0240(2240) MEM 0504(0004) 02:24 02:24 03:12 03:54",
+        "LDGS: 1 BLOCK HRS: 02:24 CREDIT HRS: 08:11 T TAFB: 30:41",
+      ],
+      27,
+      "MEM"
+    );
+    // Released 0034 on the 27th: the pack counts it the 26th, and prints nothing on the 27th.
+    expect(daysOf([trip71]).slice(27, 30)).toEqual([["D/H", "D/H"], ["IAD", "2204"], []]);
+  });
+
+  // B777 ANC CAP line 1053's last trip: Anchorage, Guangzhou, Seoul, and home across the date line.
+  const trip20 = tripFrom(
+    [
+      "20 SA REPORT AT 0550 (*2150) STANDARD CREW",
+      "EFFECTIVE OCTOBER 24 ONLY",
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      "*24SA 6031 83 ANC 0650(2250) CAN 1804(0204) 11:14 DH/BH 11:14 11:14 12:44 CAN 23:56",
+      "#25SU 5926 83 CAN 1930(0330) ICN 2248(0748) 03:18 03:18 03:18 04:48 ICN 23:10",
+      "#26MO 6006 83 ICN 2328(0828) ANC 0729(2329) 08:01 BH/DH 08:01 08:01 09:31",
+      "LDGS: 3 BLOCK HRS: 22:33 CREDIT HRS: 22:33 TAFB: 74:09",
+    ],
+    25,
+    "ANC"
+  );
+
+  it("prints the '=>' on the day before the last flight when the date line releases the trip then (B777 ANC line 1053)", () => {
+    // 6006 leaves Seoul at 0828 on the 27th and is home 2329 on the 26th, released 2359: "=>" ends the 26th.
+    expect(daysOf([trip20]).slice(25, 30)).toEqual([["6031"], ["CAN"], ["CAN"], ["5926", "ICN", "=>"], ["6006"]]);
+  });
+
+  it("prints no '=>' when the date line's release falls in the row just before the last flight (B777 ANC line 1016, trip 141)", () => {
+    const trip141 = tripFrom(
+      [
+        "141 FR REPORT AT 1740 (0940) STANDARD CREW",
+        "EFFECTIVE OCTOBER 23 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "23FR 0169 83 ANC 1840(1040) SIN 0814(1614) 13:34 DH/BH 13:34 13:34 15:04 SIN 28:16",
+        "25SU 6081 84 SIN 1400(2200) CAN 1807(0207) 04:07 DSI 04:07 04:07 05:37 CAN 25:43",
+        "#26MO 6172 83 CAN 2120(0520) ANC 0708(2308) 09:48 BH/DH 09:48 09:48 11:18",
+        "LDGS: 3 BLOCK HRS: 27:29 CREDIT HRS: 27:29 TAFB: 85:58",
+      ],
+      25,
+      "ANC"
+    );
+    expect(daysOf([trip141]).slice(25, 31)).toEqual([["0169", "SIN"], ["SIN"], ["6081"], ["CAN"], ["6172"], []]);
+  });
+
+  it("prints neither the '=>' nor the next trip's first flight when they want the same row (B777 ANC line 1019)", () => {
+    const rows = (seq: string, head: string, effective: string, legs: string[], totals: string) => [
+      `${seq} ${head}`,
+      effective,
+      "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+      ...legs,
+      totals,
+    ];
+    const trip132 = tripFrom(
+      rows("132", "WE REPORT AT 2309 (1509) STANDARD CREW", "EFFECTIVE SEPTEMBER 30 ONLY", [
+        "*30WE AS0233 JET ANC 0109(1709) SEA 0443(2143) 03:34 S 00:00 03:34 06:04 SEA 13:22",
+        "30WE AS0119 JET SEA 2035(1335) ICN 0830(1730) 11:55 S 00:00 11:55 14:25 ICN 37:35",
+        "#02FR 5161 83 ICN 2335(0835) ANC 0736(2336) 08:01 BH/DH 08:01 08:01 09:31",
+      ], "LDGS: 1 BLOCK HRS: 08:01 CREDIT HRS: 23:30 TAFB: 80:57"),
+      1,
+      "ANC"
+    );
+    const trip8 = tripFrom(
+      rows("8", "SU REPORT AT 0742 (*2342) STANDARD CREW", "EFFECTIVE OCTOBER 4 ONLY", [
+        "04SU 6031 83 ANC 0842(0042) CAN 2007(0407) 11:25 BH/DH 11:25 11:25 12:55 CAN 21:43",
+        "#05MO 5419 83 CAN 1920(0320) SIN 2328(0728) 04:08 BSI 04:08 04:08 05:38 SIN 31:57",
+        "07WE 5601 83 SIN 0855(1655) ANC 2126(1326) 12:31 DH/BH 12:31 12:31 14:01",
+      ], "LDGS: 3 BLOCK HRS: 28:04 CREDIT HRS: 28:04 TAFB: 86:14"),
+      5,
+      "ANC"
+    );
+    // Trip 132 is released 0006 on Oct 3, and trip 8 reports 2342 that night: the 3rd's last row is empty on the pack.
+    expect(daysOf([trip132, trip8]).slice(3, 8)).toEqual([["ICN"], ["ICN"], ["5161"], ["CAN"], ["CAN"]]);
+  });
+
+  it("starts a deadhead into or out of another country two hours early (B777 ANC FO line 2018, trip 2047)", () => {
+    const trip2047 = tripFrom(
+      [
+        "2047 WE REPORT AT 1533 (0733) 1 RFO",
+        "EFFECTIVE OCTOBER 7 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "07WE 5313 83 ANC 1633(0833) SIN 0607(1407) 13:34 BH/DH 13:34 13:34 15:04 SIN 32:38",
+        "#09FR SQ0478 JET SIN 1715(0115) JNB 0410(0610) 10:55 S 00:00 10:55 13:25 JNB 38:15",
+        "11SU 0007 84 JNB 1955(2155) NBO 2359(0259) 04:04 DH/BH",
+        "12MO 0007 84 NBO 0129(0429) CDG 1019(1219) 08:50 12:54 12:54 15:54 CDG 40:58",
+        "14WE 5384 83 CDG 0447(0647) CAN 1717(0117) 12:30 BH/DH 12:30 12:30 14:00 CAN 26:43",
+        "#15TH 6014 83 CAN 2130(0530) ANC 0718(2318) 09:48 BH/DH 09:48 09:48 11:18",
+        "LDGS: 0 BLOCK HRS: 48:46 CREDIT HRS: 64:30 T TAFB: 208:15",
+      ],
+      9,
+      "ANC"
+    );
+    // SQ0478 leaves Singapore at 0115 on the 10th: the pack prints its D/H the night before, JNB on the 10th.
+    expect(daysOf([trip2047]).slice(9, 14)).toEqual([["5313", "SIN"], ["SIN"], ["D/H"], ["JNB"], ["0007"]]);
+  });
+
+  it("starts a ride by road when it leaves, after the layover city (B767 MEM line 1082, trip 616)", () => {
+    const trip616 = tripFrom(
+      [
+        "616 TH REPORT AT 1810 (1310) STANDARD CREW",
+        "EFFECTIVE OCTOBER 1 - OCTOBER 22",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "TH 0253 76 MEM 1910(1410) GDL 2227(1627) 03:17 DSI",
+        "TH 0253 76 GDL 2327(1727) TLC 0033(1833) 01:06 04:23 04:23 06:53 TLC 11:32",
+        "FR GT9999 CAB TLC 1235(0635) MEX 1435(0835) 02:00 S",
+        "FR UA1089 JET MEX 1535(0935) IAH 1755(1255) 02:20 S",
+        "FR UA4054 JET IAH 2130(1630) MEM 2316(1816) 01:46 S 00:00 05:36 11:11",
+        "LDGS: 2 BLOCK HRS: 04:23 CREDIT HRS: 09:59 TAFB: 29:36",
+      ],
+      3,
+      "MEM"
+    );
+    expect(daysOf([trip616]).slice(3, 5)).toEqual([["0253", "0253"], ["TLC", "D/H", "D/H", "D/H"]]);
+  });
+
+  it("prints the city on a whole day at a layover reached across the date line (B777 ANC FO line 2031, trip 2032)", () => {
+    const trip2032 = tripFrom(
+      [
+        "2032 FR REPORT AT 1835 (1035) 1 RFO",
+        "EFFECTIVE OCTOBER 23 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "23FR 5432 83 ANC 1935(1135) ICN 0505(1405) 09:30 DH/BH 09:30 09:30 11:00 ICN 19:10",
+        "25SU UA0806 JET ICN 0245(1145) SFO 1325(0625) 10:40 S",
+        "25SU GT9999 CAB SFO 1355(0655) OAK 1525(0825) 01:30 S 00:00 11:40 14:40 OAK 47:36",
+        "27TU 6087 83 OAK 1601(0901) SYD 0700(1800) 14:59 BH/DH 14:59 14:59 16:29 SYD 24:45",
+        "29TH 6061 83 SYD 0915(2015) CAN 1900(0300) 09:45 DH/BH 09:45 09:45 11:15 CAN 49:00",
+        "#31SA 6172 83 CAN 2130(0530) ANC 0718(2318) 09:48 BH/DH 09:48 09:48 11:18",
+        "LDGS: 0 BLOCK HRS: 44:02 CREDIT HRS: 59:42 T TAFB: 205:13",
+      ],
+      25,
+      "ANC"
+    );
+    // Seoul to San Francisco lands the same date it left: the 26th in Oakland is a whole day there.
+    expect(daysOf([trip2032]).slice(25, 30)).toEqual([["5432", "ICN"], ["ICN"], ["D/H", "D/H", "OAK"], ["OAK"], ["6087", "SYD"]]);
   });
 
   it("never prints more than a day's cell holds", () => {
