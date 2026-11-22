@@ -141,7 +141,8 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
     <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-ink-muted ${className}`} role="group" aria-label="How to read a line's strip">
       {view === "heat" ? (
         <>
-          <span className="inline-flex items-center gap-1.5">
+          {/* No wider than the key: at 320px and 200% text "Hot" ran 7px off the side; the scale gives the room. */}
+          <span className="inline-flex max-w-full items-center gap-1.5">
             Cold
             <span aria-hidden className="inline-block h-2.5 w-24 rounded-[2px] border border-border-strong/60" style={{ background: HEAT_GRADIENT }} />
             Hot
@@ -216,9 +217,10 @@ export function StripViewToggle({ view, onChange }: { view: StripViewMode; onCha
       <span className="relative z-10">{label}</span>
     </button>
   );
-  // No wider than its row: with a phone's text set larger, "Bid pack" goes over two lines rather than off the side.
+  // No wider than its row: with a phone's text set larger, "Bid pack" goes over two lines rather than off the side, and
+  // where even then the three won't fit (320px at 150% text and up) "Heat Map" goes under; on one row it cut "Timeline".
   return (
-    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex max-w-full shrink-0 items-center rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
+    <div role="radiogroup" aria-label="How lines are shown" className="inline-flex max-w-full shrink-0 flex-wrap items-center justify-end rounded-[3px] border border-hairline bg-surface p-0.5 print:hidden">
       {option("timeline", "Timeline")}
       {option("pack", "Bid pack")}
       {option("heat", "Heat Map")}

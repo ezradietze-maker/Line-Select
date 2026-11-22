@@ -180,7 +180,8 @@ function SeniorityNumberForm({ pack, lead, onSave }: { pack: BidPack; lead: stri
     >
       <p className="text-xs text-ink-muted">{lead}</p>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="text-xs text-ink-muted">
+        {/* No wider than the card: at 320px and 200% text the field's 8rem ran past the card's edge. */}
+        <label className="max-w-full text-xs text-ink-muted">
           Seniority number
           <input className={`${FIELD} mt-1 block w-32`} value={text} inputMode="numeric" autoComplete="off" onChange={(e) => setText(e.target.value)} />
         </label>

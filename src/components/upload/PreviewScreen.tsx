@@ -86,7 +86,8 @@ export function PreviewScreen({ result, onConfirm, onUploadDifferent, previousSe
 
       {result.meta && (
         <div className="panel-glass mt-6 flex flex-wrap items-center justify-between gap-3 px-6 py-5">
-          <div className="whitespace-nowrap font-display text-2xl font-semibold tracking-wide text-ink sm:text-3xl">
+          {/* Free to wrap: kept on one line, at 320px and 200% text it ran off the panel. */}
+          <div className="font-display text-2xl font-semibold tracking-wide text-ink sm:text-3xl">
             {result.meta.base} <span className="text-ink-faint">&middot;</span> {result.meta.aircraft}
             {selectedSeat && (
               <>

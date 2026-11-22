@@ -1808,7 +1808,7 @@ export function ResultsView({
             <div className="order-2 min-w-0 flex-1 sm:order-1">
               <StripKey view={stripView} vacation={carry.chosen.some((v) => v.choice !== "not-taking")} />
             </div>
-            <div className="order-1 shrink-0 self-end sm:order-2 sm:self-start">
+            <div className="order-1 max-w-full shrink-0 self-end sm:order-2 sm:self-start">
               <StripViewToggle view={stripView} onChange={chooseStripView} />
             </div>
           </div>
