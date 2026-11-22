@@ -138,7 +138,7 @@ export function VacationGoal({ pack, carry, share, moved, total, bare = false }:
                 ? ""
                 : moved === 0
                   ? "Where the pack has it is already best on every line for this."
-                  : `Slid on ${moved} of ${total} lines; where the pack has it is best on the rest. Each line says what it gains.`}{" "}
+                  : `Slid on ${moved} of ${total} lines; where the pack has it is best on the rest. Open a line to see what it gains there.`}{" "}
             <button
               type="button"
               className="font-medium text-brand underline underline-offset-2"
