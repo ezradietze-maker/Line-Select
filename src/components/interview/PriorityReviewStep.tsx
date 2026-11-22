@@ -45,8 +45,9 @@ export function PriorityReviewStep({ model, eyebrow, onConfirm, busy }: Priority
         <ol className="mt-5 space-y-3">
           {items.map((c, i) => (
             <li key={c.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <p className="min-w-0 font-medium text-ink">
+              {/* The share goes under where the two won't fit (320px at 200% text), rather than the name running over it. */}
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                <p className="min-w-0 flex-1 basis-32 break-words font-medium text-ink">
                   <span className="mr-2 font-mono text-sm text-ink-faint">{i + 1}</span>
                   {c.label}
                 </p>

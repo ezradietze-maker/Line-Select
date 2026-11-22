@@ -79,7 +79,7 @@ export function TutorialScreen() {
         description={`How to use Line Select, one feature at a time. Watch it straight through (${tutorialLength()}) or pick the chapter you need.`}
       />
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <section aria-label="Video" className="min-w-0">
           <div className="overflow-hidden rounded-xl border border-hairline bg-black">
             {/* The narration is captioned in the track below, shown or hidden by the captions switch. */}
@@ -130,7 +130,9 @@ export function TutorialScreen() {
           </div>
         </section>
 
-        <nav aria-label="Chapters">
+        {/* Where a row is too narrow for its number, title and length side by side (320px at 150% text and up), the title
+            goes under the other two: side by side, the list pushed the page 62px sideways. */}
+        <nav aria-label="Chapters" className="@container min-w-0">
           <ol className="divide-y divide-hairline overflow-hidden rounded-xl border border-hairline">
             {TUTORIAL_CHAPTERS.map((c, i) => (
               <li key={c.id}>
@@ -138,13 +140,13 @@ export function TutorialScreen() {
                   type="button"
                   onClick={() => pick(i)}
                   aria-current={i === at ? "true" : undefined}
-                  className={`flex w-full items-baseline gap-3 px-3.5 py-2.5 text-left text-sm transition-colors ${
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-0.5 px-3.5 py-2.5 text-left text-sm transition-colors @min-[15rem]:grid-cols-[1.25rem_minmax(0,1fr)_auto] ${
                     i === at ? "bg-brand-soft/40 text-ink" : "text-ink-muted hover:bg-ink/[0.04] hover:text-ink"
                   }`}
                 >
                   <span className={`w-5 shrink-0 font-mono text-xs tabular-nums ${i === at ? "text-accent" : "text-ink-faint"}`}>{i + 1}</span>
-                  <span className="min-w-0 flex-1">{c.title}</span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-ink-faint">{formatChapterLength(c.seconds)}</span>
+                  <span className="col-span-2 row-start-2 min-w-0 @min-[15rem]:col-span-1 @min-[15rem]:col-start-2 @min-[15rem]:row-start-1">{c.title}</span>
+                  <span className="text-right font-mono text-xs tabular-nums text-ink-faint">{formatChapterLength(c.seconds)}</span>
                 </button>
               </li>
             ))}

@@ -177,7 +177,7 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
       </div>
 
       <form
-        className="sticky bottom-[var(--shell-bottom)] z-20 -mx-4 bg-canvas px-4 pb-3 pt-2"
+        className="@container sticky bottom-[var(--shell-bottom)] z-20 -mx-4 bg-canvas px-4 pb-3 pt-2"
         onSubmit={(e) => {
           e.preventDefault();
           void ask(question);
@@ -190,9 +190,11 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
           }
         }}
       >
-        <div className="flex items-end gap-2">
+        {/* The arrow goes under the box where both won't fit (320px at 150% text and up): beside it, the box was left a
+            few letters wide and the question broke every two or three. */}
+        <div className="flex flex-col items-end gap-2 @min-[16rem]:flex-row">
           <NoteBox
-            className="min-w-0 flex-1"
+            className="w-full min-w-0 @min-[16rem]:w-auto @min-[16rem]:flex-1"
             ariaLabel="Your question"
             value={question}
             onChange={setQuestion}

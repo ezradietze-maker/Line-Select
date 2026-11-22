@@ -37,11 +37,19 @@ export function HeatShareLine({ share, label, className = "" }: { share: HeatSha
       <div aria-hidden className="flex h-1.5 overflow-hidden rounded-[2px] border border-border-strong/50">
         {bands.map((b) => (b.pct > 0 ? <span key={b.key} style={{ width: `${b.pct}%`, background: b.color }} /> : null))}
       </div>
-      <div className="mt-0.5 whitespace-nowrap text-2xs leading-[0.75rem] text-ink-muted">
+      {/* Each share kept whole, the three free to wrap: on one line at 320px and 200% text it ran past the card, cut at "Trips 48%". */}
+      <div className="mt-0.5 text-2xs leading-[0.75rem] text-ink-muted">
         <span className="sr-only">{said}</span>
         <span aria-hidden>
-          {label} <span className="font-mono font-semibold tabular-nums text-ink">{p.hot}%</span> hot · <span className="font-mono tabular-nums text-ink">{p.mild}%</span> mild ·{" "}
-          <span className="font-mono tabular-nums text-ink">{p.cold}%</span> cold
+          <span className="whitespace-nowrap">
+            {label} <span className="font-mono font-semibold tabular-nums text-ink">{p.hot}%</span> hot ·
+          </span>{" "}
+          <span className="whitespace-nowrap">
+            <span className="font-mono tabular-nums text-ink">{p.mild}%</span> mild ·
+          </span>{" "}
+          <span className="whitespace-nowrap">
+            <span className="font-mono tabular-nums text-ink">{p.cold}%</span> cold
+          </span>
         </span>
       </div>
     </div>
