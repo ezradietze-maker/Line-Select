@@ -1833,11 +1833,12 @@ export function ResultsView({
               with a membership. */}
           {(() => {
             const controls = (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                 <SortMenu sort={lineSort} lines={listable} />
               {/* Buttons that say which one is on, not tabs: tabs promised arrow keys and a panel of their own, and the list below is the same list filtered.
                   Their focus ring is drawn inside: the rounded box clips anything outside it. */}
-              <div className="flex overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
+              {/* No wider than the row: at 150% text on a 320 px phone the three ran off the side and the page scrolled sideways. */}
+              <div className="flex max-w-full flex-wrap overflow-hidden rounded-md border border-hairline text-sm" role="group" aria-label="Which lines to show">
                 <button
                   type="button"
                   aria-pressed={view === "all"}
@@ -1856,7 +1857,11 @@ export function ResultsView({
                 >
                   {view === "shortlist" && <PillHighlight group="results-view" className={VIEW_PILL} />}
                   <span className="relative z-10">
-                    Shortlist (<FlipText text={String(validMarks.starred.length)} />)
+                    {/* The count held to its brackets: its rolling digits are boxes a row can break between, and at 320 px it read "(0" over ")". */}
+                    Shortlist{" "}
+                    <span className="whitespace-nowrap">
+                      (<FlipText text={String(validMarks.starred.length)} />)
+                    </span>
                   </span>
                 </button>
                 {forecastLines && (

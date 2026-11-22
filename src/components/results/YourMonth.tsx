@@ -59,13 +59,15 @@ export function YourMonth({ tabs }: { tabs: MonthTab[] }) {
             aria-expanded={open?.id === t.id}
             aria-controls={`month-drawer-${t.id}`}
             data-month-tab={t.id}
-            className={`inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-left text-sm transition-colors ${
+            className={`inline-flex min-h-9 max-w-full flex-wrap items-center gap-x-1.5 rounded-md border px-2.5 py-1 text-left text-sm transition-colors ${
               open?.id === t.id ? "border-accent bg-accent/10 text-ink" : t.attention ? "border-warn/60 text-ink hover:border-warn" : "border-hairline text-ink hover:border-border-strong"
             }`}
           >
             {t.attention && <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />}
-            <span className="font-medium">{t.label}</span>
-            <span className={`truncate ${t.attention ? "text-warn" : "text-ink-muted"}`}>{t.summary}</span>
+            <span className="shrink-0 font-medium">{t.label}</span>
+            {/* Wraps rather than cutting off: on a phone "slid on 180" was lost behind "…". Too long to sit beside the name,
+                it goes under it. */}
+            <span className={`min-w-0 max-w-full ${t.attention ? "text-warn" : "text-ink-muted"}`}>{t.summary}</span>
             <ChevronDownIcon className={`h-3 w-3 shrink-0 text-ink-faint transition-transform ${open?.id === t.id ? "rotate-180" : ""}`} />
           </button>
         ))}

@@ -96,8 +96,9 @@ export function BlockLimitsPanel({
 
   return (
     <section aria-label="Flight-time limits" className={`${bare ? "" : "panel-glass mt-4 p-4 sm:p-5 "}print:hidden`}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      {/* Close goes under the words where both won't fit: at 200% text on a 320 px phone it ran off the side. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-40">
           <h2 className="text-sm font-semibold text-ink">Flight-time limits</h2>
           <p className="mt-0.5 text-xs text-ink-muted">
             {over.length
