@@ -16,6 +16,8 @@ import { tripCarryOver, type LineCarryOver, type TripCarryOver } from "@/lib/bid
 import { TripDayDetail } from "@/components/results/TripDayDetail";
 import { CreditHours } from "@/components/results/TripMarks";
 import { ColorKey } from "@/components/results/ColorKey";
+import { tripCrossesDateLine } from "@/lib/line-month";
+import { pairingHeaderFacts } from "@/lib/pairing-header";
 import { planTripSleep, type LayoverSleepPlan } from "@/lib/sleep-plan";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
 import { runOfDay, tripDaysShown } from "@/lib/trip-anchor";
@@ -190,6 +192,8 @@ function TripHeader({
   const endDate = mode === "local" ? (days.at(-1)?.date ? dateLabel(days.at(-1)!.date!) : tripDayDate(trip, bidPeriodStart, days.length)) : null;
   const stamp = (d: ReturnType<typeof tripDayDate>, n: number) => (d ? `${d.weekday} ${d.day}` : `day ${n}`);
   const zone = mode === "zulu" ? "Z" : "local";
+  // The pairing header's crew and dates: on a run of day trips, the run's own pairing.
+  const header = pairingHeaderFacts(trip);
 
   return (
     <div>
@@ -202,6 +206,16 @@ function TripHeader({
         <span className="text-xs font-semibold text-ink">{tripDaysShown(trip)}-day</span>
         {trip.international && (
           <span className="rounded-[3px] bg-accent-soft px-1.5 py-0.5 text-2xs font-semibold text-accent">Intl</span>
+        )}
+        {header.crew && (
+          <span className="rounded-[3px] bg-ink/10 px-1.5 py-0.5 font-mono text-2xs font-semibold text-ink" title={header.crew.title}>
+            {header.crew.short}
+          </span>
+        )}
+        {header.operates && (
+          <span className="text-2xs text-ink-muted" title="The days this pairing operates, as its header prints them (weekdays in GMT, of its first departure)">
+            Operates {header.operates}
+          </span>
         )}
         {bodyClock && <BodyClockBadge result={bodyClock} open={whyOpen} onClick={() => setWhyOpen((o) => !o)} />}
       </div>
@@ -298,8 +312,19 @@ function TripLegendInfo() {
                   tap away. &ldquo;Open every day&rdquo; shows the whole trip at once.
                 </li>
                 <li>
-                  <span className="font-medium text-ink">Meals</span> are written out from the pack&rsquo;s codes: S snack, DS dinner snack, BS breakfast
-                  snack, DH dinner hot, BH breakfast hot.
+                  <span className="font-medium text-ink">Meals</span> are written out from the pack&rsquo;s codes: DS dinner snack, BS breakfast
+                  snack, DH dinner hot, BH breakfast hot. <span className="font-mono">SUPP</span> is the pack&rsquo;s S column: the leg is flown under
+                  Supplemental rules.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">The date line.</span> The trip&rsquo;s days are each place&rsquo;s local date. Westbound, the flight is bold for its real length and a squiggle is the hours the clock jumps ahead
+                  (<span className="font-mono text-leg">+16h</span>). Eastbound, the flight stops at a zigzag where it crosses and carries on from a zigzag on the next
+                  row, which is the same date again on the clock where you land (<span className="font-mono text-leg">−17h</span>, the row marked
+                  &ldquo;again&rdquo;): the days run in the order you live them. The day&rsquo;s column says <span className="font-mono text-leg">IDL</span> and the jump.
+                </li>
+                <li>
+                  <span className="font-medium text-ink">Crew and dates.</span> Next to the trip number, an augmented crew as the pairing prints it
+                  (<span className="font-mono">+1 RFO</span>, a relief first officer), and the weekdays and dates the pairing operates.
                 </li>
               </ul>
             </div>
@@ -442,7 +467,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
               {trip.schedule.length > 0 ? (
                 <div className="mt-2.5">
                   {heat?.get(tripIndex) && <HeatShareLine share={heat.get(tripIndex)!.share} label="Trip" className="mb-2 max-w-72" />}
-                  {heat ? <HeatKey className="mb-2" /> : <ColorKey variant="trip" className="mb-2" />}
+                  {heat ? <HeatKey className="mb-2" /> : <ColorKey variant="trip" className="mb-2" dateLine={tripCrossesDateLine(trip)} />}
                   <TripPicture
                     heat={heat?.get(tripIndex) ?? null}
                     carryOver={carries[tripIndex] && carryOver ? { days: carries[tripIndex]!.days, month: carryOver.month } : null}

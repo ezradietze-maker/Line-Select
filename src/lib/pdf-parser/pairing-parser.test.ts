@@ -288,9 +288,37 @@ describe("layover hotels, day rooms and pickups", () => {
     expect(pairing.schedule[1].layover).toMatchObject({ pickupTimeGmt: "1230", pickupTimeLocal: "0830", transportToHotel: "CAREY LIMOUSINE INDIANA, INC." });
   });
 
+  it("reads a lone S as the Supplemental column, not a meal", () => {
+    // The pages' legend: "S - Leg is flown under Supplemental rules". Here it's on the two airline deadheads.
+    const [pairing] = parsePairingColumn(rows, 176, []);
+    expect(pairing.schedule.flatMap((d) => d.legs.map((l) => l.supplemental ?? false))).toEqual([true, true, false, false, false, false]);
+  });
+
+  it("reads the S column after a meal code, and the duty's totals after it", () => {
+    // Real rows, B777 MEM, Oct 2026: "MS S" and "DH/BH S".
+    const [pairing] = parsePairingColumn(
+      [
+        "5 MO REPORT AT 0900 (0300) STANDARD CREW",
+        "EFFECTIVE SEPTEMBER 28 ONLY",
+        "DAY FLIGHT EQP DEPARTS ARRIVES BLOCK MEAL S BLOCK CREDIT DUTY LAYOVER",
+        "MO 1501 77 MEM 1000(1500) ANC 1429(2229) 07:29 DH/BH S 07:29 07:29 08:59 ANC 24:00",
+        "TU 1502 77 ANC 1529(2329) MEM 0058(0558) 06:29 MS S 06:29 06:29 07:59",
+        "LDGS: 2 BLOCK HRS: 13:58 CREDIT HRS: 13:58 TAFB: 41:58",
+      ],
+      15,
+      []
+    );
+    const legs = pairing.schedule.flatMap((d) => d.legs);
+    expect(legs.map((l) => [l.meal, l.supplemental])).toEqual([
+      ["DH/BH", true],
+      ["MS", true],
+    ]);
+    expect(pairing.schedule.map((d) => d.totals?.dutyHours)).toEqual([9 - 1 / 60, 8 - 1 / 60]);
+  });
+
   it("keeps each leg's meal, and each duty's printed block, credit and duty", () => {
     const [pairing] = parsePairingColumn(rows, 176, []);
-    expect(pairing.schedule.flatMap((d) => d.legs.map((l) => l.meal ?? null))).toEqual(["S", "S", "BH", "DH", null, null]);
+    expect(pairing.schedule.flatMap((d) => d.legs.map((l) => l.meal ?? null))).toEqual([null, null, "BH", "DH", null, null]);
     expect(pairing.schedule.map((d) => d.totals)).toEqual([
       { blockHours: 0, creditHours: 3 + 16 / 60, dutyHours: 6 + 17 / 60 },
       { blockHours: 5.75, creditHours: 7.5, dutyHours: 12 + 59 / 60 },

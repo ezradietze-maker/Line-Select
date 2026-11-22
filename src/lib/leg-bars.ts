@@ -45,6 +45,11 @@ export interface BarLeg {
   jump?: { start: number; end: number; minutes: number };
   /** Zulu layout: where it crosses the date line (minute of the day), and how far the local clock jumps there. */
   mark?: { at: number; jumpMinutes: number };
+  /**
+   * East across the date line, cut where it crosses (`dateLineLeg`): "out", this piece ends at the line; "in", it
+   * carries on from it on the arrival side's clock — the trip view's next row, the same date again.
+   */
+  rewind?: "out" | "in";
 }
 
 export interface BarSpan {
@@ -213,6 +218,7 @@ function picture(segments: TimelineSegment[], minGap: number, stayLabeled: (s: T
       ...(s.dateLineJump && s.dateLine ? { jump: { ...s.dateLineJump, minutes: s.dateLine.jumpMinutes } } : {}),
       ...(s.dateLineMark ? { mark: s.dateLineMark } : {}),
       ...(s.dateLine ? { clockJump: s.dateLine.jumpMinutes } : {}),
+      ...(s.dateLineLeg && s.dateLine?.direction === "east" && !s.dateLineBack ? { rewind: s.dateLineLeg === "before" ? ("out" as const) : ("in" as const) } : {}),
       // East across the date line the flight is cut at the crossing: no takeoff or landing there, and none on the diagonal.
       from: s.continuesFromPreviousDay || s.dateLineBack || s.dateLineLeg === "after" ? null : s.leg!.dep,
       to: s.continuesToNextDay || s.dateLineBack || s.dateLineLeg === "before" ? null : s.leg!.arr,

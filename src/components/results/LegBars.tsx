@@ -185,12 +185,61 @@ interface LegBarsProps {
   heatOf?: HeatOf;
 }
 
+/** "+16h", "−17h": how far the local clock jumps crossing the date line. */
+export const jumpLabel = (minutes: number) => `${minutes > 0 ? "+" : "−"}${Math.round(Math.abs(minutes) / 60)}h`;
+
+/**
+ * A squiggle along a line, from x0 to x1 at height y — the ex-pilot's mark for hours the clock jumps rather than flies,
+ * the same as the month calendar's. Anchored at `anchor`, so one running on past midnight carries on into the next row
+ * in step.
+ */
+export function squiggle(x0: number, x1: number, y: number, anchor: number): string {
+  const step = 3;
+  const amp = 2.5;
+  const points: string[] = [`${x0},${y}`];
+  for (let k = Math.ceil((x0 - anchor - step / 2) / step); anchor + step / 2 + k * step < x1; k++) {
+    const px = anchor + step / 2 + k * step;
+    if (px > x0) points.push(`${px},${y + (k % 2 === 0 ? -amp : amp)}`);
+  }
+  points.push(`${x1},${y}`);
+  return points.join(" ");
+}
+
+/** Where one row of a day sits: its times, the track the flying is on and its middle, the cities, the layover line and its words. */
+interface Frame {
+  timeRows: number;
+  cityRows: number;
+  lane: boolean;
+  top: number;
+  trackTop: number;
+  mid: number;
+  citiesTop: number;
+  laneTop: number;
+  wordsTop: number;
+  bottom: number;
+}
+
+function frameAt(top: number, { timeRows, cityRows, lane }: RowShape): Frame {
+  const trackTop = top + timeRows * SIZE.line + (timeRows ? 2 : 0);
+  const citiesTop = trackTop + SIZE.track + 2;
+  const laneTop = citiesTop + Math.max(cityRows, 1) * SIZE.line + 3;
+  const wordsTop = laneTop + SIZE.lane + 3;
+  const bottom = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
+  return { timeRows, cityRows, lane, top, trackTop, mid: trackTop + SIZE.track / 2, citiesTop, laneTop, wordsTop, bottom };
+}
+
 /**
  * One day of a trip as the ex-pilot reads it, each thing in its own color: a bold line with ticks for each leg —
  * blue flown, magenta deadheaded — its times over its ends and its cities under them, its flight number under the
  * middle; hotel standby a violet bar; a grey band around the whole duty period (so a hub turn's wait reads as duty with
  * little flying). Under that, the layover: a green line from landing to the next pickup, the hotel van (GT) a cyan
  * mark at each end, the city, its length and the hotel on it; a crew-rest hotel at a hub a gold line of its own.
+ *
+ * Across the date line, west it's drawn the month calendar's way (`CalendarDayBars`): the flight bold for its real
+ * length and the hours the clock jumps a squiggle, "+16h" over it. East, the trip's rows run in the order they're lived
+ * (`buildLivedDays`): the flight is cut at the line with a zigzag and carries on from a zigzag on the next row — the
+ * same date again, "−17h" over it — so nothing runs back up the page. On Zulu's clock nothing jumps: the flight at its
+ * real length, a zigzag where it crosses.
  */
 export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences, formatStay, heatOf }: LegBarsProps) {
   /** On the Heat Map a flight (or hotel standby) is drawn in its duty period's heat, finely edged, over the band's wash of it. */
@@ -201,110 +250,189 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
   const bars = dayBars(segments, minGapAt(width), stayLabeled, width);
-  const { timeRows, cityRows, lane } = shape;
-  const trackTop = timeRows * SIZE.line + (timeRows ? 2 : 0);
-  const mid = trackTop + SIZE.track / 2;
-  const citiesTop = trackTop + SIZE.track + 2;
-  const laneTop = citiesTop + Math.max(cityRows, 1) * SIZE.line + 3;
-  const wordsTop = laneTop + SIZE.lane + 3;
-  const height = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
-  const cityTop = (row: 0 | 1) => citiesTop + row * SIZE.line;
-  const middle = middleWords(bars, width, spans(bars.cities, 0, width), !!heatOf);
-  const words = laneWords(bars, width);
+  const first = frameAt(0, shape);
+  const height = first.bottom;
+
+  const row = (b: DayBars, f: Frame, key: string) => {
+    const cityTop = (r: 0 | 1) => f.citiesTop + r * SIZE.line;
+    const middle = middleWords(b, width, spans(b.cities, 0, width), !!heatOf);
+    const words = laneWords(b, width);
+    const mid = f.mid;
+    // The time labels' spans, so the date line's "+16h" over the flying keeps clear of them.
+    const taken: [number, number][] = [...spans(b.times, 0, width), ...spans(b.times, 1, width)];
+    /** "+16h" / "−17h" over the flying where it fits clear of the times; else it's in the day's column and its detail. */
+    const jumpWords = (at: number, minutes: number, ink: string) => {
+      if (f.timeRows === 0) return null;
+      const text = jumpLabel(minutes);
+      const half = (text.length * LABEL_CHAR_PX) / 2;
+      const center = Math.min(Math.max(at, half), width - half);
+      if (taken.some(([a, c]) => center - half - 6 < c && a < center + half + 6)) return null;
+      taken.push([center - half, center + half]);
+      return (
+        <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${ink}`} style={{ left: center, top: f.top + (f.timeRows === 2 ? SIZE.line : 0), height: SIZE.line }}>
+          {text}
+        </span>
+      );
+    };
+
+    return (
+      <span key={key}>
+        {[6, 12, 18].map((h) => (
+          <span key={h} className="absolute w-px bg-ink/20" style={{ left: x(h * 60), top: f.trackTop + SIZE.track - 3, height: 3 }} />
+        ))}
+        {b.duty.map((d, i) => {
+          const heat = heatOf?.(d.seg, "duty");
+          return (
+            <span
+              key={`d${i}`}
+              className={`absolute rounded-[3px] ${heat ? "" : "bg-trip-band"}`}
+              style={{ left: x(d.start) - 2, width: x(d.end) - x(d.start) + 4, top: mid - SIZE.duty / 2, height: SIZE.duty, ...(heat ? { background: heatWash(heat.heat) } : {}) }}
+              title={heat ? heatPieceText(heat) : undefined}
+            />
+          );
+        })}
+        {b.standby.map((d, i) => (
+          <span key={`s${i}`} className={`absolute rounded-full ${heatPaint(d.seg) ? "" : "bg-standby"}`} style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar, ...heatPaint(d.seg) }} />
+        ))}
+        {b.legs.map((l, i) => {
+          // On the Heat Map, the colour of its duty period's heat (a deadhead a little fainter); else blue flown, magenta deadheaded.
+          const paint = heatPaint(l.seg);
+          const flown = paint ? { ...paint, ...(l.deadhead ? { opacity: 0.7 } : {}) } : undefined;
+          const tone = paint ? "" : l.deadhead ? "bg-deadhead" : "bg-leg";
+          // A date-line flight keeps its own leg color, as on the month calendar: its shape says the rest.
+          const ink = paint ? "text-ink" : l.deadhead ? "text-deadhead" : "text-leg";
+          const ticks = (
+            <>
+              {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.start), top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+              {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.end) - 2, top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
+            </>
+          );
+          const bar = (left: number, right: number) => <span className={`absolute ${tone}`} style={{ ...flown, left, width: Math.max(2, right - left), top: mid - SIZE.bar / 2, height: SIZE.bar }} />;
+          if (l.rewind) {
+            // East across the date line: the flight is cut where it crosses — a zigzag, the line — and carries on from that
+            // same mark on the next row, the date lived again on the arrival side's clock, "−17h" over it.
+            const left = x(l.start);
+            const right = x(l.end);
+            const at = l.rewind === "out" ? right : left;
+            const zig = Math.min(Math.max(at, 4), width - 4);
+            return (
+              <span key={`l${i}`} title={`Crosses the date line eastbound${l.clockJump != null ? ` — the local clock goes back ${jumpLabel(l.clockJump).slice(1)}: ${l.rewind === "out" ? "the flight carries on in the next row, the same date again" : "the same date again, on the arrival side's clock"}` : ""}`}>
+                {bar(left, right)}
+                {ticks}
+                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                  <polyline points={`${zig - 4},${mid - 7} ${zig - 1},${mid + 7} ${zig + 1},${mid - 7} ${zig + 4},${mid + 7}`} fill="none" stroke="currentColor" strokeWidth={2} strokeLinejoin="round" />
+                </svg>
+                {l.rewind === "in" && l.clockJump != null && (jumpWords(at + 16, l.clockJump, ink) ?? jumpWords(at - 16, l.clockJump, ink))}
+              </span>
+            );
+          }
+          if (l.jump) {
+            // West across the date line: the flight bold for its real length, the clock's jump a squiggle.
+            const left = x(l.start);
+            const right = x(l.end);
+            const j0 = l.jump.start <= 0 ? 0 : x(l.jump.start);
+            const j1 = l.jump.end >= DAY ? width : x(l.jump.end);
+            return (
+              <span key={`l${i}`} title={`Crosses the date line westbound — the flight in bold, the local clock's ${jumpLabel(l.jump.minutes)} jump as the squiggle`}>
+                {j0 > left && bar(left, j0)}
+                {right > j1 && bar(j1, right)}
+                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                  <polyline points={squiggle(j0, j1, mid, l.jump.end >= DAY ? j1 : j0)} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+                </svg>
+                {ticks}
+                {j1 - j0 > 26 && jumpWords((j0 + j1) / 2, l.jump.minutes, ink)}
+              </span>
+            );
+          }
+          if (l.mark) {
+            // Zulu: nothing jumps — the flight at its real length, a zigzag where it crosses, and how far the local clock jumps.
+            const at = x(l.mark.at);
+            return (
+              <span key={`l${i}`} title={`Crosses the date line ${l.dateLine === "east" ? "eastbound" : "westbound"} — the local clock jumps ${jumpLabel(l.mark.jumpMinutes)}`}>
+                {bar(x(l.start), x(l.end))}
+                {ticks}
+                <svg className={`absolute left-0 top-0 overflow-visible ${ink}`} width={width} height={height} aria-hidden>
+                  <polyline points={`${at - 4},${mid - 6} ${at - 1},${mid + 6} ${at + 1},${mid - 6} ${at + 4},${mid + 6}`} fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinejoin="round" />
+                </svg>
+                {jumpWords(at, l.mark.jumpMinutes, ink)}
+              </span>
+            );
+          }
+          return (
+            <span key={`l${i}`}>
+              {bar(x(l.start), x(l.end))}
+              {ticks}
+            </span>
+          );
+        })}
+        {f.timeRows > 0 && <Labels labels={b.times} top={(r) => f.top + (f.timeRows === 2 && r === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} deadheadTone={heatOf ? "text-ink-muted" : undefined} />}
+        <Labels labels={b.cities} top={cityTop} tone="font-semibold text-ink" width={width} deadheadTone={heatOf ? "font-semibold text-ink-muted" : undefined} />
+        {middle.map((m, i) => (
+          <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
+            {m.text}
+          </span>
+        ))}
+
+        {f.lane &&
+          b.stays.map((st, i) => {
+            // The van from the airport right after landing, then the hotel, then the van back at the pickup — three
+            // pieces with a gap between each, so both rides show on every layover.
+            const gtIn = st.runsIn ? null : Math.min(x(st.start), width - GT_PX);
+            const gtOut = st.runsOn ? null : Math.min(x(st.end) + GT_GAP, width - GT_PX);
+            const left = gtIn === null ? x(st.start) : gtIn + GT_PX + GT_GAP;
+            const right = gtOut === null ? x(st.end) : gtOut - GT_GAP;
+            const heat = heatOf?.(st.seg, "layover");
+            const gt = heatOf ? "bg-ink-faint" : "bg-gt";
+            return (
+              <span key={`h${i}`}>
+                <span
+                  className={`absolute ${heat ? "" : "bg-layover"} ${st.runsIn ? "" : "rounded-l-full"} ${st.runsOn ? "" : "rounded-r-full"}`}
+                  style={heat ? { left, width: Math.max(2, right - left), top: f.laneTop - 1, height: SIZE.lane + 2, background: heatColor(heat.heat) } : { left, width: Math.max(2, right - left), top: f.laneTop, height: SIZE.lane }}
+                  title={heat ? heatPieceText(heat) : undefined}
+                />
+                {gtIn !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtIn, width: GT_PX, top: f.laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
+                {gtOut !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtOut, width: GT_PX, top: f.laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
+                {st.labeled && words.stays[i] && (
+                  <span
+                    className={`absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
+                    style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: f.wordsTop, height: SIZE.line }}
+                  >
+                    {formatStay ? (
+                      formatStay(st, <CityMarkGlyph mark={cityPreferences?.[st.city]} />)
+                    ) : (
+                      <>
+                        L/O {st.city} {layoverHours(st.hours)}
+                        <CityMarkGlyph mark={cityPreferences?.[st.city]} />
+                      </>
+                    )}
+                  </span>
+                )}
+              </span>
+            );
+          })}
+        {f.lane &&
+          b.rests.map((r, i) => {
+            const left = x(r.start);
+            const w = Math.max(2, x(r.end) - left);
+            const label = words.rests[i];
+            return (
+              <span key={`r${i}`}>
+                <span className={`absolute rounded-full ${heatOf ? "bg-ink-faint" : "bg-rest"}`} style={{ left, width: w, top: f.laneTop, height: SIZE.lane }} />
+                {label && (
+                  <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink-muted" : "text-rest"}`} style={{ left: label.center, top: f.wordsTop, height: SIZE.line }}>
+                    {label.text}
+                  </span>
+                )}
+              </span>
+            );
+          })}
+      </span>
+    );
+  };
 
   return (
     <div className="relative w-full" style={{ height }} aria-hidden>
-      {[6, 12, 18].map((h) => (
-        <span key={h} className="absolute w-px bg-ink/20" style={{ left: x(h * 60), top: trackTop + SIZE.track - 3, height: 3 }} />
-      ))}
-      {bars.duty.map((d, i) => {
-        const heat = heatOf?.(d.seg, "duty");
-        return (
-          <span
-            key={`d${i}`}
-            className={`absolute rounded-[3px] ${heat ? "" : "bg-trip-band"}`}
-            style={{ left: x(d.start) - 2, width: x(d.end) - x(d.start) + 4, top: mid - SIZE.duty / 2, height: SIZE.duty, ...(heat ? { background: heatWash(heat.heat) } : {}) }}
-            title={heat ? heatPieceText(heat) : undefined}
-          />
-        );
-      })}
-      {bars.standby.map((d, i) => (
-        <span key={`s${i}`} className={`absolute rounded-full ${heatPaint(d.seg) ? "" : "bg-standby"}`} style={{ left: x(d.start), width: Math.max(2, x(d.end) - x(d.start)), top: mid - SIZE.bar / 2, height: SIZE.bar, ...heatPaint(d.seg) }} />
-      ))}
-      {bars.legs.map((l, i) => {
-        // On the Heat Map, the colour of its duty period's heat (a deadhead a little fainter); else blue flown, magenta deadheaded.
-        const paint = heatPaint(l.seg);
-        const flown = paint ? { ...paint, ...(l.deadhead ? { opacity: 0.7 } : {}) } : undefined;
-        const tone = paint ? "" : l.deadhead ? "bg-deadhead" : "bg-leg";
-        return (
-          <span key={`l${i}`}>
-            <span className={`absolute ${tone}`} style={{ ...flown, left: x(l.start), width: Math.max(2, x(l.end) - x(l.start)), top: mid - SIZE.bar / 2, height: SIZE.bar }} />
-            {l.from && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.start), top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
-            {l.to && <span className={`absolute w-[2px] rounded-full ${tone}`} style={{ ...flown, left: x(l.end) - 2, top: mid - SIZE.tick / 2, height: SIZE.tick }} />}
-          </span>
-        );
-      })}
-      {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} deadheadTone={heatOf ? "text-ink-muted" : undefined} />}
-      <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} deadheadTone={heatOf ? "font-semibold text-ink-muted" : undefined} />
-      {middle.map((m, i) => (
-        <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>
-          {m.text}
-        </span>
-      ))}
-
-      {lane &&
-        bars.stays.map((s, i) => {
-          // The van from the airport right after landing, then the hotel, then the van back at the pickup — three
-          // pieces with a gap between each, so both rides show on every layover.
-          const gtIn = s.runsIn ? null : Math.min(x(s.start), width - GT_PX);
-          const gtOut = s.runsOn ? null : Math.min(x(s.end) + GT_GAP, width - GT_PX);
-          const left = gtIn === null ? x(s.start) : gtIn + GT_PX + GT_GAP;
-          const right = gtOut === null ? x(s.end) : gtOut - GT_GAP;
-          const heat = heatOf?.(s.seg, "layover");
-          const gt = heatOf ? "bg-ink-faint" : "bg-gt";
-          return (
-            <span key={`h${i}`}>
-              <span
-                className={`absolute ${heat ? "" : "bg-layover"} ${s.runsIn ? "" : "rounded-l-full"} ${s.runsOn ? "" : "rounded-r-full"}`}
-                style={heat ? { left, width: Math.max(2, right - left), top: laneTop - 1, height: SIZE.lane + 2, background: heatColor(heat.heat) } : { left, width: Math.max(2, right - left), top: laneTop, height: SIZE.lane }}
-                title={heat ? heatPieceText(heat) : undefined}
-              />
-              {gtIn !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
-              {gtOut !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
-              {s.labeled && words.stays[i] && (
-                <span
-                  className={`absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
-                  style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: wordsTop, height: SIZE.line }}
-                >
-                  {formatStay ? (
-                    formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />)
-                  ) : (
-                    <>
-                      L/O {s.city} {layoverHours(s.hours)}
-                      <CityMarkGlyph mark={cityPreferences?.[s.city]} />
-                    </>
-                  )}
-                </span>
-              )}
-            </span>
-          );
-        })}
-      {lane &&
-        bars.rests.map((r, i) => {
-          const left = x(r.start);
-          const w = Math.max(2, x(r.end) - left);
-          const label = words.rests[i];
-          return (
-            <span key={`r${i}`}>
-              <span className={`absolute rounded-full ${heatOf ? "bg-ink-faint" : "bg-rest"}`} style={{ left, width: w, top: laneTop, height: SIZE.lane }} />
-              {label && (
-                <span className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink-muted" : "text-rest"}`} style={{ left: label.center, top: wordsTop, height: SIZE.line }}>
-                  {label.text}
-                </span>
-              )}
-            </span>
-          );
-        })}
+      {row(bars, first, "first")}
     </div>
   );
 }

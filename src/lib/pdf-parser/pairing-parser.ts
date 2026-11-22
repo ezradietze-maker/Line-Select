@@ -287,6 +287,8 @@ interface RichLegMatch {
   layover: { city: string; hours: number } | null;
   /** The MEAL column, when printed. */
   meal: string | null;
+  /** The S column: "Leg is flown under Supplemental rules", as the pairing pages' own legend says. */
+  supplemental: boolean;
   /** The duty's BLOCK, CREDIT and DUTY, printed on its last row. */
   totals: DutyTotals | null;
 }
@@ -334,10 +336,14 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
   const isDeadhead = isDeadheadLeg(flightNumber, groundDuty);
   const layover = findLayover(rest);
   // After BLOCK: the MEAL column (when printed), then — on a duty's last row — its BLOCK, CREDIT and DUTY.
-  const meal = rest[0] && MEAL_RE.test(rest[0]) ? rest[0] : null;
-  // Some rows print a lone "S" after the meal code ("MS S 01:11 03:12 04:26"); it isn't a total.
+  const code = rest[0] && MEAL_RE.test(rest[0]) ? rest[0] : null;
+  // Then the S column — the pages' legend: "S - Leg is flown under Supplemental rules". It prints after a meal code
+  // ("MS S 01:11 03:12 04:26") or alone where there's no meal: on cabs, hotel standby and airline deadheads, which
+  // carry no meal, across all seven October 2026 packs. A lone "S" is that column, not a snack.
+  const meal = code === "S" ? null : code;
   const afterMealCode = meal ? rest.slice(1) : rest;
-  const afterMeal = meal && afterMealCode[0] === "S" ? afterMealCode.slice(1) : afterMealCode;
+  const supplemental = afterMealCode[0] === "S";
+  const afterMeal = supplemental ? afterMealCode.slice(1) : afterMealCode;
   const totals =
     afterMeal.length >= 3 && afterMeal.slice(0, 3).every((t) => HHMM_RE.test(t))
       ? { blockHours: timeToHours(afterMeal[0]), creditHours: timeToHours(afterMeal[1]), dutyHours: timeToHours(afterMeal[2]) }
@@ -358,6 +364,7 @@ function tryParseRichLeg(row: string): RichLegMatch | null {
     isDeadhead,
     layover,
     meal,
+    supplemental,
     totals,
   };
 }
@@ -625,6 +632,7 @@ export function parsePairingColumn(rows: string[], pageNumber: number, warnings:
             startMinutes,
             endMinutes,
             ...(richLeg.meal ? { meal: richLeg.meal } : {}),
+            ...(richLeg.supplemental ? { supplemental: true } : {}),
           });
 
           if (richLeg.layover) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { largestShape, LegBars, rowShape, useMeasuredWidth } from "@/components/results/LegBars";
+import { jumpLabel, largestShape, LegBars, rowShape, useMeasuredWidth } from "@/components/results/LegBars";
 import { Zone } from "@/components/results/TripMarks";
 import { heatOfTrips, heatPiecesOn, HeatReasons } from "@/components/results/HeatReasons";
 import type { TripHeat } from "@/lib/line-heat";
@@ -11,7 +11,8 @@ import { displayHotelName } from "@/lib/hotels/hotel-names";
 import { labeledStayPieces, layoverHours } from "@/lib/leg-bars";
 import { reportsFromHome } from "@/lib/trip-anchor";
 import { dateLabel, tripDayDate } from "@/lib/trip-day-stats";
-import { buildHomeDays, buildTimelineDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
+import { buildHomeDays, buildLivedDays, buildZuluCalendarDays, type TimeMode, type TimelineDay, type TimelineSegment } from "@/lib/trip-timeline";
+import { tripCrossesDateLine } from "@/lib/line-month";
 import type { Trip } from "@/types/bidpack";
 import type { CityMark } from "@/types/preferences";
 
@@ -43,9 +44,36 @@ interface TripPictureProps {
   heat?: TripHeat | null;
 }
 
-/** The days the rows show: the base's calendar on the local clock, Zulu days on Zulu. */
+/**
+ * The days the rows show — the same days, laid out the same way, as the line's month calendar (`buildLineMonthCalendar`),
+ * so a trip reads the same in both: the base's calendar on the local clock, or for a trip across the date line every
+ * piece on its own airport's local date and clock, west a squiggle for the clock's jump as on the calendar — and east,
+ * the rows in the order they're lived (`buildLivedDays`), the date the flight lands on a row of its own after the one
+ * it takes off on, rather than the calendar's diagonal back; Zulu days on Zulu, each date-line flight marked where it
+ * crosses.
+ */
 export function tripPictureDays(trip: Trip, mode: TimeMode): TimelineDay[] {
-  return mode === "zulu" ? buildTimelineDays(trip, "zulu") : buildHomeDays(trip, "local");
+  if (mode === "zulu") return buildZuluCalendarDays(trip);
+  const dateLine = tripCrossesDateLine(trip) ? buildLivedDays(trip) : [];
+  return dateLine.length ? dateLine : buildHomeDays(trip, "local");
+}
+
+/**
+ * Each date-line crossing on a day, as the day's column says it: "IDL +16h" west (the clock jumps ahead), "IDL −17h"
+ * east (it goes back) — once per flight, on the day it takes off.
+ */
+export function dateLineJumpsOn(day: TimelineDay): { direction: "east" | "west"; minutes: number }[] {
+  const seen = new Set<string>();
+  const out: { direction: "east" | "west"; minutes: number }[] = [];
+  for (const s of day.segments) {
+    if (!s.dateLine || !s.leg || s.continuesFromPreviousDay || s.dateLineLeg === "after" || s.secondPass) continue;
+    if (s.dateLineBack && s.dateLineBack.part === "arrival") continue;
+    const key = `${s.leg.flightNumber}-${s.leg.dep}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ direction: s.dateLine.direction, minutes: s.dateLine.jumpMinutes });
+  }
+  return out;
 }
 
 /**
@@ -59,7 +87,9 @@ export function dutyStartOf(day: TimelineDay, trip: Trip): { kind: "report" | "p
   const duties = new Set(day.segments.map((s) => s.dutyIndex).filter((d): d is number => d !== undefined));
   let first: TimelineSegment | null = null;
   for (const d of duties) {
+    // A flight carried on from the date line on the row before isn't a duty starting.
     const pieces = day.segments.filter((s) => s.dutyIndex === d && s.kind !== "layover" && s.kind !== "sleep");
+    if (pieces.some((s) => s.dateLineLeg === "after")) continue;
     if (pieces.length === 0 || pieces.some((s) => s.continuesFromPreviousDay)) continue;
     const earliest = pieces.reduce((a, s) => (s.startMinuteOfDay < a.startMinuteOfDay ? s : a));
     if (!first || earliest.startMinuteOfDay < first.startMinuteOfDay) first = earliest;
@@ -82,6 +112,8 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
   }, [trip, bidPeriodStart]);
   if (days.length === 0) return null;
   const base = trip.schedule[0]?.legs[0]?.depAirport;
+  // Across the date line the rows are each place's own date and clock, as on the month calendar.
+  const localClocks = mode === "local" && tripCrossesDateLine(trip);
   // Every 3 hours where there's room for them; every 6 where the day is narrow (the phone's text set larger widens the
   // date column beside it), or "00 03 06" ran into each other.
   const hours = compact || width < 136 ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
@@ -117,7 +149,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
         </div>
       )}
       <div className={`grid ${grid} items-end gap-x-2`} aria-hidden>
-        <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : base ? `${base} time` : ""}</span>
+        <span className="whitespace-nowrap font-mono text-2xs text-ink-faint">{mode === "zulu" ? "Zulu" : localClocks ? "Local" : base ? `${base} time` : ""}</span>
         {/* Every three hours where there's room: on a 320 phone the 19px between them ran "0003" and "2100" together, so
             there it's every six. Narrower still (the phone's text at its largest widens the day column), every twelve, then
             the day's two ends: "00 06 12 18 00" ran into one another. */}
@@ -139,13 +171,18 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
           // On the base's calendar, the last days of a trip running past the month's end are the next month's.
           const nextMonth = carryOver && mode === "local" && day.dayNumber > days.length - carryOver.days ? carryOver.month : null;
           const start = dutyStartOf(day, trip);
-          const fullDay = mode === "local" && day.date ? fullDays.get(day.date) : undefined;
+          const fullDay = mode === "local" && day.date && !day.again ? fullDays.get(day.date) : undefined;
           const isOpen = open.has(day.dayNumber);
           const row = (
             <>
               <span className="flex min-w-0 flex-col items-start leading-tight">
                 <span className="flex max-w-full flex-wrap items-center gap-x-1 text-2xs font-semibold text-ink">
                   {date ? `${date.weekday} ${date.day}` : `Day ${day.dayNumber}`}
+                  {day.again && (
+                    <span className="font-normal text-leg" title={`The same date again: east across the date line the local clock went back ${jumpLabel(day.again.jumpMinutes).slice(1)}`}>
+                      again
+                    </span>
+                  )}
                   {nextMonth && (
                     <span className="text-2xs font-semibold uppercase tracking-wide text-carry" title={`The ${nextMonth} bid month's — carried over, not counted in this one`}>
                       {nextMonth.slice(0, 3)}
@@ -164,6 +201,15 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                     Full day{fullDay.barely ? <span className="font-normal">, barely</span> : null}
                   </span>
                 )}
+                {dateLineJumpsOn(day).map((j, i) => (
+                  <span
+                    key={`idl${i}`}
+                    className="whitespace-nowrap font-mono text-2xs font-semibold text-leg"
+                    title={`Crosses the international date line ${j.direction === "east" ? "eastbound: the local clock goes back" : "westbound: the local clock jumps ahead"} ${jumpLabel(j.minutes).slice(1)}`}
+                  >
+                    IDL {jumpLabel(j.minutes)}
+                  </span>
+                ))}
               </span>
               <LegBars
                 segments={day.segments}
@@ -216,7 +262,11 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
       </ol>
       {!compact && (
         <p className="mt-1 text-2xs leading-snug text-ink-faint">
-          {mode === "zulu" ? "Bars and times in Zulu." : `Bars on ${base ?? "the domicile"}'s clock, as long as each flight; times are local where they happen, as the bid pack prints them.`}
+          {mode === "zulu"
+            ? "Bars and times in Zulu."
+            : localClocks
+              ? "Across the date line, each day is the local date and clock where you are. West, the squiggle is the hours the clock jumps ahead. East, the flight stops at a zigzag and carries on from the zigzag on the next row: the same date again, the clock gone back."
+              : `Bars on ${base ?? "the domicile"}'s clock, as long as each flight; times are local where they happen, as the bid pack prints them.`}
         </p>
       )}
     </div>

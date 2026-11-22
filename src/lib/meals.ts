@@ -1,11 +1,10 @@
 /**
- * The pairing's MEAL column in words. The codes, as the ex-pilot read them: S snack, DS dinner snack, BS breakfast
- * snack, DH dinner hot, BH breakfast hot. Two meals print joined ("DH/BH"); a trailing "I" ("BSI", "DSI") is left
+ * The pairing's MEAL column in words. The codes, as the ex-pilot read them: DS dinner snack, BS breakfast snack, DH
+ * dinner hot, BH breakfast hot. A lone "S" is not a meal: it's the next column, Supplemental (`legColumns`). Two meals print joined ("DH/BH"); a trailing "I" ("BSI", "DSI") is left
  * aside for now. A code nobody has explained yet (DM, BM, MS, NOCAT) prints as itself rather than as a guess.
  */
 
 const MEALS: Record<string, string> = {
-  S: "Snack",
   DS: "Dinner snack",
   BS: "Breakfast snack",
   DH: "Dinner hot",

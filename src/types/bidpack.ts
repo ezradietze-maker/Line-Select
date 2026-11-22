@@ -49,8 +49,14 @@ export interface TripLeg {
   arrTimeZulu: string;
   /** A hotel the crew is put up in at this leg's arrival airport for a few hours before the next leg of the same duty — a day room, not an overnight layover. */
   dayRoomHotel?: string;
-  /** The MEAL column as printed ("S", "DH/BH", "BSI"…) — absent when it's blank or the pack was parsed before meals were kept. See `lib/meals.ts`. */
+  /**
+   * The MEAL column as printed ("DH/BH", "BSI"…) — absent when it's blank or the pack was parsed before meals were kept.
+   * A pack read before the S column was told apart has a lone "S" here: that's `supplemental`, not a meal (`legFlags`).
+   * See `lib/meals.ts`.
+   */
   meal?: string;
+  /** The S column: "Leg is flown under Supplemental rules", as the pairing pages' legend prints it. */
+  supplemental?: boolean;
 }
 
 /** A report-to-layover stretch of a trip: one or more legs, then (unless it's the trip's last) a real, printed-duration rest period. */
@@ -170,6 +176,12 @@ export interface Trip {
    * wrong for some of its trips.
    */
   startDayIndex: number | null;
+  /** Who it's for, as the pairing's header prints it: "STANDARD CREW", or an augmented crew ("1 RFO", "1 RF2", "1 CAP"). Absent on a pack parsed before it was kept. */
+  crew?: string;
+  /** The dates it operates, as its header prints them ("SEPTEMBER 28 - OCTOBER 4", "OCTOBER 23 ONLY"). */
+  effectiveText?: string;
+  /** The weekdays it operates, as its header prints them ("MO", "TU"): GMT, of its first departure. */
+  operatesOn?: string[];
   /** Set on a trip cut at its bid month's end (`lib/bid-month.ts`): the rest of it, and its commute home, run into the next month. */
   carriesIntoNextMonth?: boolean;
   /**

@@ -75,6 +75,11 @@ function synthesizeSpans(line: Line): Span[] {
   return spans;
 }
 
+/** Whether any flight on the trip crosses the international date line (`lib/date-line.ts`). */
+export function tripCrossesDateLine(trip: Trip): boolean {
+  return trip.schedule.some((d) => d.legs.some((l) => dateLineCrossing(l.depAirport, l.arrAirport) !== null));
+}
+
 /**
  * Lays a whole line's trips out across the bid month as real calendar-day
  * columns, days off included — the data behind the mini month calendar.
@@ -97,10 +102,9 @@ export function buildLineMonthCalendar(line: Line, bidPeriodStart: string | null
   const spans: Span[] = placementIsReal ? line.trips.map((t, i) => ({ trip: t, tripIndex: i, start: t.startDayIndex! })) : synthesizeSpans(line);
 
   const zulu = mode === "zulu";
-  const crossesDateLine = (t: Trip) => t.schedule.some((d) => d.legs.some((l) => dateLineCrossing(l.depAirport, l.arrAirport) !== null));
   const timelineBySpan: { span: Span; timeline: TimelineDay[] }[] = spans.map((span) => {
     if (!zulu) {
-      const local = crossesDateLine(span.trip) ? buildDateLineDays(span.trip) : [];
+      const local = tripCrossesDateLine(span.trip) ? buildDateLineDays(span.trip) : [];
       return { span, timeline: local.length ? local : buildHomeDays(span.trip, mode) };
     }
     // Its first Zulu day is its first base day moved by however far apart the two dates are when it reports.
