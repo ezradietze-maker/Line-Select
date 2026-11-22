@@ -28,6 +28,8 @@ export const US_DOMESTIC_CODES = new Set([
   "SAF", "GUC", "EGE", "ASE", "HDN", "MTJ",
   "OAJ", "EWN", "FAY", "RDU",
   "PIT", "ERI", "AOO", "IPT",
+  // In the October packs and missing here, so a trip touching one was tagged international.
+  "AFW", "DAL", "LRD", "HRL", "ICT", "CPR", "FAT", "SNA", "SBD", "ITO", "LCK", "BDL", "BTV", "CAE", "CHA", "MSN", "RST", "ATW", "DOV", "DJT",
 ]);
 
 export function isInternationalCity(code: string): boolean {
