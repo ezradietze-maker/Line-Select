@@ -37,7 +37,6 @@ function arg(name: string): string | undefined {
 }
 
 const fmt = (v: number | null | undefined) => (v === null || v === undefined ? "—" : Number.isInteger(v) ? String(v) : v.toFixed(1));
-const valueOf = (s: V2LineScore, metric: string) => s.results.find((r) => r.metric === metric)?.value ?? null;
 
 /** The criteria that most separate two lines, as "label: a vs b (points)". */
 function why(a: V2LineScore, b: V2LineScore): string {
@@ -78,18 +77,18 @@ function check(pack: BidPack, model: PilotModel, name: string): string[] {
     ""
   );
 
-  // His rules, on the lines the site puts first.
+  // His rules, on the lines the site puts first. Trips are counted whole here: "Departures" counts a trip running into
+  // the next month by its share in this one, so a 10-day trip and an 11-day trip carried into November read 1.3.
+  const tripsOf = (n: string) => pack.lines.find((l) => l.lineNumber === n)?.trips ?? [];
   for (const n of [10, 20]) {
-    const top = ranked.slice(0, n);
-    const deps = top.map((s) => valueOf(s, "homeDepartures"));
-    const longest = top.map((s) => valueOf(s, "longestTripDays"));
-    const count = (xs: (number | null)[], f: (x: number) => boolean) => xs.filter((x): x is number => x !== null && f(x)).length;
+    const top = ranked.slice(0, n).map((s) => tripsOf(s.lineNumber));
+    const one = top.filter((t) => t.length === 1);
     out.push(
-      `Top ${n}: ${count(deps, (d) => d <= 2.05)} with 2 departures or fewer, ${count(deps, (d) => d > 2.05 && d <= 3.05)} with 3, ${count(deps, (d) => d > 3.05)} with 4 or more; ` +
-        `${count(longest, (d) => d > 9)} with a trip over 9 days.`
+      `Top ${n}: ${one.length} one-trip months (${one.filter((t) => t[0].days >= 12).length} of them 12 days or more), ${top.filter((t) => t.length === 2).length} two-trip, ${top.filter((t) => t.length > 2).length} three or more; ` +
+        `${top.filter((t) => t.some((x) => x.days > 9)).length} with a trip over 9 days.`
     );
   }
-  out.push("", `Site's top 10: ${ranked.slice(0, 10).map((s) => `${s.lineNumber} (${fmt(valueOf(s, "homeDepartures"))} dep, longest ${fmt(valueOf(s, "longestTripDays"))} d)`).join(", ")}`, "");
+  out.push("", `Site's top 10: ${ranked.slice(0, 10).map((s) => `${s.lineNumber} (${tripsOf(s.lineNumber).map((t) => `${t.days}d`).join(" + ")})`).join(", ")}`, "");
   return out;
 }
 
