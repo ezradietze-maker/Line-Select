@@ -1061,7 +1061,10 @@ html {
 }
 @media (min-width: 48rem) {
   .app-shell {
-    --shell-left: 15rem;
+    /* At most 31.25vw: Safari's larger text grows the rem but not this 48rem breakpoint (media queries keep the
+       initial size), so a 15rem rail at 200% took 480 px of a 768 px window and pushed the page past the screen's
+       edge. 31.25vw is 240 px at the breakpoint itself, so normal text keeps 15rem at every width. */
+    --shell-left: min(15rem, 31.25vw);
     --shell-bottom: 0px;
   }
   [data-rail="collapsed"] .app-shell {
