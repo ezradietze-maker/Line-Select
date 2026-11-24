@@ -24,7 +24,8 @@ export function useMeasuredWidth<T extends HTMLElement>(initial: number): [React
 }
 
 /**
- * A trip's day row: wide enough for each leg's times over its ends. Its words are set in px (11px, the size
+ * A trip's day row. No times over the legs (owner, Nov 23: "messy and unnecessary"; the day's report or pickup is
+ * beside the row, and a tap on the day gives every leg's times). Its words are set in px (11px, the size
  * `LABEL_CHAR_PX` is measured at) like these rows: in rem, at 200% text the times ran over each other and the layover's
  * words were cut in half.
  */
@@ -40,9 +41,8 @@ export function stayHours(hours: number): string {
   return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, "0")}`;
 }
 
-/** How many lines of times and of cities a day needs, and whether it has a layover or rest-hotel line. */
+/** How many lines of cities a day needs, and whether it has a layover or rest-hotel line. */
 export interface RowShape {
-  timeRows: number;
   cityRows: number;
   lane: boolean;
 }
@@ -53,12 +53,11 @@ const minGapAt = (widthPx: number) => (SIZE.labelPx * DAY) / Math.max(widthPx, 1
 /** One day's needs at this width — a trip draws every day at the most any of its days needs, so all stand the same height. */
 export function rowShape(segments: TimelineSegment[], widthPx: number): RowShape {
   const bars = dayBars(segments, minGapAt(widthPx), undefined, Math.max(widthPx, 1));
-  return { timeRows: rowsOf(bars.times), cityRows: rowsOf(bars.cities), lane: bars.stays.length > 0 || bars.rests.length > 0 };
+  return { cityRows: rowsOf(bars.cities), lane: bars.stays.length > 0 || bars.rests.length > 0 };
 }
 
 export function largestShape(shapes: RowShape[]): RowShape {
   return {
-    timeRows: Math.max(0, ...shapes.map((s) => s.timeRows)),
     cityRows: Math.max(0, ...shapes.map((s) => s.cityRows)),
     lane: shapes.some((s) => s.lane),
   };
@@ -187,7 +186,7 @@ interface LegBarsProps {
 
 /**
  * One day of a trip as the ex-pilot reads it, each thing in its own color: a bold line with ticks for each leg —
- * blue flown, magenta deadheaded — its times over its ends and its cities under them, its flight number under the
+ * blue flown, magenta deadheaded — its cities under its ends, its flight number under the
  * middle; hotel standby a violet bar; a grey band around the whole duty period (so a hub turn's wait reads as duty with
  * little flying). Under that, the layover: a green line from landing to the next pickup, the hotel van (GT) a cyan
  * mark at each end, the city, its length and the hotel on it; a crew-rest hotel at a hub a gold line of its own.
@@ -201,8 +200,8 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
   const width = Math.max(widthPx, 1);
   const x = (m: number) => (m / DAY) * width;
   const bars = dayBars(segments, minGapAt(width), stayLabeled, width);
-  const { timeRows, cityRows, lane } = shape;
-  const trackTop = timeRows * SIZE.line + (timeRows ? 2 : 0);
+  const { cityRows, lane } = shape;
+  const trackTop = 0;
   const mid = trackTop + SIZE.track / 2;
   const citiesTop = trackTop + SIZE.track + 2;
   const laneTop = citiesTop + Math.max(cityRows, 1) * SIZE.line + 3;
@@ -244,7 +243,6 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
           </span>
         );
       })}
-      {timeRows > 0 && <Labels labels={bars.times} top={(row) => (timeRows === 2 && row === 0 ? SIZE.line : 0)} tone="text-ink-muted" width={width} deadheadTone={heatOf ? "text-ink-muted" : undefined} />}
       <Labels labels={bars.cities} top={cityTop} tone="font-semibold text-ink" width={width} deadheadTone={heatOf ? "font-semibold text-ink-muted" : undefined} />
       {middle.map((m, i) => (
         <span key={`m${i}`} className={`absolute -translate-x-1/2 whitespace-nowrap font-mono text-[11px] leading-none ${m.tone}`} style={{ left: m.x, top: cityTop(0), height: SIZE.line }}>

@@ -1,5 +1,6 @@
 import { carryOverWords, lineCarryOver, tripCarryInPack } from "@/lib/bid-month";
-import type { BidPack, Line, Trip } from "@/types/bidpack";
+import type { TimeMode } from "@/lib/trip-timeline";
+import type { BidPack, Line, Trip, TripLeg } from "@/types/bidpack";
 
 /** The pack as these need it: its dates (and lines and base, to say what a trip carries into the next month). */
 type PackText = Pick<BidPack, "bidPeriodStart"> & Partial<Pick<BidPack, "bidPeriodDays" | "base" | "lines">>;
@@ -60,13 +61,19 @@ export function tripHeadline(bidPack: PackText, t: Trip, credit = tenths): strin
   return [tripDateLabel(bidPack, t.startDayIndex), `${t.days}d`, `${credit(t.creditHours)} cr`, route, carry ? carryOverWords(carry) : ""].filter(Boolean).join(" · ");
 }
 
-/** The trip duty by duty: every leg (deadheads with their airline flight, ground transport named), standby, and each layover's length and hotel. */
-export function tripDuties(t: Trip): string[] {
+/**
+ * The trip duty by duty: every leg (deadheads with their airline flight, ground transport named), standby, and each
+ * layover's length and hotel. Times are local where they happen, as the pack prints them, or Zulu (a screen following
+ * the Local/Zulu switch).
+ */
+export function tripDuties(t: Trip, mode: TimeMode = "local"): string[] {
+  const dep = (l: TripLeg) => hm(mode === "zulu" ? l.depTimeGmt : l.depTimeLocal);
+  const arr = (l: TripLeg) => hm(mode === "zulu" ? l.arrTimeGmt : l.arrTimeLocal);
   return t.schedule.map((d, i) => {
     const legs = d.legs.map((l) =>
       l.isStandby
-        ? `Hotel standby ${l.depAirport} ${hm(l.depTimeLocal)}–${hm(l.arrTimeLocal)}`
-        : `${/^GT/.test(l.flightNumber) ? "Ground transport" : l.isDeadhead ? `DH ${l.flightNumber}` : `FX ${l.flightNumber}`} ${l.depAirport} ${hm(l.depTimeLocal)} → ${l.arrAirport} ${hm(l.arrTimeLocal)}`
+        ? `Hotel standby ${l.depAirport} ${dep(l)}–${arr(l)}`
+        : `${/^GT/.test(l.flightNumber) ? "Ground transport" : l.isDeadhead ? `DH ${l.flightNumber}` : `FX ${l.flightNumber}`} ${l.depAirport} ${dep(l)} → ${l.arrAirport} ${arr(l)}`
     );
     const lay = d.layover ? ` ⇒ ${d.layover.city} ${Math.round(d.layover.hours)}h${d.layover.hotelName ? ` · ${d.layover.hotelName}` : ""}` : "";
     return `${i + 1}. ${legs.join(" · ") || "—"}${lay}`;
