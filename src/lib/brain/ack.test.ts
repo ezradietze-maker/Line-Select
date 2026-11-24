@@ -15,6 +15,14 @@ describe("answerAck", () => {
     expect(answerAck({ question: "Q", answer: "(skipped)" })).toBe("Skipping that one is fine.");
     expect(answerAck(undefined)).toBe("");
   });
+
+  it("says their 'I' and 'me' back as 'you', and never says a question of theirs back", () => {
+    expect(answerAck({ question: "Hub turn nap?", answer: "I'd take the nap" })).toBe("You'd take the nap. Got it.");
+    expect(answerAck({ question: "Night hub turns?", answer: "They don't bother me" })).toBe("They don't bother you. Got it.");
+    expect(answerAck({ question: "Q", answer: "I was fine with my old line." })).toBe("You were fine with your old line. Got it.");
+    expect(answerAck({ question: "Q", answer: "no preference" })).toBe("No preference. Got it.");
+    expect(answerAck({ question: "Q", answer: "What's a hub turn?" })).toBe("Got it.");
+  });
 });
 
 describe("ackFitsLast", () => {
