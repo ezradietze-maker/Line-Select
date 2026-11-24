@@ -129,7 +129,7 @@ function TripInsights({ trip, bidPeriodStart, base }: { trip: Trip; bidPeriodSta
         <span
           key={chip.label}
           title={chip.title}
-          className={`inline-flex items-center gap-1 rounded-[3px] border px-2 py-0.5 text-2xs ${
+          className={`inline-flex max-w-full flex-wrap items-center gap-1 rounded-[3px] border px-2 py-0.5 text-2xs ${
             chip.tone === "warn" ? "border-warn/40 bg-warn-soft text-warn" : "border-hairline bg-surface-raised/60 text-ink-muted"
           }`}
         >
@@ -192,7 +192,7 @@ function TripHeader({
   const zone = mode === "zulu" ? "Z" : "local";
 
   return (
-    <div>
+    <div className="@container">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {/* The same oval the calendar puts on a trip's first day: its number and credit. */}
         <span className="rounded-[3px] bg-calendar-accent px-2 py-0.5 font-mono text-sm font-semibold text-on-calendar" title="Trip number and credit in the bid pack">
@@ -219,7 +219,9 @@ function TripHeader({
         </div>
       )}
 
-      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 sm:grid-cols-4">
+      {/* One column where two can't hold "Operating" and "172:22" side by side (a 320 phone with its text at 200%):
+          in two, the numbers ran into the next column's label. */}
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 @max-[7.5rem]:grid-cols-1 sm:grid-cols-4">
         <Readout label="Report" value={first?.onDuty ? `${first.onDuty} ${zoneTag(mode)}` : REPORT_LABELS[trip.reportTime]} note={stamp(startDate, 1)} title={`${REPORT_LABELS[trip.reportTime]} report, ${zone}${startDate ? ` — ${startDate.weekday} ${startDate.day} ${startDate.month}` : ""}`} />
         <Readout label="Last in" value={last?.lastIn ? `${last.lastIn} ${zoneTag(mode)}` : block === null && trip.landings === 0 ? "no flying" : "—"} note={stamp(endDate, days.length)} title={`Last landing of the trip, ${zone}${endDate ? ` — ${endDate.weekday} ${endDate.day} ${endDate.month}` : ""}`} />
         <Readout label="TAFB" value={hm(trip.tafbHours * 60)} title="Time away from base" />

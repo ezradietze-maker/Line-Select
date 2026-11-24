@@ -395,7 +395,9 @@ export function ResultsStatusPanel({
                     {!item.done && <span className="ml-auto hidden text-xs text-ink-faint sm:inline">Tick when done</span>}
                   </button>
                 ) : (
-                  <div className="flex items-center gap-2.5 px-1.5 py-1.5 text-sm">
+                  // Wrapping: where the label and its link can't share the row (a 320 phone with its text at 200%),
+                  // "Log it after the award" goes under the label instead of running out of the panel.
+                  <div className="flex flex-wrap items-center gap-2.5 px-1.5 py-1.5 text-sm">
                     <Tick done={item.done} />
                     <span className={item.done ? "text-ink" : "text-ink-muted"}>{item.label}</span>
                     {item.id === "interview" && !item.done && (
