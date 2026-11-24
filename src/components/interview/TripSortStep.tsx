@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { TripGlance } from "@/components/interview/TripGlance";
+import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
 import { NoteBox } from "@/components/ui/NoteBox";
@@ -10,6 +11,7 @@ import { TRIP_GRADES, type TripGrade, type TripGradeScreen } from "@/lib/brain/t
 import { tripKey } from "@/lib/scoring-v2/trip-score";
 import type { BidPack, Trip } from "@/types/bidpack";
 import { radioKeyProps } from "@/components/ui/radio-keys";
+import { useTimeMode } from "@/lib/time-mode-storage";
 
 interface TripSortStepProps {
   eyebrow?: string;
@@ -34,7 +36,7 @@ function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; 
         {label}
       </p>
       <div className="mt-1">
-        <TripGlance bidPack={bidPack} trip={trip} />
+        <TripGlance bidPack={bidPack} trip={trip} toggle={false} />
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`${id}-label`}>
         {TRIP_GRADES.map((g, i) => (
@@ -67,6 +69,8 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One Local/Zulu switch over the screen's trips, as My Rankings has over a line's.
+  const [mode, setMode] = useTimeMode();
   const trips = new Map(bidPack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
   const graded = Object.keys(grades).length;
   // A later screen can show fewer trips than that (pairings already shown are left out): then all of them will do.
@@ -93,6 +97,9 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
         help={`Real trips from your best lines${index > 0 ? ` (set ${index + 1})` : ""}. Grade each one the way you'd size it up on a trade board — just the trip, not the line it's on. Your grades shape how every trip on your results is scored, and how your lines are ranked.`}
       />
       <RevealControls title={title} className="mt-6">
+        <div className="mb-2">
+          <TimeModeToggle mode={mode} onChange={setMode} />
+        </div>
         <ul className="space-y-2.5">
           {screen.keys.map((k) => {
             const t = trips.get(k);

@@ -2,12 +2,14 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { TripPicture } from "@/components/results/TripPicture";
+import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { CreditHours } from "@/components/results/TripMarks";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { useMemo } from "react";
 import { carryOverWords, tripCarryInPack } from "@/lib/bid-month";
 import { tripDateLabel, tripDuties, tripHeadline, tripRoute } from "@/lib/brain/line-text";
 import { formatHoursValue } from "@/lib/interview-config";
+import { useTimeMode } from "@/lib/time-mode-storage";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long, and its C/O. */
@@ -27,16 +29,23 @@ function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodSt
 
 /**
  * A trip as the interview shows it: the same picture as the results, one row per day — so a pilot sizes it up from
- * how it looks, as they would a trip on a trade board, with the duties as text a tap away.
+ * how it looks, as they would a trip on a trade board, with the duties as text a tap away. Its Local/Zulu switch is
+ * My Rankings' own, the one setting every trip and calendar reads; `toggle={false}` where one above it already shows.
  */
-export function TripGlance({ bidPack, trip, tag = true, compact = true }: { bidPack: BidPack; trip: Trip; tag?: boolean; compact?: boolean }) {
+export function TripGlance({ bidPack, trip, tag = true, compact = true, toggle = true }: { bidPack: BidPack; trip: Trip; tag?: boolean; compact?: boolean; toggle?: boolean }) {
   // A trip running past the bid month's end: its last days are the next month's, marked on the picture.
   const carry = useMemo(() => tripCarryInPack(bidPack, trip), [bidPack, trip]);
+  const [mode, setMode] = useTimeMode();
   return (
     <div className="min-w-0">
       {tag && <TripTag bidPack={bidPack} trip={trip} carry={carry} />}
-      <div className={tag ? "mt-2" : ""}>
-        <TripPicture trip={trip} bidPeriodStart={bidPack.bidPeriodStart} carryOver={carry} compact={compact} />
+      {toggle && (
+        <div className={tag ? "mt-2" : ""}>
+          <TimeModeToggle mode={mode} onChange={setMode} />
+        </div>
+      )}
+      <div className={tag || toggle ? "mt-2" : ""}>
+        <TripPicture trip={trip} mode={mode} bidPeriodStart={bidPack.bidPeriodStart} carryOver={carry} compact={compact} />
       </div>
       <details className="group mt-1">
         <summary className="cursor-pointer list-none text-2xs text-ink-faint marker:hidden hover:text-ink-muted">
@@ -44,7 +53,7 @@ export function TripGlance({ bidPack, trip, tag = true, compact = true }: { bidP
           <span className="hidden group-open:inline">Hide text</span>
         </summary>
         <ul className="mt-1 space-y-1 border-l-2 border-border-strong pl-2.5 font-mono text-2xs leading-relaxed text-ink-muted [overflow-wrap:anywhere]">
-          {tripDuties(trip).map((d, i) => (
+          {tripDuties(trip, mode).map((d, i) => (
             <li key={i}>{d}</li>
           ))}
         </ul>
@@ -53,7 +62,7 @@ export function TripGlance({ bidPack, trip, tag = true, compact = true }: { bidP
   );
 }
 
-/** One trip of a line, folded to its headline; open, its picture. */
+/** One trip of a line, folded to its headline; open, its picture — on the clock the line's calendar above it is switched to. */
 export function TripFold({ bidPack, trip }: { bidPack: BidPack; trip: Trip }) {
   return (
     <details className="group border-l-2 border-border-strong pl-2.5">
@@ -67,7 +76,7 @@ export function TripFold({ bidPack, trip }: { bidPack: BidPack; trip: Trip }) {
         {tripHeadline(bidPack, trip, formatHoursValue)}
       </summary>
       <div className="mt-2">
-        <TripGlance bidPack={bidPack} trip={trip} tag={false} />
+        <TripGlance bidPack={bidPack} trip={trip} tag={false} toggle={false} />
       </div>
     </details>
   );

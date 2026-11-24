@@ -18,7 +18,7 @@ import type { CityMark } from "@/types/preferences";
 /**
  * A trip the way the month calendar draws its days, one row per day and bigger: each leg a bold line with a tick at
  * each end, to scale and placed by the time of day, midnight at the left and midnight at the right — blue flown,
- * magenta deadheaded — its times over its ends, its cities and flight number under it. Each layover is a green line
+ * magenta deadheaded — its cities and flight number under it. Each layover is a green line
  * under the flying with the hotel van (GT) a cyan mark at each end, apart from the line, and "L/O OAK 28h" and the hotel on it. Every day
  * stands the same height. Beside each day, when its duty starts: "Rpt" on the trip's first, "P/U" — the hotel pickup
  * — after a layover. The rows are the base's own calendar days, on the base's clock — so a trip's days line up with

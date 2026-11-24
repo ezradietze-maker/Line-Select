@@ -282,8 +282,8 @@ function TripLegendInfo() {
                   duty. L is local, Z Zulu.
                 </li>
                 <li>
-                  Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight, its times over its
-                  ends, its cities and flight number under it. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding
+                  Each flight is a <span className="font-medium text-leg">blue</span> line with a tick at each end, as long as the flight, its cities and
+                  flight number under it; tap the day for its times. A <span className="font-medium text-deadhead">magenta</span> line is a deadhead, riding
                   along; <span className="font-mono">CAB</span> a ride between airports by road. A <span className="font-medium text-standby">violet</span> bar
                   is hotel standby ({STANDBY_TOOLTIP.split(" — ")[1]}). A flight still in the air at midnight runs off the right edge and on into the next row.
                 </li>
