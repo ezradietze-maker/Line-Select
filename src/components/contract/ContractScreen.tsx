@@ -92,6 +92,26 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
     };
   }, []);
 
+  // The box is pinned above the tab bar while it fits between that and the top bar. Taller (a short screen, or a phone
+  // with its text at 200%), pinned it covered the page and its last line went under the tab bar: it sits at the page's
+  // end instead. Its height, not the screen's alone, as the text size grows it.
+  const box = useRef<HTMLFormElement>(null);
+  const [pinned, setPinned] = useState(true);
+  useEffect(() => {
+    const form = box.current;
+    if (!form) return;
+    const bars = () => [...document.querySelectorAll<HTMLElement>('[data-top-bar], nav[aria-label="Main"]')].reduce((a, e) => a + e.offsetHeight, 0);
+    const check = () => setPinned(form.offsetHeight <= window.innerHeight - bars());
+    // The first callback comes as soon as it's observed.
+    const observer = new ResizeObserver(check);
+    observer.observe(form);
+    window.addEventListener("resize", check);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, []);
+
   // With the answer all showing, the view stops following: several quotes under it would otherwise push it off the top.
   // The question goes to the top instead, with the answer and the first quotes in view.
   const onSettled = useCallback((turn: HTMLElement) => {
@@ -177,7 +197,8 @@ export function ContractScreen({ bidPack, userId, prefilled }: ContractScreenPro
       </div>
 
       <form
-        className="sticky bottom-[var(--shell-bottom)] z-20 -mx-4 bg-canvas px-4 pb-3 pt-2"
+        ref={box}
+        className={`${pinned ? "sticky bottom-[var(--shell-bottom)] z-20" : ""} -mx-4 bg-canvas px-4 pb-3 pt-2`}
         onSubmit={(e) => {
           e.preventDefault();
           void ask(question);
