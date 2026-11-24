@@ -23,7 +23,10 @@ export function rankingAsShown(bidPack: BidPack, profile: PreferenceProfile, use
   // Scored as it will fly with the pilot's carry-in and vacation, the way My Rankings does.
   const flown = flownAsShown(bidPack, profile, userId);
   // Scores as My Rankings shows them: the Satisfaction Index (`lib/satisfaction-index.ts`).
-  const ranked = withSatisfactionIndex(rankedAsFlown(rankLines(flown.pack, profile, {}, computeImplicitLineValues(bidPack), undefined, undefined, flights ?? undefined), bidPack, flown));
+  const implicit = computeImplicitLineValues(bidPack);
+  // Lines the month leaves the same (a vacation taking every trip off) are told apart by the lines as printed.
+  const printed = flown.pack === bidPack ? null : new Map(rankLines(bidPack, profile, {}, implicit, undefined, undefined, flights ?? undefined).map((r) => [r.line.id, r.score]));
+  const ranked = withSatisfactionIndex(rankedAsFlown(rankLines(flown.pack, profile, {}, implicit, undefined, undefined, flights ?? undefined), bidPack, flown, printed));
   const valid = new Set(bidPack.lines.map((l) => l.id));
   const placed = applyPlacements(ranked, prunePlacements(loadPlacements(userId, bidPack.id), valid), (r) => r.line.id);
   return applyTiers(placed, pruneTiers(loadTiers(userId, bidPack.id), valid), (r) => r.line.id);

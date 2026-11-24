@@ -663,10 +663,16 @@ export function ResultsView({
   // per bid pack (with the warm-up, and kept with the pack) and reused both
   // by scoring below and by every drag judgment, rather than recomputed per use.
   const implicitValuesByLine = useMemo(() => (warmUp.ready ? implicitLineValuesFor(bidPack) : NO_IMPLICIT_VALUES), [bidPack, warmUp.ready]);
+  // Each line scored as the pack prints it, when the pilot's month changes the pack (a vacation, a carry-in): lines the
+  // month leaves the same — a vacation taking every trip off them — are told apart by these (`tiesByPrinted`).
+  const printedScores = useMemo(
+    () => (warmUp.ready && rankingFlown.pack !== bidPack ? new Map(rankLines(bidPack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined).map((r) => [r.line.id, r.score])) : null),
+    [warmUp.ready, bidPack, rankingFlown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+  );
   const scoredLines = useMemo(
     // The fit scores shown as the Satisfaction Index, spread for this pack (`lib/satisfaction-index.ts`); the order is the ranking's.
-    () => (warmUp.ready ? withSatisfactionIndex(rankedAsFlown(rankLines(rankingFlown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, rankingFlown)) : []),
-    [warmUp.ready, bidPack, rankingFlown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights]
+    () => (warmUp.ready ? withSatisfactionIndex(rankedAsFlown(rankLines(rankingFlown.pack, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights ?? undefined), bidPack, rankingFlown, printedScores)) : []),
+    [warmUp.ready, bidPack, rankingFlown, profile, hotelQualityData, implicitValuesByLine, profileRichness, priorTopLines, flights, printedScores]
   );
   // The index's range this month, for the key over the list.
   const indexRange = useMemo(() => (scoredLines.length ? { best: Math.max(...scoredLines.map((r) => r.score)), worst: Math.min(...scoredLines.map((r) => r.score)) } : null), [scoredLines]);
