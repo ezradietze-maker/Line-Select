@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { TripGlance } from "@/components/interview/TripGlance";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useMemo, useState } from "react";
+import { TripGlance, TripTag } from "@/components/interview/TripGlance";
+import { ChevronDownIcon } from "@/components/ui/icons";
+import { tripCarryInPack } from "@/lib/bid-month";
+import { tripRoute } from "@/lib/brain/line-text";
 import { TimeModeToggle } from "@/components/results/TimeModeToggle";
 import { QuestionPrompt, RevealControls } from "@/components/interview/QuestionPrompt";
 import { Button } from "@/components/ui/Button";
@@ -28,17 +32,56 @@ const GRADE_LABEL: Record<TripGrade, string> = { love: "Love it", good: "Good", 
 /** Trips they have to grade before they can go on — a trip they can't judge can be left blank. */
 const MIN_GRADED = 4;
 
-function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; trip: Trip; label: string; grade: TripGrade | undefined; onGrade: (g: TripGrade) => void }) {
+/**
+ * One trip to grade, folded to a row — its name, tag (number, credit, when, how long) and where it goes — with its grades
+ * under it, tapped open to the trip day by day. Eight trips shown whole made the screen several phone-heights long
+ * (the owner, Nov 24); folded, the screen fits and any trip is a tap away.
+ */
+function TripCard({ bidPack, trip, label, grade, onGrade, open, onToggle }: { bidPack: BidPack; trip: Trip; label: string; grade: TripGrade | undefined; onGrade: (g: TripGrade) => void; open: boolean; onToggle: () => void }) {
   const id = `trip-${tripKey(trip).replace(/[^a-z0-9]/gi, "-")}`;
+  const reduceMotion = useReducedMotion();
+  const carry = useMemo(() => tripCarryInPack(bidPack, trip), [bidPack, trip]);
   return (
-    <li className={`rounded-xl border p-3.5 transition-colors ${grade ? "border-brand/50 bg-brand-soft/30" : "border-border bg-surface"}`}>
-      <p id={`${id}-label`} className="font-display text-lg font-semibold text-ink">
-        {label}
-      </p>
-      <div className="mt-1">
-        <TripGlance bidPack={bidPack} trip={trip} toggle={false} />
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5" role="radiogroup" aria-labelledby={`${id}-label`}>
+    <li className={`overflow-hidden rounded-xl border transition-colors ${grade ? "border-brand/50 bg-brand-soft/30" : "border-border bg-surface"}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={`${id}-days`}
+        className="flex w-full items-center gap-3 px-3.5 pt-3 pb-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand"
+      >
+        <span className="min-w-0 flex-1">
+          <span id={`${id}-label`} className="block font-display text-base font-semibold leading-snug text-ink">
+            {label}
+          </span>
+          <span className="mt-0.5 block">
+            <TripTag bidPack={bidPack} trip={trip} carry={carry} />
+          </span>
+          <span className="mt-1 block font-mono text-2xs leading-relaxed text-ink-muted [overflow-wrap:anywhere]">{tripRoute(trip)}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1 text-2xs text-ink-faint">
+          <span className="hidden sm:inline">{open ? "Hide days" : "Show days"}</span>
+          <ChevronDownIcon className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+        </span>
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="days"
+            id={`${id}-days`}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="px-3.5 pb-1">
+              <TripGlance bidPack={bidPack} trip={trip} tag={false} toggle={false} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <div className="flex flex-wrap gap-1.5 px-3.5 pt-1 pb-3" role="radiogroup" aria-labelledby={`${id}-label`}>
         {TRIP_GRADES.map((g, i) => (
           <button
             key={g}
@@ -66,6 +109,13 @@ function TripCard({ bidPack, trip, label, grade, onGrade }: { bidPack: BidPack; 
  */
 export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip }: TripSortStepProps) {
   const [grades, setGrades] = useState<Record<string, TripGrade>>({});
+  const [opened, setOpened] = useState<Set<string>>(() => new Set());
+  const toggle = (k: string) =>
+    setOpened((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(k)) next.add(k);
+      return next;
+    });
   const [why, setWhy] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +144,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
       <QuestionPrompt
         eyebrow={eyebrow}
         title={title}
-        help={`Real trips from your best lines${index > 0 ? ` (set ${index + 1})` : ""}. Grade each one the way you'd size it up on a trade board — just the trip, not the line it's on. Your grades shape how every trip on your results is scored, and how your lines are ranked.`}
+        help={`Real trips from your best lines${index > 0 ? ` (set ${index + 1})` : ""}. Grade each one the way you'd size it up on a trade board — just the trip, not the line it's on. Tap a trip to see it day by day. Your grades shape how every trip on your results is scored, and how your lines are ranked.`}
       />
       <RevealControls title={title} className="mt-6">
         <div className="mb-2">
@@ -103,7 +153,7 @@ export function TripSortStep({ eyebrow, screen, bidPack, index, onAnswer, onSkip
         <ul className="space-y-2.5">
           {screen.keys.map((k) => {
             const t = trips.get(k);
-            return t ? <TripCard key={k} bidPack={bidPack} trip={t} label={screen.labels[k]} grade={grades[k]} onGrade={(g) => setGrades((prev) => ({ ...prev, [k]: g }))} /> : null;
+            return t ? <TripCard key={k} bidPack={bidPack} trip={t} label={screen.labels[k]} grade={grades[k]} onGrade={(g) => setGrades((prev) => ({ ...prev, [k]: g }))} open={opened.has(k)} onToggle={() => toggle(k)} /> : null;
           })}
         </ul>
 

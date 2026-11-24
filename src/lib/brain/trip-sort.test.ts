@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askedTripScreens, choicesFromGrades, pickTripScreen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, MAX_SCREENS, MIN_SCREENS } from "@/lib/brain/trip-sort";
+import { askedTripScreens, choicesFromGrades, pickTripScreen, tripGradesAnswer, tripGradesTranscript, tripsShownSoFar, wantsAnotherScreen, MAX_SCREENS, MIN_SCREENS } from "@/lib/brain/trip-sort";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLinesWithTrips, TRIP_LEAN } from "@/lib/scoring-v2/trip-score";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -72,6 +72,18 @@ describe("trip grades", () => {
     const second = pickTripScreen(pack, model, pm, askedTripScreens(transcript), { size: 5 })!;
     expect(pairings(second.keys).some((p) => pairings(first.keys).includes(p))).toBe(false);
     expect(tripGradesAnswer(first, { [first.keys[0]]: "love" }, "short and easy")).toBe(`${first.labels[first.keys[0]]}: love. Why: short and easy`);
+  });
+
+  it("leaves out trips shown anywhere earlier: a trip choice, an example under a question, or a screen", () => {
+    const pm = prepareMetrics(pack);
+    const first = pickTripScreen(pack, model, pm, [], { size: 5 })!;
+    const [a, b] = first.keys.map((k) => k.split("@")[0]);
+    const asked = [{ question: `Which trip would you rather fly? [Trip #${a} · Sep 29 {${a}@1} vs Trip #${a} · Oct 8 {${a}@10}: …]` }, { question: `How do you feel about long duty periods? (Examples shown: Trip #${b} · Oct 8 — 13 hours.)` }];
+    const shownTrips = tripsShownSoFar(pack, asked);
+    expect([...shownTrips].sort()).toEqual([a, b].sort());
+    const again = pickTripScreen(pack, model, pm, [], { size: 5, shownTrips })!;
+    expect(again.keys.map((k) => k.split("@")[0])).not.toContain(a);
+    expect(again.keys.map((k) => k.split("@")[0])).not.toContain(b);
   });
 });
 
