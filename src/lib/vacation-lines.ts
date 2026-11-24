@@ -4,7 +4,7 @@ import { formatHoursValue } from "@/lib/interview-config";
 import type { CarryInState } from "@/lib/carry-in-storage";
 import { findMyVacation, type MyVacation } from "@/lib/my-vacation";
 import { namedWithHours, tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
-import { CH_PER_VACATION_DAY, chargedToBank, freeTimeReasons, shifted, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
+import { CH_PER_VACATION_DAY, chargedToBank, expandedSpan, freeTimeReasons, shifted, vacationRemovals, vacationSpan, type RemovedTrip } from "@/lib/vacation-slide";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import type { SeniorityInput } from "@/types/strategy";
@@ -60,10 +60,28 @@ export interface VacationLine {
  */
 export interface VacationPlacement {
   offsets: Record<string, number>;
+  /**
+   * CBA 2026 7.E.3: days each vacation is expanded, before (earlier) and after (later), beyond its slid span, to take off
+   * more trips. Absent, the vacation is only slid. Placed by `vacation-engine.ts`.
+   */
+  expand?: Record<string, { before: number; after: number }>;
   waiveFrontBuffer?: boolean;
 }
 
 const name = (t: Trip) => (t.pairingNumber ? `trip ${t.pairingNumber}` : "a trip");
+
+/** How the vacation was moved, in a pilot's words: slid, expanded, or both. Empty when it sits where the pack has it. */
+function placementPhrase(moved: number | undefined, expanded: { before: number; after: number } | undefined): string {
+  const parts: string[] = [];
+  if (moved) parts.push(`slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}`);
+  if (expanded && (expanded.before || expanded.after)) {
+    const ends: string[] = [];
+    if (expanded.before) ends.push(`${expanded.before} day${expanded.before === 1 ? "" : "s"} earlier`);
+    if (expanded.after) ends.push(`${expanded.after} day${expanded.after === 1 ? "" : "s"} later`);
+    parts.push(`expanded ${ends.join(" and ")}`);
+  }
+  return parts.join(" and ");
+}
 
 /** One line with the pilot's vacations on it. `carriedDays`: days a carry-in is still flying, which a vacation can't make free here. */
 export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenVacation[], carriedDays: Set<number> = new Set(), placement?: VacationPlacement): VacationLine {
@@ -83,7 +101,10 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
     // Where this line has it: as awarded, or slid whole days (CBA 2026 7.E.2.a, 7.G.1: "slides as a whole"). A slide brings
     // in 7.E.2.c's 48 hours after an international trip; the front buffer is waived only where the pilot can (`placement`).
     const offset = placement?.offsets[vacationId(vacation)] ?? 0;
-    const span = offset ? shifted(vacation, offset, zone) : vacationSpan(vacation);
+    const slidSpan = offset ? shifted(vacation, offset, zone) : vacationSpan(vacation);
+    // CBA 2026 7.E.3: the vacation may also be expanded whole days outward, past its slid span, to take off more trips.
+    const exp = placement?.expand?.[vacationId(vacation)];
+    const span = exp && (exp.before || exp.after) ? expandedSpan(slidSpan, exp.before, exp.after, zone) : slidSpan;
     placed.push(span);
     const hit = vacationRemovals(flown, pack, span, { slid: offset !== 0, waiveFrontBuffer: placement?.waiveFrontBuffer });
     removed.push(...hit);
@@ -98,7 +119,9 @@ export function flyVacationsOnLine(line: Line, pack: BidPack, vacations: ChosenV
   const off = `${flown.daysOff} days off${longestOff ? `, ${longestOff} in a row` : ""}`;
   let reason: string;
   const moved = active.map(({ vacation }) => placement?.offsets[vacationId(vacation)] ?? 0).find((o) => o !== 0);
-  const slid = moved ? `Slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}, y` : "Y";
+  const expanded = active.map(({ vacation }) => placement?.expand?.[vacationId(vacation)]).find((e) => !!e && (e.before > 0 || e.after > 0));
+  const phrase = placementPhrase(moved, expanded ?? undefined);
+  const slid = phrase ? `${phrase[0].toUpperCase()}${phrase.slice(1)}, y` : "Y";
   if (!removed.length) {
     reason = `${slid}our vacation sits on days this line already has off, so your bank isn't charged: ${off}.`;
   } else {

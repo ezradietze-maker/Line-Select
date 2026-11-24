@@ -1,7 +1,8 @@
 import { longestDaysOffBlock, weekendDaysOff } from "@/lib/days-off-pattern";
+import { zoneOf } from "@/lib/phase-in";
 import { tripReleaseHours, tripReportUtc } from "@/lib/trip-anchor";
 import { flyVacationsOnLine, vacationId, type ChosenVacation, type VacationLine, type VacationPlacement } from "@/lib/vacation-lines";
-import { frontBufferWaivable, periodSpan, slideChecks, type SlideCheck } from "@/lib/vacation-slide";
+import { expandedSpan, expansionLimitCH, expansionReach, frontBufferWaivable, periodSpan, slideChecks, touchesHoliday, type SlideCheck } from "@/lib/vacation-slide";
 import type { BidPack, Line } from "@/types/bidpack";
 
 /**
@@ -20,10 +21,13 @@ const HOUR = 3_600_000;
 /** What one placement does to one line, in the terms a goal weighs. */
 export interface VacationOption {
   placement: VacationPlacement;
-  /** "0", "+3", "-2/+1" (two vacations), "+3w" (front buffer waived): the same placement on every line has the same key. */
+  /** "0", "+3", "-2/+1" (two vacations), "+2x1_0" (expanded 1 day earlier), "+3w" (front buffer waived): the same placement on every line has the same key. */
   key: string;
-  /** Days moved in all, each vacation's counted: 0 as awarded. */
+  /** Days moved and expanded in all, each vacation's counted: 0 as awarded. The least-change tiebreak and "as awarded" default. */
   shift: number;
+  /** CBA 2026 7.E.3: days the vacation is expanded past its slide, earlier and later. 0 for a plain slide. */
+  expandBefore: number;
+  expandAfter: number;
   daysOff: number;
   longestOff: number | null;
   weekendsOff: number | null;
@@ -53,7 +57,8 @@ function legalSlides(vacations: ChosenVacation[], pack: BidPack): Map<string, Sl
   return new Map(vacations.map(({ vacation }) => [vacationId(vacation), slideChecks(vacation, pack).filter((c) => c.legal)]));
 }
 
-const keyOf = (offsets: number[], waived: boolean) => offsets.map((o) => (o > 0 ? `+${o}` : String(o))).join("/") + (waived ? "w" : "");
+const keyOf = (offsets: number[], waived: boolean, expand?: { before: number; after: number }) =>
+  offsets.map((o) => (o > 0 ? `+${o}` : String(o))).join("/") + (expand && (expand.before || expand.after) ? `x${expand.before}_${expand.after}` : "") + (waived ? "w" : "");
 
 /** Every combination of the vacations' offsets (two vacations: up to 11 × 11), as awarded first. */
 function combinations(lists: number[][]): number[][] {
@@ -62,12 +67,14 @@ function combinations(lists: number[][]): number[][] {
   return out.sort((a, b) => a.reduce((s, o) => s + Math.abs(o), 0) - b.reduce((s, o) => s + Math.abs(o), 0));
 }
 
-function optionFrom(placement: VacationPlacement, offsets: number[], waived: boolean, vl: VacationLine, pack: BidPack): VacationOption {
+function optionFrom(placement: VacationPlacement, offsets: number[], waived: boolean, vl: VacationLine, pack: BidPack, expand: { before: number; after: number } = { before: 0, after: 0 }): VacationOption {
   const flown = vl.line;
   return {
     placement,
-    key: keyOf(offsets, waived),
-    shift: offsets.reduce((s, o) => s + Math.abs(o), 0),
+    key: keyOf(offsets, waived, expand),
+    shift: offsets.reduce((s, o) => s + Math.abs(o), 0) + expand.before + expand.after,
+    expandBefore: expand.before,
+    expandAfter: expand.after,
     daysOff: flown.daysOff,
     longestOff: longestDaysOffBlock(flown),
     weekendsOff: weekendDaysOff(flown, pack.bidPeriodStart),
@@ -91,6 +98,7 @@ export function lineVacationOptions(line: Line, pack: BidPack, vacations: Chosen
   const ids = active.map(({ vacation }) => vacationId(vacation));
   if (!active.length) return { lineId: line.id, options: [], reach: [] };
   const period = periodSpan(pack);
+  const zone = zoneOf(pack);
   const waivable = frontBufferWaivable(pack.month);
   const carriesOver = (vl: VacationLine) => period !== null && vl.removed.some((r) => {
     const report = tripReportUtc(pack, r.trip);
@@ -111,6 +119,31 @@ export function lineVacationOptions(line: Line, pack: BidPack, vacations: Chosen
     if (waivable && vl.removed.some((r) => r.rule === "buffer-before" && r.waivable)) {
       const kept = { ...placement, waiveFrontBuffer: true };
       options.push(optionFrom(kept, offsets, true, flyVacationsOnLine(line, pack, vacations, carriedDays, kept), pack));
+    }
+    // CBA 2026 7.E.3: in addition to the slide, expand the vacation outward to take off more credit. One vacation only
+    // (the common case); two in a month are left to slides. Reuses the tested checks in `vacation-slide.ts`.
+    if (active.length === 1 && period) {
+      const id = ids[0];
+      const slide = (slides.get(id) ?? []).find((c) => c.offset === offsets[0]);
+      const limit = expansionLimitCH(active[0].vacation.days);
+      // 7.E.3.c: expand only from a span in this bid period; 7.E.3.b: the slide's own conflict must already be within the cap.
+      if (slide && slide.span.start < period.end && vl.chargedCH <= limit) {
+        const taken = new Set(vl.removed.map((r) => r.trip));
+        const { before, after } = expansionReach(line, pack, slide.span, taken);
+        for (const [b, a] of [[before, 0], [0, after], [before, after]] as [number, number][]) {
+          if (b === 0 && a === 0) continue;
+          // 7.E.3.c again: a day added before this bid month was last month's window to ask for.
+          if (b > 0 && expandedSpan(slide.span, b, 0, zone).start < period.start) continue;
+          const expand = { before: b, after: a };
+          const expanded: VacationPlacement = { offsets: placement.offsets, expand: { [id]: expand } };
+          const evl = flyVacationsOnLine(line, pack, vacations, carriedDays, expanded);
+          // 7.E.3.b cap on the whole conflict; 7.E.3.d no holiday trip pulled in; and it must take off something new.
+          if (evl.unchecked || evl.chargedCH > limit) continue;
+          const added = evl.removed.filter((r) => !taken.has(r.trip));
+          if (!added.length || added.some((r) => touchesHoliday(r.trip, pack))) continue;
+          options.push(optionFrom(expanded, offsets, false, evl, pack, expand));
+        }
+      }
     }
   }
   const reach = ids.map((id) => {
@@ -209,7 +242,9 @@ export function compareOptions(goal: VacationGoal, a: VacationOption, b: Vacatio
     const d = aimValue(aim, b) - aimValue(aim, a);
     if (Math.abs(d) > SAME) return d;
   }
-  return a.shift - b.shift || Number(a.waived) - Number(b.waived);
+  // Least change first, then a slide ahead of an expansion (the bigger ask) on a true tie, then the trip kept without a waiver.
+  const expanded = (o: VacationOption) => Number(o.expandBefore > 0 || o.expandAfter > 0);
+  return a.shift - b.shift || expanded(a) - expanded(b) || Number(a.waived) - Number(b.waived);
 }
 
 /** The line's best placement for the goal; as awarded with no goal, or none to choose from. */

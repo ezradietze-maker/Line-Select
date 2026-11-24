@@ -66,7 +66,7 @@ const offsetOf = (g: VacationGoal) => bestOption(opts, g)!.placement.offsets[vac
 
 describe("every legal place the vacation can go on a line", () => {
   it("lists all 11 whole-day slides (CBA 2026 7.E.2.a), as awarded first", () => {
-    expect(opts.options.map((o) => o.key)).toEqual(["0", "-1", "+1", "-2", "+2", "-3", "+3", "-4", "+4", "-5", "+5"]);
+    expect(opts.options.filter((o) => !o.expandBefore && !o.expandAfter).map((o) => o.key)).toEqual(["0", "-1", "+1", "-2", "+2", "-3", "+3", "-4", "+4", "-5", "+5"]);
     expect(opts.reach).toEqual([{ id: vacationId(V), earlier: 5, later: 5 }]);
   });
 
@@ -167,5 +167,55 @@ describe("ranked with the slide (the pilot's switch on)", () => {
     expect(slid.pack.lines.find((l) => l.id === L.id)!.daysOff).toBe(best.daysOff);
     expect(measured(slid.pack)).toBe(best.daysOff);
     expect(measured(slid.pack)).toBeGreaterThan(measured(asAwarded.pack));
+  });
+});
+
+describe("expanding the vacation to take off more (CBA 2026 7.E.3)", () => {
+  // Trip B on 14–15 (20 CH), and trip C on days 1–2 (12 CH) — too far before the vacation for any 5-day slide to reach.
+  const Bf = trip("202", 14, { credit: 20, cities: ["HNL"] });
+  const C = trip("303", 1, { credit: 12, cities: ["IND"] });
+  const Lc = line([C, Bf], "1003");
+  const Pc = pack([Lc]);
+  const Vc = vac(10); // 7 days: the cap is 7 × 6 + 6 = 48 CH
+  const optsC = lineVacationOptions(Lc, Pc, [taking(Vc)]);
+
+  it("reaches a trip no slide can, under the credit cap", () => {
+    const slideMax = Math.max(...optsC.options.filter((o) => !o.expandBefore && !o.expandAfter).map((o) => o.bankCH));
+    expect(slideMax).toBe(20); // the best a slide alone does is take off trip B
+    const best = bestOption(optsC, goal({ kind: "credit" }))!;
+    expect(best.bankCH).toBe(32); // B + C, within the 48 CH cap
+    expect(best.removedPairings.sort()).toEqual(["202", "303"]);
+    expect(best.expandBefore).toBeGreaterThan(0);
+  });
+
+  it("prefers a plain slide when it does as well — expansion is the bigger ask", () => {
+    // In the default fixture trip A is within slide reach, so a slide maxes credit and no expansion is chosen.
+    const best = bestOption(opts, goal({ kind: "credit" }))!;
+    expect(best.expandBefore).toBe(0);
+    expect(best.expandAfter).toBe(0);
+  });
+
+  it("keep-bank never expands: it wants the least off the line", () => {
+    const best = bestOption(optsC, goal({ kind: "keep-bank" }))!;
+    expect(best.expandBefore).toBe(0);
+    expect(best.expandAfter).toBe(0);
+  });
+
+  it("won't pass 6 CH over the vacation's own value (7.E.3.b)", () => {
+    // Trip D on 8–9 is 40 CH. D + B = 60 CH blows the 48 CH cap, so no expansion pulls D in (a slide still can).
+    const D = trip("404", 8, { credit: 40, cities: ["IND"] });
+    const Ld = line([D, Bf], "1004");
+    const optsD = lineVacationOptions(Ld, pack([Ld]), [taking(vac(10))]);
+    expect(optsD.options.filter((o) => o.expandBefore || o.expandAfter).every((o) => !o.removedPairings.includes("404"))).toBe(true);
+  });
+
+  it("one path for the math: the ranking flies the expanded vacation as its option promised", () => {
+    const g = goal({ kind: "credit" });
+    const all = vacationOptions(Pc, [taking(Vc)]);
+    const flown = flySchedule(Pc, { items: [], elections: NO_ELECTIONS }, [taking(Vc)], bestPlacements(all, g));
+    const vl = flown.vacationLines.get(Lc.id)!;
+    const best = bestOption(all.get(Lc.id)!, g)!;
+    expect(vl.chargedCH).toBe(best.bankCH);
+    expect(vl.reason).toMatch(/Expanded/);
   });
 });

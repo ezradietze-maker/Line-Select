@@ -58,6 +58,19 @@ export function shifted(v: Pick<VacationPeriod, "from" | "to">, days: number, zo
   return { start: move(whole.start), end: move(whole.end) };
 }
 
+/** A span stretched by whole base days, earlier at the start and later at the end (CBA 2026 7.E.3 expansion). Counted on the base's calendar so a clock change doesn't shrink a day. */
+export function expandedSpan(span: Span, before: number, after: number, zone: string): Span {
+  return {
+    start: before ? DateTime.fromMillis(span.start, { zone }).minus({ days: before }).toMillis() : span.start,
+    end: after ? DateTime.fromMillis(span.end, { zone }).plus({ days: after }).toMillis() : span.end,
+  };
+}
+
+/** CBA 2026 7.E.3.b: an expansion's conflict can't pass the vacation's own value (6 CH a day, 7.A.1) by more than 6 CH. */
+export function expansionLimitCH(days: number): number {
+  return days * CH_PER_VACATION_DAY + EXPANSION_OVER_CH;
+}
+
 /** How far this bid month's trips reach: the last release of any line, past the month's end when a trip carries over. */
 export function monthReachEnd(pack: BidPack): number | null {
   const period = periodSpan(pack);
@@ -240,7 +253,7 @@ function holidayDays(year: number): Set<string> {
 }
 
 /** CBA 2026 7.E.3.d: "in whole or in part" on those base days, inside the bid month or past it. */
-function touchesHoliday(trip: Trip, pack: BidPack): boolean {
+export function touchesHoliday(trip: Trip, pack: BidPack): boolean {
   const span = tripSpan(trip, pack);
   if (!span) return false;
   const zone = zoneOf(pack);
@@ -316,6 +329,42 @@ function optionFor(line: Line, pack: BidPack, vacation: VacationPeriod, span: Sp
  * November, or from January into December"; 7.E.3.c, only trips beginning in this bid month; 7.E.3.d, not a trip on
  * "Thanksgiving Day, Christmas Eve, Christmas Day, New Years Eve or New Year's Day".
  */
+/**
+ * How far a vacation can expand on a line from a given (slid) span: the base days to reach the next trip after it and the
+ * prior trip before it, each within this bid month and not already taken (CBA 2026 7.E.3). 0 either way when there's no
+ * trip to reach. The caller checks the cap (7.E.3.b), holidays (7.E.3.d) and the period's own start against what the
+ * reach actually removes. Day by day for a run, as the removals are: a run with one day taken isn't the trip before or after.
+ */
+export function expansionReach(line: Line, pack: BidPack, span: Span, taken: ReadonlySet<Trip>): { before: number; after: number } {
+  const zone = zoneOf(pack);
+  const period = periodSpan(pack);
+  if (!period) return { before: 0, after: 0 };
+  const rest = line.trips.flatMap(dayTripsOf).flatMap((t) => {
+    const s = tripSpan(t, pack);
+    return s && !taken.has(t) ? [{ t, s }] : [];
+  });
+  // Base days, counted on the base's calendar: as 24 hours each, a day across the spring clock change (23 hours) came up
+  // one short, the expansion missed the trip, and the option was never offered.
+  const daysToReach = (from: number, past: (at: number) => boolean, dir: 1 | -1) => {
+    let n = 1;
+    while (n < 60 && !past(DateTime.fromMillis(from, { zone }).plus({ days: dir * n }).toMillis())) n++;
+    return n;
+  };
+  const next = rest.filter((x) => x.s.start >= span.end && x.s.start < period.end).sort((a, b) => a.s.start - b.s.start)[0];
+  const prior = rest.filter((x) => x.s.end <= span.start && x.s.start >= period.start).sort((a, b) => b.s.end - a.s.end)[0];
+  return {
+    before: prior ? daysToReach(span.start, (at) => at < prior.s.end, -1) : 0,
+    after: next ? daysToReach(span.end, (at) => at > next.s.start, 1) : 0,
+  };
+}
+
+/**
+ * CBA 2026 7.E.3, a regular line, every bid period: expanding "in either or both directions to conflict with a greater number of
+ * credit hours". The days before the vacation reaches the next trip each way, when the rules allow them:
+ * 7.E.3.b, the conflict can't pass the vacation's own CH value by "more than 6 CH"; 7.E.3.a, not "from December into
+ * November, or from January into December"; 7.E.3.c, only trips beginning in this bid month; 7.E.3.d, not a trip on
+ * "Thanksgiving Day, Christmas Eve, Christmas Day, New Years Eve or New Year's Day".
+ */
 function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: SlideCheck, base: SlideOption): SlideOption[] {
   const zone = zoneOf(pack);
   const period = periodSpan(pack);
@@ -323,26 +372,10 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
   // 7.E.3.c: not "a trip(s) that begins outside the bid period of the pilot's vacation as awarded or slid". This also keeps
   // December out of November and January out of December (7.E.3.a).
   if (slide.span.start >= period.end) return [];
-  const limit = vacation.days * CH_PER_VACATION_DAY + EXPANSION_OVER_CH;
+  const limit = expansionLimitCH(vacation.days);
   if (base.chargedCH > limit) return [];
   const taken = new Set(base.removed.map((r) => r.trip));
-  // Day by day for a run, as the removals are: whole, a run with one day taken started before the vacation ended, so
-  // it was neither the trip after nor the one before, and the legal day-longer expansion was never offered.
-  const rest = line.trips.flatMap(dayTripsOf).flatMap((t) => {
-    const s = tripSpan(t, pack);
-    return s && !taken.has(t) ? [{ t, s }] : [];
-  });
-  // Base days, counted on the base's calendar: as 24 hours each, a day across the spring clock change (23 hours) came up
-  // one short, the expansion missed the trip after it, and the option was never offered.
-  const daysToReach = (from: number, past: (at: number) => boolean, dir: 1 | -1) => {
-    let n = 1;
-    while (n < 60 && !past(DateTime.fromMillis(from, { zone }).plus({ days: dir * n }).toMillis())) n++;
-    return n;
-  };
-  const next = rest.filter((x) => x.s.start >= slide.span.end && x.s.start < period.end).sort((a, b) => a.s.start - b.s.start)[0];
-  const prior = rest.filter((x) => x.s.end <= slide.span.start && x.s.start >= period.start).sort((a, b) => b.s.end - a.s.end)[0];
-  const after = next ? daysToReach(slide.span.end, (at) => at > next.s.start, 1) : 0;
-  const before = prior ? daysToReach(slide.span.start, (at) => at < prior.s.end, -1) : 0;
+  const { before, after } = expansionReach(line, pack, slide.span, taken);
   const tries: [number, number][] = [
     [before, 0],
     [0, after],
@@ -351,13 +384,11 @@ function expansions(line: Line, pack: BidPack, vacation: VacationPeriod, slide: 
   const out: SlideOption[] = [];
   for (const [b, a] of tries) {
     if (b === 0 && a === 0) continue;
-    if ((b > 0 && !prior) || (a > 0 && !next)) continue;
-    const start = DateTime.fromMillis(slide.span.start, { zone }).minus({ days: b }).toMillis();
-    const end = DateTime.fromMillis(slide.span.end, { zone }).plus({ days: a }).toMillis();
+    const span = expandedSpan(slide.span, b, a, zone);
     // Days added before this month were last month's window to ask for. A vacation awarded from last month into this one
     // still expands forward here: it "may expand within either bid period" (7.E.3.c).
-    if (b > 0 && start < period.start) continue;
-    const option = optionFor(line, pack, vacation, { start, end }, slide.offset, b, a);
+    if (b > 0 && span.start < period.start) continue;
+    const option = optionFor(line, pack, vacation, span, slide.offset, b, a);
     if (option.chargedCH > limit) continue;
     const added = option.removed.filter((r) => !taken.has(r.trip));
     if (!added.length || added.some((r) => touchesHoliday(r.trip, pack))) continue;
