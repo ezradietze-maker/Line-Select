@@ -1,4 +1,5 @@
 import { formatValue } from "@/lib/brain/describe";
+import { LEG_MIX_METRICS, lineLegMix, tripLegMix } from "@/lib/brain/leg-mix";
 import { tripHeadline } from "@/lib/brain/line-text";
 import { tripLabel } from "@/lib/brain/trip-sort";
 import { namedDomicile } from "@/lib/domicile-name";
@@ -95,7 +96,8 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
       const byUtility = [...pool].sort((a, b) => at(a)!.utility - at(b)!.utility || rankOf.get(a.lineNumber)! - rankOf.get(b.lineNumber)!);
       for (const r of [byUtility[byUtility.length - 1], byUtility[0]]) {
         const line = lineOf.get(r.lineNumber)!;
-        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: namedDomicile(formatValue(at(r)!.value!, def), bidPack.base), priority: c.label, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
+        const legs = LEG_MIX_METRICS.has(c.metric) ? lineLegMix(line, pack) : null;
+        add({ kind: "line", ref: line.lineNumber, title: `Line ${line.lineNumber}`, fact: legs ?? namedDomicile(formatValue(at(r)!.value!, def), bidPack.base), priority: c.label, criterionId: c.id, summary: lineBrief(line), rank: rankOf.get(line.lineNumber) });
       }
     }
     // A trip that shows it, where one trip can: the trip from their best lines that does worst on it.
@@ -109,7 +111,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
       if (span >= MIN_GAP) {
         const worst = shown.sort((a, b) => a.r!.utility - b.r!.utility)[0];
         const trip: Trip | undefined = tripOf.get(worst.t.key);
-        const value = tripValueText(worst.r!);
+        const value = (trip && LEG_MIX_METRICS.has(c.metric) ? tripLegMix(trip) : null) ?? tripValueText(worst.r!);
         // A bare "yes" or "no" under a question reads as nonsense ("Trip #83 — no"): a trip only shows a figure it can say.
         if (trip && value && value !== "yes" && value !== "no") add({ kind: "trip", ref: worst.t.key, title: tripLabel(bidPack, trip), fact: namedDomicile(value, bidPack.base), priority: c.label, criterionId: c.id, summary: tripHeadline(bidPack, trip) });
       }
