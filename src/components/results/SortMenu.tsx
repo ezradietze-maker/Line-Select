@@ -148,7 +148,8 @@ function SortDialog({ sort, lines, onClose }: { sort: LineSort; lines: LineScore
         </div>
 
         {active && preview && order && (
-          <div className="rounded-lg border border-hairline bg-canvas/40 p-3 text-sm">
+          // Its padding stays 12px with the text set large, so "Best first" and "Worst first" fit beside each other.
+          <div className="rounded-lg border border-hairline bg-canvas/40 p-[min(0.75rem,12px)] text-sm sm:p-3">
             <div className="font-semibold text-ink">{active.label}</div>
             <p className="mt-1 text-ink-muted">{active.definition}</p>
             {betterLabel(active) && <p className="mt-1 text-xs font-medium text-ink-muted">{betterLabel(active)}</p>}

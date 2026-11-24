@@ -399,7 +399,8 @@ export function MonthLegend({ className = "" }: { className?: string }) {
         </span>
         Layover, to the hour
       </span>
-      <span className="inline-flex items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
+      {/* Wraps: on a 320 phone at 200% text, "dislike" was cut off at the card's edge. */}
+      <span className="inline-flex max-w-full flex-wrap items-center gap-1"><span className="text-good">♥</span>love <span className="text-good">♡</span>like <span className="text-warn">✕</span>dislike</span>
       <span className="inline-flex items-center gap-1">
         <span className="font-mono text-2xs">
           <span className="text-2xs font-semibold text-ink-muted">END </span>

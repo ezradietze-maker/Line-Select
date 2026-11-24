@@ -220,9 +220,11 @@ function TypedVacationForm({ pack, lead, initial, onSave, onCancel }: { pack: Bi
       <p className="text-xs text-ink-muted">{lead}</p>
       {rows.map((r, i) => (
         <div key={i} className="flex flex-wrap items-end gap-2" data-typed-vacation>
-          <label className="text-xs text-ink-muted">
+          {/* No wider than the panel: on a 320 phone with the text at 200% the date field ran 60px past it and the page
+              scrolled sideways. */}
+          <label className="max-w-full text-xs text-ink-muted">
             First day
-            <input type="date" className={`${FIELD} mt-1 block`} min={min} max={max} value={r.firstDay} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, firstDay: e.target.value } : x)))} />
+            <input type="date" className={`${FIELD} mt-1 block max-w-full`} min={min} max={max} value={r.firstDay} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, firstDay: e.target.value } : x)))} />
           </label>
           <label className="text-xs text-ink-muted">
             Days

@@ -206,9 +206,11 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
           >
             Independent prototype &middot; not affiliated with FedEx
           </span>
+          {/* No bigger than 15% of the phone's width: at 200% text "actually" was wider than a 320 phone's column and
+              carried the column, and its buttons, past the right edge. */}
           <h1
             style={rise(1)}
-            className="animate-hero-in mt-6 font-display text-[2.6rem] font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl xl:text-7xl"
+            className="animate-hero-in mt-6 font-display text-[min(2.6rem,15vw)] font-semibold leading-[1.02] tracking-tight text-ink sm:text-6xl xl:text-7xl"
           >
             Find the line that actually fits{" "}
             <span className="text-accent">how you want to fly.</span>

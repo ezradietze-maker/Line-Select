@@ -18,6 +18,9 @@ const MEMBER_FEATURES = [
   "Bid-order export and .ics calendar export",
 ];
 
+/** The Pro card's button: its side padding stays 16px with the text set large, so "membership" fits a 320 phone at 200%. */
+const BIG_TEXT_BUTTON = "max-w-full px-[min(1rem,16px)]";
+
 export default function PricingPage() {
   const router = useRouter();
   const { ready, user, bidPack, handleTrySample } = useAppState();
@@ -36,8 +39,9 @@ export default function PricingPage() {
         }
       />
 
-      {/* Pro, the paid way in, lit in amber. */}
-      <div className="panel-glass relative mt-6 overflow-hidden p-5 sm:p-6">
+      {/* Pro, the paid way in, lit in amber. On a phone its padding, and its button's, stay as they are with the text set
+          large: doubled, "See membership options" was cut at the card's edge on a 320 phone at 200%. */}
+      <div className="panel-glass relative mt-6 overflow-hidden p-[min(1.25rem,20px)] sm:p-6">
         <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />
         {/* Wrapped: at 200% text on a 320 px phone the price ran past the card's edge and was cut. */}
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -62,11 +66,11 @@ export default function PricingPage() {
           {!ready ? (
             <div aria-hidden data-pricing-placeholder className="skeleton-pulse h-[42px] w-52 rounded-md bg-border" />
           ) : user ? (
-            <Button onClick={() => router.push("/membership")}>See membership options</Button>
+            <Button onClick={() => router.push("/membership")} className={BIG_TEXT_BUTTON}>See membership options</Button>
           ) : bidPack ? (
-            <Button onClick={() => router.push("/auth")}>Sign in to start your membership</Button>
+            <Button onClick={() => router.push("/auth")} className={BIG_TEXT_BUTTON}>Sign in to start your membership</Button>
           ) : (
-            <Button onClick={handleTrySample}>Try it with sample data</Button>
+            <Button onClick={handleTrySample} className={BIG_TEXT_BUTTON}>Try it with sample data</Button>
           )}
         </div>
       </div>

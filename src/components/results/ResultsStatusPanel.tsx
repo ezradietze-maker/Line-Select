@@ -42,10 +42,13 @@ function readBidBarOpen(): boolean {
 }
 
 /** A tick in a circle: filled when the step's done. */
-/** No date set yet: a departures board's tiles standing blank, waiting for a time to turn over to. */
+/**
+ * No date set yet: a departures board's tiles standing blank, waiting for a time to turn over to. No wider than its panel:
+ * where the board won't fit (a 320 phone with the text at 200%, where it ran out of the panel) its tiles narrow a little.
+ */
 function EmptyBoard() {
   return (
-    <span role="img" className="inline-flex gap-[3px] align-middle" aria-label="No date set">
+    <span role="img" className="inline-flex max-w-full gap-[3px] align-middle" aria-label="No date set">
       {[..."--:--"].map((ch, i) =>
         ch === ":" ? (
           <span key={i} aria-hidden className="px-px text-ink-faint/50">

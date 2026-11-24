@@ -86,12 +86,14 @@ export function ApproachLights({ className = "" }: { className?: string }) {
       {/* The sign at the end of the runway. */}
       <LogoMark className="absolute left-1/2 top-[12%] h-auto w-[13%] -translate-x-1/2" />
       {route && (
-        <div className="pointer-events-none absolute bottom-[6%] left-1/2 -translate-x-1/2">
-          <div key={active} className="mark-in flex items-center gap-3 whitespace-nowrap rounded-[4px] bg-accent-wash px-3.5 py-2 text-on-wash ring-[1.5px] ring-inset ring-accent">
-            <span className="font-mono text-sm font-medium tabular-nums tracking-wide">
+        // No wider than the picture, its distance under the route where the two won't fit on one row: held to one row, a
+        // 320 phone at 200% text cut "MEM" and "nm" off at the picture's edges.
+        <div className="pointer-events-none absolute bottom-[6%] left-1/2 w-max max-w-full -translate-x-1/2">
+          <div key={active} className="mark-in flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-0.5 rounded-[4px] bg-accent-wash px-3.5 py-2 text-on-wash ring-[1.5px] ring-inset ring-accent">
+            <span className="whitespace-nowrap font-mono text-sm font-medium tabular-nums tracking-wide">
               {route.from} <span className="opacity-70">&rarr;</span> {route.to}
             </span>
-            <span className="text-2xs font-medium opacity-80">
+            <span className="whitespace-nowrap text-2xs font-medium opacity-80">
               {Math.round(route.nm).toLocaleString()} nm
             </span>
           </div>
