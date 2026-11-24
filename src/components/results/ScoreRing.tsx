@@ -22,18 +22,20 @@ interface ScoreRingProps {
   top?: boolean;
   /** A line's Satisfaction Index: shown to one decimal, which sets apart lines a whole number would show as a tie. */
   index?: boolean;
+  /** With `index`, a trip's score: the Trip Index, as Trip Rankings names it, not a line's Satisfaction Index. */
+  trip?: boolean;
 }
 
 /**
  * A line's Satisfaction Index as a boxed score — a number in a ruled box, the way a strip prints it, coloured by how
  * good the score is. (The name stays from the round dial it replaced, so every screen picks the box up as it is.)
  */
-export function ScoreRing({ score, size = 56, capped = false, top = false, index = false }: ScoreRingProps) {
+export function ScoreRing({ score, size = 56, capped = false, top = false, index = false, trip = false }: ScoreRingProps) {
   const shown = index ? formatIndex(score) : String(Math.round(score));
   return (
     <div
       role="img"
-      aria-label={`${index ? "Satisfaction Index" : "Score"} ${shown} out of 100${capped ? ", held down by a limit you set" : ""}`}
+      aria-label={`${index ? (trip ? "Trip Index" : "Satisfaction Index") : "Score"} ${shown} out of 100${capped ? ", held down by a limit you set" : ""}`}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[3px] border-[1.5px] font-display font-extrabold tabular-nums leading-none ${
         top ? "border-sign bg-on-sign text-sign" : `bg-panel ${scoreTone(score, index)}`
       }`}

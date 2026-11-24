@@ -224,7 +224,7 @@ function TripRow({ ranked, rank, bidPack, open, onToggle, details }: { ranked: R
           className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <span className="flex shrink-0 flex-col items-center gap-1">
-            <ScoreRing score={score.score} size={44} index top={rank === 1} capped={score.violations.length > 0} />
+            <ScoreRing score={score.score} size={44} index trip top={rank === 1} capped={score.violations.length > 0} />
             <span className="font-mono text-2xs font-semibold text-ink-muted">#{rank}</span>
           </span>
           <span className="min-w-0 flex-1">

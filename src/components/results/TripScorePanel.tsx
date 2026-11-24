@@ -45,7 +45,7 @@ export function TripScorePanel({ score, index = false }: { score: TripScore; ind
         aria-controls={id}
         className="flex w-full items-center gap-3 px-2.5 py-2 text-left"
       >
-        <ScoreRing score={score.score} size={40} capped={score.violations.length > 0} index={index} />
+        <ScoreRing score={score.score} size={40} capped={score.violations.length > 0} index={index} trip />
         <span className="min-w-0 flex-1">
           <span className="block text-2xs text-ink-faint font-medium">Trip score for you</span>
           <span className={`block text-xs leading-snug ${score.violations.length ? "text-danger" : "text-ink-muted"}`}>{summary(score)}</span>
