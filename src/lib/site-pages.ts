@@ -32,6 +32,7 @@ export const SAVED_STATE_SCREENS = [
   "/strategies",
   "/tools",
   "/trade-board",
+  "/trips",
   "/upload",
   "/view-add",
 ] as const;

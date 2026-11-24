@@ -8,6 +8,7 @@ import {
   GlobeIcon,
   ListIcon,
   MailIcon,
+  PlaneIcon,
   SlidersIcon,
   SwapIcon,
   TargetIcon,
@@ -20,6 +21,7 @@ export type NavTarget =
   | "upload"
   | "preferences"
   | "results"
+  | "trips"
   | "strategies"
   | "view-add"
   | "open-time"
@@ -48,6 +50,7 @@ export const NAV_ITEMS: NavItem[] = [
   { target: "upload", label: "Upload Bid Pack", tabLabel: "Upload", section: "bid", icon: UploadIcon },
   { target: "preferences", label: "Preferences", tabLabel: "Preferences", section: "bid", icon: SlidersIcon },
   { target: "results", label: "My Rankings", tabLabel: "Rankings", section: "bid", icon: TrophyIcon },
+  { target: "trips", label: "Trip Rankings", tabLabel: "Trips", section: "bid", icon: PlaneIcon },
   { target: "strategies", label: "Strategies", tabLabel: "Strategies", section: "bid", icon: TargetIcon },
   { target: "view-add", label: "View/Add", tabLabel: "View/Add", section: "bid", icon: ListIcon, comingSoon: true },
   { target: "open-time", label: "Open Time", tabLabel: "Open Time", section: "bid", icon: ClockIcon, comingSoon: true },
@@ -77,6 +80,7 @@ export function navItemName(item: Pick<NavItem, "label" | "comingSoon">): string
 export function disabledReason(target: NavTarget, hasProfile: boolean, hasBidPack: boolean, ready = true): string | undefined {
   if (!ready) return undefined;
   if (target === "results" && !hasProfile) return "Set your preferences first to see your ranked lines.";
+  if (target === "trips" && !hasProfile) return "Set your preferences first to see your ranked trips.";
   if (target === "strategies" && !hasBidPack) return "Upload a bid pack first to see strategies.";
   if (target === "view-add" && !hasBidPack) return "Upload a bid pack first to build your View/Add list.";
   if (target === "open-time" && !hasBidPack) return "Upload a bid pack first to score open time.";
