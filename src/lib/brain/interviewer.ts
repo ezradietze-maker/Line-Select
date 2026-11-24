@@ -139,7 +139,7 @@ THE RULES THAT COME WITH THEM
 - Never re-ask a settled thread or a question already asked in any wording, and never ask two questions about the same thing. If an answer was vague, at most one follow-up, then move on.
 - Never put a rule in their mouth: they rank lines rather than throw any out. Say firm, hard no, cap, never or rules it out only when their answer did.
 - Never ask about filing grievances, re-bid windows, or whether they'd bid a line they might not hold — every line gets ranked regardless.
-- A bid month is four weeks (eight of the year's) or five (four of them); this pack's is in the brief. A line's last trip can run into the next bid month: that carry-over ("C/O" in the pack) is the next month's, and every count here is the bid month's alone. Say a line "carries 6:08 C/O into November" — never call it a "five-week line".
+- A bid month is four weeks (eight of the year's) or five (four of them); this pack's is in the brief. A line's last trip can run into the next bid month: that carry-over ("C/O" in the pack) is the next month's, and every count here is the bid month's alone. Say a line "carries 6:08 C/O into November" — never call it a "five-week line". C/O never makes this month lighter: a line's credit with its C/O taken out is still a normal month's credit, and the carried trip is flown in this month's last days too, so never offer or imply "fewer days worked this month", "less flying" or "a lighter month" as what C/O does. What C/O changes is next month: its first days go to finishing that trip, its credit counts there, and the carried trip is good or bad like any other.
 
 SHOWING LINES AND TRIPS
 A their-words, feature or their-number question can show EXAMPLES YOU MAY SHOW (set examples to their ids): two lines at the two ends of the one thing you're asking about, with their figure, or one trip — never lines and a trip together. Take them from the group of the priority the question is about. If no group shows the very thing you're asking (a hotel-standby stretch, a deadhead from home, one city like IND), show none, or name the real line that has it in helpText and it will be shown. Every line or trip you name in the question is shown under it. A real-choice question shows its two lines or trips itself: no examples.
@@ -151,11 +151,12 @@ PILOT WORDS
 Say things the way the pack prints them and a pilot says them. A word this pilot brought up themselves can be said back to them, but only because they said it. Their priorities' names and the fleet notes don't count as their words. Otherwise:
 ${pilotWordsForPrompt()}
 Write as you'd say it out loud: whole, plain sentences, never a label and a number glued together, never shorthand from a trip's summary ("×4 standby days" is "four standby days"). Times and lengths the way you'd say them: "a 9:50 pm show", "about 13 hours". Their priorities' names are written as wishes ("Avoid duty periods over 12 hours"): talk about the thing itself ("long duty periods").
+Legs are counted by duty period, the way pilots say them: a duty period with one leg is a single-leg duty period, two legs a two-leg duty period, three a three-leg duty period. Say a line's legs as its duty periods ("two two-leg duty periods, the rest single-leg", "all single-leg duty periods", "one three-leg duty period"). Always "duty period", never "duty" or "duties" on its own, and never "extra legs", "legs in multi-leg duties", or a single-leg duty period with more legs.
 
 THE FORM OF THE QUESTION (kind)
 - line-pair: a real choice between two lines. Set pairIndex to the offered pair. The prompt asks which they'd bid higher, naming both lines ("Which line would you bid higher: 2031 or 2044?").
 - How to describe the two lines (or trips) in helpText: name their features, the way one pilot tells another about a line — "2035 gives you 16 days off, but more night flying. 2068 has less night flying and more credit, but 3 fewer days off." For a trip: "#79 is an 11-day trip with three full days off in Honolulu, but it's hard on your body clock." Use the differences as listed ("has less night flying", "easier on the body clock", "more time in cities you like"). Keep numbers only where a pilot counts them on a line: days off, trips, departures, credit, days in a trip, long duty periods, early shows, layovers in a city. Never an hours total ("5.1 hours after midnight", "138 hours in cities you like"), a score ("33/100"), a percentage, or a 24-hour time. At most three features per line, the ones that matter most to them, each on the right line.
-- trip-pair: a real choice between two trips, when what's being weighed shows up trip by trip (a deadhead from home against a layover they love, one-leg duties against pay per day away). Set tripPairIndex to an offered trip pair. The prompt asks which they'd rather fly, naming both ("Which trip would you rather fly: #50 on Oct 1 or #104 on Oct 2?"); helpText says the two or three differences that matter most to them. At most two in an interview — the trip grades at the end cover many trips at once.
+- trip-pair: a real choice between two trips, when what's being weighed shows up trip by trip (a deadhead from home against a layover they love, single-leg duty periods against pay per day away). Set tripPairIndex to an offered trip pair. The prompt asks which they'd rather fly, naming both ("Which trip would you rather fly: #50 on Oct 1 or #104 on Oct 2?"); helpText says the two or three differences that matter most to them. At most two in an interview — the trip grades at the end cover many trips at once.
 - choice: 2–4 concrete options make it quicker (they can still add a note), like how they feel about hotel standby: "I like them / I don't mind / I'd rather fly". Options mutually exclusive, in their terms.
 - free-text: everything else.
 
@@ -308,6 +309,16 @@ const WHAT_IS_IT_ABOUT = /\bwhat is it about\b/i;
 const MORE_STOPS_MATTERING = /\bstops? (?:mattering|adding|helping|counting)\b|\b(?:is|feels like) (?:plenty|enough)\b|\bhow (?:many|much)\b[^?]*\b(?:is|would be) (?:plenty|enough)\b|\bstop(?:s)? (?:being )?worth\b/i;
 /** Text that fixes itself as it goes: "…on 2043's side. Correction: 2043 has…" (a replayed turn, Nov 2026). */
 const SELF_CORRECTION = /\b(?:correction|I mean|scratch that|sorry)\b\s*[:,—–-]/i;
+/** A carry-over named in the question ("carries a long trip into next month", "15:18 C/O"). */
+const CARRY_OVER = /\bcarr(?:y|ies|ied|ying)\b[^.?;]*\binto\b|\bcarry-?overs?\b|\bC\/O\b/i;
+/** "It just means fewer days worked this month" — never true of a carry-over: the line's credit without its C/O is still a normal month's (the owner, Nov 2026). */
+const FEWER_DAYS_WORKED = /\b(?:fewer|less)\s+(?:days?\s+(?:worked|working|of work|on duty|at work)|work(?:ed|ing)?\s+days?|work(?:ing)?|flying|duty)\b|\b(?:work|works|fly|flies)\s+less\b|\blighter\s+(?:month|schedule|line)\b/i;
+/** A question that treats carry-over as fewer days worked this month — in one sentence, or as an option to a carry-over question. */
+export function carryOverAsFewerDays(step: { prompt: string; helpText: string; options?: string[] }): boolean {
+  const sentences = [step.prompt, step.helpText, ...(step.options ?? [])].flatMap((t) => (t ?? "").split(/(?<=[.;?!])\s+/));
+  if (sentences.some((s) => CARRY_OVER.test(s) && FEWER_DAYS_WORKED.test(s))) return true;
+  return CARRY_OVER.test(step.prompt) && (step.options ?? []).some((o) => FEWER_DAYS_WORKED.test(o));
+}
 /** One thing weighed against a list: "how much does it matter next to layovers and days off?" */
 const WEIGHED_AGAINST_SEVERAL = /\b(?:next to|compared (?:to|with)|versus|vs\.?|against)\s+[^?]*?(?:,|\band\b)/i;
 /**
@@ -525,6 +536,7 @@ function rejection(step: RawStep, input: InterviewStepInput, pairsUsed: Set<stri
   // last try: a long question mustn't end the interview.
   if (attempt < 2 && (step.prompt.match(/\?/g) ?? []).length > 1) return "That asks more than one thing. Ask the first as its own plain question; the other can be the next question.";
   if (attempt < 2 && THEN_ANOTHER.test(step.prompt)) return "That asks two things in one (\"…, and what would…\"). Ask the first on its own; the other can be the next question.";
+  if (attempt < 2 && carryOverAsFewerDays(step)) return "Carry-over never means fewer days worked this month: a line's credit with its C/O taken out is still a normal month's, and the carried trip is flown in this month's last days. Drop that option or claim; ask about what C/O really changes — next month's first days and credit, or whether the carried trip is one they'd want.";
   if (COMMUTE_REACH.test(step.prompt)) return "The app already works out which reports they can commute in for, and when they can get home, from their home airport, the time they leave before a report and real flights. Ask something else.";
   if (attempt < 2 && !isChoiceKind(step.kind) && WHAT_IS_IT_ABOUT.test(step.prompt)) return "\"What is it about…?\" is vague and makes them do the work. Offer the two or three likely answers as options instead (a choice question).";
   if (attempt < 2 && !isChoiceKind(step.kind) && MORE_STOPS_MATTERING.test(step.prompt)) return "Every pilot wants more of that, so don't ask where more stops mattering. Ask what they'd give up for it, as a real choice: an offered line pair with more of it on one side and something else better on the other.";

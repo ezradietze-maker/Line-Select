@@ -139,12 +139,45 @@ export function flySchedule(
  * vacation cuts into marked down by the share of credit it takes. A pilot's priorities may barely weigh credit (the
  * ex-pilot's top lines didn't move for the pay alone), and this is something they've told us outright.
  */
-export function rankedAsFlown<T extends { line: Line; score: number }>(scored: T[], pack: BidPack, flown: { pack: BidPack; vacationLines: Map<string, VacationLine> }): T[] {
+export function rankedAsFlown<T extends { line: Line; score: number }>(
+  scored: T[],
+  pack: BidPack,
+  flown: { pack: BidPack; vacationLines: Map<string, VacationLine> },
+  /** Each line's score as the pack prints it (`rankLines` on the pack itself), to tell apart lines the month leaves the same. */
+  printedScores?: ReadonlyMap<string, number> | null
+): T[] {
   const printed = withPrintedLines(scored, pack, flown.pack);
   const lossOf = (s: T) => flown.vacationLines.get(s.line.id)?.keepFlyingLoss ?? 0;
-  if (!printed.some((s) => lossOf(s) > 0)) return printed;
   // Stable: lines the choice doesn't touch keep their order among themselves.
-  return printed.map((s) => ({ ...s, score: Math.round(s.score * (1 - lossOf(s)) * 10) / 10 })).sort((a, b) => b.score - a.score);
+  const kept = printed.some((s) => lossOf(s) > 0) ? printed.map((s) => ({ ...s, score: Math.round(s.score * (1 - lossOf(s)) * 10) / 10 })).sort((a, b) => b.score - a.score) : printed;
+  return printedScores ? tiesByPrinted(kept, printedScores) : kept;
+}
+
+/**
+ * How far apart lines the pilot's month leaves the same are spread: this share of how far each one's printed score sits
+ * from its group's average. With the owner's 15-day vacation on the ex-pilot's profile (777 Captain, Oct 2026), it took
+ * every trip off 127 of 283 lines, so all 127 scored alike and read 33.8; spread at 0.2 they read from 42.5 to 25.8 with
+ * 78 different scores, the top 20 unchanged (0.1: 54 different; 0.3: 91, but more of the list reshuffled).
+ */
+export const PRINTED_TIE_SHARE = 0.2;
+
+/**
+ * Lines the pilot's month leaves scoring alike — a vacation taking every trip off them, or twin lines — told apart by
+ * the lines as the pack prints them: the trips they'd fly if the vacation slides or the pilot keeps flying. Each moves
+ * from the shared score by `PRINTED_TIE_SHARE` of how far its printed score is from the group's average, so the group
+ * stays centred where it was; a line scoring alone is left as it is. Lines identical as printed stay tied.
+ */
+export function tiesByPrinted<T extends { line: Line; score: number }>(ranked: T[], printedScores: ReadonlyMap<string, number>): T[] {
+  const groups = new Map<number, T[]>();
+  for (const r of ranked) groups.set(r.score, [...(groups.get(r.score) ?? []), r]);
+  const shifted = new Map<T, number>();
+  for (const [score, group] of groups) {
+    if (group.length < 2 || group.some((r) => !printedScores.has(r.line.id))) continue;
+    const mean = group.reduce((a, r) => a + printedScores.get(r.line.id)!, 0) / group.length;
+    for (const r of group) shifted.set(r, score + PRINTED_TIE_SHARE * (printedScores.get(r.line.id)! - mean));
+  }
+  if (!shifted.size) return ranked;
+  return ranked.map((r) => (shifted.has(r) ? { ...r, score: shifted.get(r)! } : r)).sort((a, b) => b.score - a.score);
 }
 
 export interface PilotVacations extends MyVacation {

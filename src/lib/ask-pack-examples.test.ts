@@ -17,6 +17,6 @@ describe("Ask your pack's example questions", () => {
 
   it("leaves out night hub turns when the pack has none", () => {
     const pack = { ...SAMPLE_BID_PACK, lines: [] };
-    expect(askPackExamples(pack)).toEqual(["Most days off, no weekends worked", "Fewest commutes, at least 15 days off", "Longest layovers and no three-leg duties"]);
+    expect(askPackExamples(pack)).toEqual(["Most days off, no weekends worked", "Fewest commutes, at least 15 days off", "Longest layovers and no three-leg duty periods"]);
   });
 });

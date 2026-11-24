@@ -728,10 +728,10 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "extraLegs",
-    label: "Extra legs in multi-leg duties",
+    label: "Legs after the first in a duty period",
     unit: "legs",
     category: "duty",
-    description: "Every operated leg beyond the first in a duty period, summed over the month — a two-leg duty counts 1, a three-leg duty 2. For pilots who feel a two-leg duty is nearly twice the work of a one-leg duty, whatever the block time.",
+    description: "Every operated leg beyond the first in a duty period, summed over the month — a two-leg duty period counts 1, a three-leg duty period 2. For pilots who feel a two-leg duty period is nearly twice the work of a single-leg duty period, whatever the block time.",
     trip: { measure: (f) => f.duties.reduce((a, d) => a + Math.max(0, d.operatedLegs - 1), 0), aggregate: "sum" },
   },
   {
@@ -744,10 +744,10 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "singleLegDutyShare",
-    label: "Single-leg duties",
+    label: "Single-leg duty periods",
     unit: "share",
     category: "duty",
-    description: "Share of flying duties with just one operated leg.",
+    description: "Share of flying duty periods with just one operated leg.",
     line: (_l, trips) => {
       const flyingDuties = trips.flatMap((t) => t.duties).filter((d) => d.operatedLegs > 0);
       return flyingDuties.length ? flyingDuties.filter((d) => d.operatedLegs === 1).length / flyingDuties.length : null;

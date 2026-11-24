@@ -44,7 +44,7 @@ export const PACK_WORDS: PilotWord[] = [
   { term: "layover", means: "the hotel stay between duty periods, with its length in hours", source: "pack", from: "LAYOVER ANC 33:43", everyday: true },
   { term: "TAFB", means: "time away from base, report to the end of the trip", source: "pack", from: "TAFB: 54:14" },
   { term: "landings", means: "how many landings a trip or line has", alsoSaid: ["LDGS"], source: "pack", from: "LDGS: 1, NO. LANDINGS", everyday: true },
-  { term: "carry-over", means: "the credit and block a line's last trip flies into the next month", alsoSaid: ["C/O"], source: "pack", from: "CR. C/O. BLK. C/O." },
+  { term: "carry-over", means: "the credit and block a line's last trip flies into the next month — counted there; the line's own credit without it is still a normal month's, so it never means fewer days worked this month", alsoSaid: ["C/O"], source: "pack", from: "CR. C/O. BLK. C/O." },
   { term: "days off", means: "the days in the bid month with no duty", source: "pack", from: "DAYS OFF, Average Days Off", everyday: true },
   { term: "hotel", means: "the hotel the pack names for a layover", source: "pack", from: "Hotel: HILTON (ANC)", everyday: true },
   { term: "pickup", means: "the hotel van's time, to and from the airport", alsoSaid: ["transportation"], source: "pack", from: "Trans To: …, pickup @1609", everyday: true },

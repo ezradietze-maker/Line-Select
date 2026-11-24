@@ -9,6 +9,7 @@ export function navTargetForPath(pathname: string): NavTarget | null {
   if (pathname === "/preferences" || pathname === "/preferences/quick" || pathname === "/interview" || pathname === "/confirm-preferences") return "preferences";
   if (pathname === "/" || pathname === "/upload" || pathname === "/preview") return "upload";
   if (pathname.startsWith("/results")) return "results";
+  if (pathname.startsWith("/trips")) return "trips";
   if (pathname.startsWith("/strategies")) return "strategies";
   if (pathname.startsWith("/view-add")) return "view-add";
   if (pathname.startsWith("/open-time")) return "open-time";

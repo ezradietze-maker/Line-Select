@@ -2,7 +2,7 @@ import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import { NO_ELECTIONS, type CarryInTrip } from "@/lib/phase-in";
 import { rankPackV2 } from "@/lib/scoring-v2/score";
-import { flySchedule, flyVacations, flyVacationsOnLine, pilotVacations, rankedAsFlown, vacationId, withChoices, type VacationChoice } from "@/lib/vacation-lines";
+import { flySchedule, flyVacations, flyVacationsOnLine, pilotVacations, PRINTED_TIE_SHARE, rankedAsFlown, tiesByPrinted, vacationId, withChoices, type VacationChoice } from "@/lib/vacation-lines";
 import type { BidPack, Line, Trip, VacationPeriod } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -205,5 +205,34 @@ describe("withChoices", () => {
     const v = vac(9);
     expect(withChoices([v], undefined)[0].choice).toBe("use");
     expect(withChoices([v], { [vacationId(v)]: "not-taking" })[0].choice).toBe("not-taking");
+  });
+});
+
+// Nov 23: a 15-day vacation took every trip off 127 of 283 lines, and all 127 read 33.8.
+describe("tiesByPrinted: lines the month leaves the same, told apart by the lines as printed", () => {
+  const row = (id: string, score: number) => ({ line: { id, lineNumber: id } as Line, score });
+  const printed = new Map([["a", 60], ["b", 40], ["c", 50], ["d", 70], ["e", 45]]);
+
+  it("spreads a tied group around its shared score, best printed line first", () => {
+    const out = tiesByPrinted([row("d", 80), row("a", 30), row("b", 30), row("c", 30), row("e", 20)], printed);
+    expect(out.map((r) => r.line.id)).toEqual(["d", "a", "c", "b", "e"]);
+    expect(out.find((r) => r.line.id === "a")!.score).toBeCloseTo(30 + PRINTED_TIE_SHARE * 10);
+    expect(out.find((r) => r.line.id === "c")!.score).toBeCloseTo(30);
+    expect(out.find((r) => r.line.id === "b")!.score).toBeCloseTo(30 - PRINTED_TIE_SHARE * 10);
+  });
+
+  it("leaves lines scoring alone, and lines identical as printed, as they are", () => {
+    const alone = [row("d", 80), row("a", 30), row("e", 20)];
+    expect(tiesByPrinted(alone, printed)).toEqual(alone);
+    const twins = tiesByPrinted([row("a", 30), row("b", 30)], new Map([["a", 50], ["b", 50]]));
+    expect(twins.map((r) => r.score)).toEqual([30, 30]);
+  });
+
+  it("rankedAsFlown applies it only when given the printed scores", () => {
+    const pack = { lines: [] } as unknown as BidPack;
+    const flown = { pack, vacationLines: new Map() };
+    const rows = [row("a", 30), row("b", 30)];
+    expect(rankedAsFlown(rows, pack, flown).map((r) => r.score)).toEqual([30, 30]);
+    expect(rankedAsFlown(rows, pack, flown, new Map([["a", 40], ["b", 60]])).map((r) => r.line.id)).toEqual(["b", "a"]);
   });
 });

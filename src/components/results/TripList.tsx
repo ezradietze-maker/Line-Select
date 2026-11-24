@@ -351,6 +351,8 @@ interface TripListProps {
   bidPeriodDays?: number;
   /** The grid days (`Trip.startDayIndex`) of the trips the pilot's vacation takes off this line (`LineVacationMark.removedDays`). */
   vacationOffDays?: number[];
+  /** `tripScores` hold the Trip Index (Trip Rankings), read with one decimal. */
+  indexScores?: boolean;
 }
 
 function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: FlightAnswers; base: string }) {
@@ -358,7 +360,7 @@ function TripCommuteFlightsFor({ trip, flights, base }: { trip: Trip; flights: F
   return <TripCommuteFlights answers={flights} trip={trip} base={base} frontCity={f.front?.city} backCity={f.back?.city} />;
 }
 
-export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays, heat = null, vacationOffDays = [] }: TripListProps) {
+export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, cityPreferences, flights, base, tripScores, carryOver = null, bidPeriodDays, heat = null, vacationOffDays = [], indexScores = false }: TripListProps) {
   const [ratings, setRatings] = useState<Record<string, HotelResult | null>>({});
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   // The same Local/Zulu choice as the month calendar's, shared page-wide: switching either switches both.
@@ -455,7 +457,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                     dayDetail={(day) => <TripDayDetail trip={trip} day={day} mode={mode} ratings={ratings} />}
                   />
                   {/* The picture first; what the trip means for this pilot after it. */}
-                  {tripScore && <TripScorePanel score={tripScore} />}
+                  {tripScore && <TripScorePanel score={tripScore} index={indexScores} />}
                   <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
                   {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
                   <RestPlan plans={plans} />
@@ -506,7 +508,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
 
               {trip.schedule.length === 0 && (
                 <>
-                  {tripScore && <TripScorePanel score={tripScore} />}
+                  {tripScore && <TripScorePanel score={tripScore} index={indexScores} />}
                   <TripInsights trip={trip} bidPeriodStart={bidPeriodStart} base={base} />
                   {flights && base && <TripCommuteFlightsFor trip={trip} flights={flights} base={base} />}
                 </>

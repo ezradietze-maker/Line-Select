@@ -29,7 +29,8 @@ function summary(s: TripScore): string {
  * away. Counts a line adds up over a month (commutes, night legs, nights worked) are the trip's own, set against the
  * pack's other trips, so the panel says so; priorities one trip can't show (days off) are named rather than dropped.
  */
-export function TripScorePanel({ score }: { score: TripScore }) {
+/** `index`: the score is the Trip Index (Trip Rankings), read with one decimal as lines are. */
+export function TripScorePanel({ score, index = false }: { score: TripScore; index?: boolean }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const rows = [...score.results].sort((a, b) => b.weight - a.weight);
@@ -44,7 +45,7 @@ export function TripScorePanel({ score }: { score: TripScore }) {
         aria-controls={id}
         className="flex w-full items-center gap-3 px-2.5 py-2 text-left"
       >
-        <ScoreRing score={score.score} size={40} capped={score.violations.length > 0} />
+        <ScoreRing score={score.score} size={40} capped={score.violations.length > 0} index={index} />
         <span className="min-w-0 flex-1">
           <span className="block text-2xs text-ink-faint font-medium">Trip score for you</span>
           <span className={`block text-xs leading-snug ${score.violations.length ? "text-danger" : "text-ink-muted"}`}>{summary(score)}</span>

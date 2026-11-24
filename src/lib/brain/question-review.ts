@@ -52,6 +52,7 @@ D. Line or trip descriptions a pilot can't follow: a measurement no pilot counts
 E. Two questions in one.
 F. A figure contradicts the FACTS given (a show time, a count or a city on the wrong line). When no facts are given, say nothing about figures.
 G. It repeats an earlier question, or asks for a number or a feeling their answers already give. When nothing they've said is shown, take any "You said…" as accurate.
+H. It gets how bidding works wrong in its question or options — above all, treating carry-over (C/O) as fewer days worked or a lighter month. A line's credit with its C/O taken out is still a normal month's, and the carried trip is flown in the month's last days, so C/O never means less work this month.
 
 The owner's own calls — send back questions like these:
 ${SEND_BACK.map((x) => `- "${x.question}" — ${x.why}`).join("\n")}

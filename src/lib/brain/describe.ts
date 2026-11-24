@@ -18,7 +18,7 @@ const round = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 const SINGULAR: Record<string, string> = { duties: "duty", hours: "hour", days: "day", trips: "trip", legs: "leg", layovers: "layover", commutes: "commute", landings: "landing", nights: "night", flights: "flight", departures: "departure", "hub turns": "hub turn", gaps: "gap" };
 
 /**
- * How a value of each measure reads on its own, "{n}" standing for the number: "{n} extra legs", not "3 legs" — so it
+ * How a value of each measure reads on its own, "{n}" standing for the number: "{n} days off", not "16 days" — so it
  * can sit beside a priority written as a wish ("Prefer single-leg duties") without the pair turning into nonsense
  * ("Prefer single-leg duties: 0 legs"). One form, or [one, many], or [one, many, none] where "no …" would read badly
  * ("no layovers with no real night"); otherwise a count of none reads "no …". Measures not listed
@@ -50,11 +50,14 @@ const READS: Record<string, string | [string, string] | [string, string, string]
   avgTripDays: "{n} days a trip on average",
   longestTripDays: "a {n}-day longest trip",
   dutyPeriods: ["{n} duty period", "{n} duty periods"],
-  dutiesWithManyLegs: ["{n} duty with many legs", "{n} duties with many legs"],
-  extraLegs: ["{n} extra leg", "{n} extra legs"],
-  maxLegsInADuty: "up to {n} legs in a duty",
-  singleLegDutyShare: "{n} of duties single-leg",
-  avgLegsPerDuty: ["{n} leg per duty", "{n} legs per duty"],
+  dutiesWithManyLegs: ["{n} duty period with many legs", "{n} duty periods with many legs"],
+  // A pilot counts legs by duty period — single-leg, two-leg, three-leg — so a single-leg duty period never "has extra
+  // legs". Where the line itself is at hand the interview says its duty periods instead (`leg-mix.ts`); this is the
+  // number on its own.
+  extraLegs: ["{n} leg after the first in a duty period", "{n} legs after the first in a duty period", "all single-leg duty periods"],
+  maxLegsInADuty: "up to {n} legs in a duty period",
+  singleLegDutyShare: "{n} of duty periods single-leg",
+  avgLegsPerDuty: ["{n} leg per duty period", "{n} legs per duty period"],
   longDuties: ["{n} long duty period", "{n} long duty periods"],
   maxDutyHours: "a {n}-hour longest duty",
   frontDeadheadTrips: ["{n} trip with a front-end deadhead", "{n} trips with a front-end deadhead"],
@@ -122,7 +125,7 @@ const ONE_TRIP_READS: Record<string, string | [string, string]> = {
 const RANGE_READS: Record<string, string> = {
   longestTripHome: "{n} hours to get home",
   longestTripDays: "longest trips of {n} days",
-  maxLegsInADuty: "{n} legs at most in a duty",
+  maxLegsInADuty: "{n} legs at most in a duty period",
   maxDutyHours: "longest duties of {n} hours",
   earliestBaseReport: "earliest shows at the domicile from {n}",
   latestBaseRelease: "back at the domicile as late as {n}",
@@ -158,7 +161,7 @@ function readsOf(def: ValueDef, oneTrip = false): [string, string, string?] {
 }
 
 /**
- * A value the way a pilot reads it, on its own: "3 extra legs", "no early reports", "64/100 on the body clock". `oneTrip`:
+ * A value the way a pilot reads it, on its own: "3 early reports", "no early reports", "64/100 on the body clock". `oneTrip`:
  * the value is one trip's own, not a line's.
  */
 export function formatValue(value: number, def: ValueDef, oneTrip = false): string {
@@ -184,7 +187,7 @@ function withArticle(text: string): string {
   return text.replace(/\ba (?=(?:8|11|18)(?:[^\d.]|$)|8\d)/g, "an ");
 }
 
-/** A spread of values, said once: "0 to 3 extra legs", "40 to 64/100 on the body clock", "4.9 to 9.5 credit hours a day". */
+/** A spread of values, said once: "0 to 3 early reports", "40 to 64/100 on the body clock", "4.9 to 9.5 credit hours a day". */
 export function formatRange(lo: number, hi: number, def: ValueDef): string {
   if (lo === hi || def.unit === "weighted hours" || def.unit === "weighted days") return lo === hi ? formatValue(lo, def) : `${formatValue(lo, def)} to ${formatValue(hi, def)}`;
   const spread = `${numberOf(lo, def)} to ${numberOf(hi, def)}`;

@@ -1,6 +1,7 @@
 import { plainBetter } from "@/lib/brain/plain-features";
 import { namedDomicile } from "@/lib/domicile-name";
 import { formatValue } from "@/lib/brain/describe";
+import { LEG_MIX_LABEL, LEG_MIX_METRICS, lineLegMix } from "@/lib/brain/leg-mix";
 import { lineSummary } from "@/lib/brain/line-text";
 import { METRICS_BY_ID } from "@/lib/metrics/catalog";
 import type { PackMetrics } from "@/lib/metrics/compute";
@@ -128,6 +129,9 @@ export function pickLinePairs(bidPack: BidPack, model: PilotModel, pack: PackMet
     const lineB = bidPack.lines.find((l) => l.id === p.b.lineId)!;
     const differences: LinePairDifference[] = p.shown.map((x) => {
       const plain = plainBetter(x.ra.metric);
+      // Legs per duty said as the duties themselves ("2 two-leg duty periods, the rest single-leg"), never "2 extra legs".
+      const legs = LEG_MIX_METRICS.has(x.ra.metric) ? [lineLegMix(lineA, pack), lineLegMix(lineB, pack)] : null;
+      if (legs?.[0] && legs[1] && legs[0] !== legs[1]) return { label: LEG_MIX_LABEL, metric: x.ra.metric, a: legs[0], b: legs[1], better: x.d > 0 ? "a" : "b" };
       return { label: namedDomicile(x.ra.label, bidPack.base), metric: x.ra.metric, a: namedDomicile(v(x.ra), bidPack.base), b: namedDomicile(v(x.rb), bidPack.base), better: x.d > 0 ? "a" : "b", ...(plain ? { plain } : {}) };
     });
     const side = (s: "a" | "b") =>
