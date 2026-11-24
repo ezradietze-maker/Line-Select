@@ -15,7 +15,7 @@ vi.mock("@/lib/brain/question-review", () => ({
   }),
 }));
 
-import { namedNumbers, nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
+import { carryOverAsFewerDays, namedNumbers, nextInterviewStep, rankingHasSettled, SWEEP_QUESTION, type InterviewStepInput } from "@/lib/brain/interviewer";
 import type { PilotModel } from "@/types/pilot-model";
 
 const step = (over: Record<string, unknown>) => ({ settled: [], done: false, reason: "r", threadId: "", questionKind: over.kind === "line-pair" ? "real-choice" : "their-number", theirWords: "", kind: "free-text", ack: "", prompt: "", helpText: "", options: [], pairIndex: -1, examples: [], ...over });
@@ -664,5 +664,32 @@ describe("the four kinds of question, each with its rule", () => {
       step({ threadId: "china", questionKind: "real-choice", kind: "line-pair", pairIndex: 0, prompt: "Which line would you bid higher: 1011 or 1018?" })
     );
     expect(await nextInterviewStep(later)).toMatchObject({ done: false, kind: "line-pair" });
+  });
+
+  it("never offers carry-over as fewer days worked this month", async () => {
+    const prompt = "When a line carries a long trip into next month, what are you counting on that carry-over to do for you?";
+    const helpText = "Line 1011 carries 15:18 C/O into November; line 1018 carries 34:40.";
+    proposals.push(
+      step({ threadId: "china", kind: "choice", prompt, helpText, options: ["It lets me drop a bad trip next month", "It just means fewer days worked this month", "It only helps if the carried trip is one I like"] }),
+      step({ threadId: "china", kind: "choice", prompt, helpText, options: ["It lets me drop a bad trip next month", "It gets next month's credit started", "It only helps if the carried trip is one I like"] })
+    );
+    const r = await nextInterviewStep(input({ packNumbers }));
+    expect(proposals).toHaveLength(0);
+    expect(r).toMatchObject({ done: false, kind: "choice", options: ["It lets me drop a bad trip next month", "It gets next month's credit started", "It only helps if the carried trip is one I like"] });
+  });
+});
+
+describe("carry-over is never fewer days worked", () => {
+  it("catches the claim in an option or a sentence about C/O", () => {
+    const prompt = "When a line carries a long trip into next month, what are you counting on that carry-over to do for you?";
+    expect(carryOverAsFewerDays({ prompt, helpText: "", options: ["It just means fewer days worked this month", "Nothing"] })).toBe(true);
+    expect(carryOverAsFewerDays({ prompt, helpText: "", options: ["Less flying this month"] })).toBe(true);
+    expect(carryOverAsFewerDays({ prompt: "Which would you bid higher?", helpText: "1011 carries 6:08 C/O into November, so it's a lighter month.", options: [] })).toBe(true);
+  });
+
+  it("leaves plausible carry-over options, and fewer days worked on its own, alone", () => {
+    const prompt = "When a line carries a long trip into next month, what are you counting on that carry-over to do for you?";
+    expect(carryOverAsFewerDays({ prompt, helpText: "", options: ["It lets me drop a bad trip next month", "It only helps if the carried trip is one I like", "I don't count on it for anything"] })).toBe(false);
+    expect(carryOverAsFewerDays({ prompt: "Which would you bid higher: 1011 or 1018?", helpText: "1011 carries 6:08 C/O into November. 1018 has fewer days worked and more nights.", options: [] })).toBe(false);
   });
 });
