@@ -526,14 +526,20 @@ export function tripValueText(r: TripCriterionResult): string | null {
  * then.
  */
 export const TRIP_LESSONS = 0.5;
+
+/** Whether a pilot's lines lean on their trips: once trip choices have taught their model something (graded or moved). */
+export function leansOnTrips(model: PilotModel): boolean {
+  return Object.keys(model.tripWeights ?? {}).length > 0 || !!model.tripLessons;
+}
 export const TRIP_LEAN = 0.25;
 
 /** The pilot's lines with their trip grades taken into account (see `TRIP_LESSONS`, `TRIP_LEAN`), best first. */
 export function rankLinesWithTrips(bidPack: BidPack, model: PilotModel, options: ScoreOptions = {}): V2LineScore[] {
   const pack = options.pack ?? prepareMetrics(bidPack);
-  const tw = model.tripWeights;
-  if (!tw || !Object.keys(tw).length) return scorePackV2(bidPack, model, { ...options, pack }).sort((a, b) => b.score - a.score || a.lineNumber.localeCompare(b.lineNumber));
-  const taught: PilotModel = { ...model, tripWeights: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) };
+  if (!leansOnTrips(model)) return scorePackV2(bidPack, model, { ...options, pack }).sort((a, b) => b.score - a.score || a.lineNumber.localeCompare(b.lineNumber));
+  // What the lines' own weights learn: the interview's trip pairs (moved trips reach lines only through the worst trip).
+  const tw = model.tripLessons ?? model.tripWeights ?? {};
+  const taught: PilotModel = { ...model, tripWeights: undefined, tripLessons: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) };
   const lines = scorePackV2(bidPack, taught, { ...options, pack });
   // Its trips on their own scale: the lean was set on it (see `lineScaleForTrips`).
   const trips = scoreTripsV2(bidPack, model, { ...options, pack, onLineScale: false });

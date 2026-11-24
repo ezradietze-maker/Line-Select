@@ -1,7 +1,7 @@
 import { shareChanges, type WeightChange } from "@/lib/brain/fit-choices";
 import { prepareMetrics, type PackMetrics } from "@/lib/metrics/compute";
 import { criterionWeight, scorePackV2 } from "@/lib/scoring-v2/score";
-import { rankLinesWithTrips, scoreTripsV2, tripKey, TRIP_LEAN, TRIP_LESSONS } from "@/lib/scoring-v2/trip-score";
+import { leansOnTrips, rankLinesWithTrips, scoreTripsV2, tripKey, TRIP_LEAN, TRIP_LESSONS } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, SwapAnswer } from "@/types/pilot-model";
 
@@ -297,8 +297,8 @@ export function learnFromChoices(
   // Fitted on the score the pilot actually sees: once they've graded trips, each line's weights carry what the grades
   // taught, and its score leans on its worst trip (`rankLinesWithTrips`). The worst trip is held where it was — it's what
   // they were looking at when they swapped — and the weights fitted are the untaught ones, so the lessons apply on top.
-  const tw = model.tripWeights && Object.keys(model.tripWeights).length ? model.tripWeights : null;
-  const taught: PilotModel = tw ? { ...model, tripWeights: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) } : model;
+  const tw = leansOnTrips(model) ? (model.tripLessons ?? model.tripWeights ?? {}) : null;
+  const taught: PilotModel = tw ? { ...model, tripWeights: undefined, tripLessons: undefined, criteria: model.criteria.map((c) => ({ ...c, weight: c.weight * (tw[c.id] ?? 1) ** TRIP_LESSONS })) } : model;
   const scored = new Map(scorePackV2(bidPack, taught, { pack }).map((x) => [x.lineNumber, x]));
   const worstTrip = new Map<string, number>();
   if (tw) {

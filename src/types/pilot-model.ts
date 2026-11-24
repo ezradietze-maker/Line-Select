@@ -102,6 +102,13 @@ export interface PilotModel {
    */
   tripWeights?: Record<string, number>;
   /**
+   * What reaches the pilot's lines from their trip choices, by criterion id (`rankLinesWithTrips` reads it in place of
+   * `tripWeights`): the interview's trip pairs only, once they've moved trips on Trip Rankings. Moves reach lines only
+   * through each line's worst trip — fed into the lines' own weights, 400 moved-trip picks took the simulated pilots'
+   * lines from 0.858 to 0.847; through the worst trip only, they held at 0.858 (Nov 2026).
+   */
+  tripLessons?: Record<string, number>;
+  /**
    * Facts about the pilot read from their words by a second call beside the brain's (see `readPilotFacts`): the
    * values given, by fact id, and their own words for each.
    */
@@ -176,4 +183,10 @@ export interface TripChoice {
   other: string;
   strength: "slightly" | "strongly";
   why?: string;
+  /** Set when the pilot moved a trip on Trip Rankings: undoing that move takes this back (`lib/trip-moves.ts`). */
+  moveId?: string;
+  /** The pack a moved trip is in — trip keys repeat from pack to pack. The interview's choices carry none. */
+  packId?: string;
+  /** A trip the pilot left where it was when they moved another just under (or over) it — not itself moved. */
+  kept?: boolean;
 }

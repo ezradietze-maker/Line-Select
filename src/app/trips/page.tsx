@@ -8,7 +8,7 @@ import { hasAccess } from "@/lib/membership";
 
 export default function TripsPage() {
   const router = useRouter();
-  const { bidPack, profile, user, handleStartInterview, handleTrySample } = useAppState();
+  const { bidPack, profile, user, handleStartInterview, handleTrySample, handleUpdateProfileWith } = useAppState();
 
   if (profile && bidPack) {
     // No membership: the trips their top lines fly, as My Rankings shows them their top lines only. Keyed on it too, so
@@ -21,6 +21,7 @@ export default function TripsPage() {
         profile={profile}
         onEditPreferences={() => router.push("/preferences")}
         rankedLinesOnly={!member}
+        onUpdateProfileWith={handleUpdateProfileWith}
       />
     );
   }
