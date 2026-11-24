@@ -85,6 +85,14 @@ describe("the interviewer's guard rails", () => {
     expect(await nextInterviewStep(input({ turn: 0 }))).not.toHaveProperty("ack");
   });
 
+  it("says back the last answer, not an older one, after a line pick", async () => {
+    const picked = input({ exchanges: [...input().exchanges, { turn: 2, question: "Which line would you bid higher? [Line 1011 vs Line 1018: credit vs days off]", answer: "I'd bid line 1018 over line 1011 (easily)." }] });
+    proposals.push(step({ ack: "Long Paris layovers — got it.", prompt: "How many days at home make a real break?" }));
+    expect(await nextInterviewStep(picked)).toMatchObject({ ack: "Line 1018 over 1011, easily. Got it." });
+    proposals.push(step({ ack: "1018 for the days off — got it.", prompt: "How many days at home make a real break?" }));
+    expect(await nextInterviewStep(picked)).toMatchObject({ ack: "1018 for the days off — got it." });
+  });
+
   it("ends by itself once the ranking has stopped moving", async () => {
     const r = await nextInterviewStep(input({ turn: 13, rankingShifts: [2, 1, 0], threads: { buffers: { status: "settled", timesAsked: 1 }, china: { status: "settled", timesAsked: 1 } } }));
     expect(r).toMatchObject({ done: true });
@@ -266,7 +274,7 @@ describe("replies never invent a limit", () => {
     expect(await nextInterviewStep(ranksNotFilters)).toMatchObject({ done: false, ack: "Two or fewer Memphis commutes, ideally — got it." });
   });
 
-  it("drops the reply rather than asking again when it still invents one", async () => {
+  it("puts the plain reply in its place rather than asking again when it still invents one", async () => {
     proposals.push(
       step({ threadId: "china", ack: "That's a firm cap on Memphis.", prompt: "Where does a third commute start to cost you?" }),
       step({ threadId: "china", ack: "Memphis commutes are a hard limit at two.", prompt: "Where does a third commute start to cost you?" })
@@ -274,7 +282,7 @@ describe("replies never invent a limit", () => {
     const r = await nextInterviewStep(ranksNotFilters);
     expect(r).toMatchObject({ done: false, prompt: "Where does a third commute start to cost you?" });
     if (r.done) throw new Error("expected a question");
-    expect(r.ack).toBeUndefined();
+    expect(r.ack).not.toMatch(/limit|cap/i);
   });
 
   it("keeps a limit the pilot did state, and a denial of one", async () => {
