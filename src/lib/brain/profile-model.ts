@@ -11,6 +11,7 @@ import type { BidPack } from "@/types/bidpack";
 import type { LineChoice, PilotModel, SwapAnswer, TripChoice } from "@/types/pilot-model";
 import type { PreferenceProfile } from "@/types/preferences";
 import { isPackId } from "@/lib/pack-id";
+import { standingTripChoices, tripChoicesHere } from "@/lib/trip-moves";
 
 /**
  * Keeping a pilot's model current after the interview. The model the pilot
@@ -45,17 +46,27 @@ export function deriveModel(
   const seenTrips = tripChoices.length ? fitTripWeights(bidPack, applyPins(rated, pins), tripChoices, pack).tripWeights : undefined;
   const fit = learnFromChoices(bidPack, { ...rated, tripWeights: seenTrips }, choices, pack, {}, swapAnswers);
   const lineModel = applyPins({ ...fit.model, tripWeights: undefined }, pins);
-  const tripWeights = tripChoices.length ? fitTripWeights(bidPack, lineModel, tripChoices, pack).tripWeights : undefined;
-  const learned: PilotModel = { ...lineModel, tripWeights };
+  const learned = withTripLessons(bidPack, lineModel, tripChoices, pack);
   // The learner keeps a fit only if it explains the choices at least as well — judged before the pins go back on and
   // the trip grades are refitted. With pins, that can leave the model the pilot actually sees agreeing with fewer of
   // their choices than learning nothing would: then nothing is learned this time.
   if (Object.keys(pins).length && choices.length) {
     const unpinned = applyPins({ ...rated, tripWeights: undefined }, pins);
-    const plain: PilotModel = { ...unpinned, tripWeights: tripChoices.length ? fitTripWeights(bidPack, unpinned, tripChoices, pack).tripWeights : undefined };
+    const plain = withTripLessons(bidPack, unpinned, tripChoices, pack);
     if (agreement(bidPack, learned, choices, pack) < agreement(bidPack, plain, choices, pack)) return { model: plain, changes: [], heldByLimit: fit.heldByLimit };
   }
   return { model: learned, changes: fit.changes, heldByLimit: fit.heldByLimit };
+}
+
+/**
+ * A line model with what the pilot's trip choices teach: how each priority counts on a trip, and — once they've moved
+ * trips on Trip Rankings — what reaches their lines' own weights (the interview's trip pairs only, `tripLessons`).
+ */
+function withTripLessons(bidPack: BidPack, lineModel: PilotModel, tripChoices: TripChoice[], pack?: PackMetrics): PilotModel {
+  if (!tripChoices.length) return { ...lineModel, tripWeights: undefined };
+  const { tripWeights, interviewWeights } = fitTripWeights(bidPack, lineModel, tripChoices, pack);
+  if (!tripChoices.some((c) => c.moveId)) return { ...lineModel, tripWeights };
+  return { ...lineModel, tripWeights: tripWeights ?? {}, tripLessons: interviewWeights ?? {} };
 }
 
 /** How many of the pilot's standing choices a model's shown scores agree with. */
@@ -79,7 +90,7 @@ export function applyPins(model: PilotModel, pins: Record<string, number>): Pilo
 export function withModel(
   profile: PreferenceProfile,
   bidPack: BidPack,
-  update: { base?: PilotModel; choices?: LineChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number>; swapAnswers?: SwapAnswer[] },
+  update: { base?: PilotModel; choices?: LineChoice[]; tripChoices?: TripChoice[]; cityRatings?: PreferenceProfile["cityRatings"]; pins?: Record<string, number>; swapAnswers?: SwapAnswer[] },
   pack?: PackMetrics
 ): { profile: PreferenceProfile; changes: WeightChange[]; heldByLimit: LineChoice[] } {
   // The crash pad and hours at home the pilot picked on a screen win over a new reading of their words ("Add it" on
@@ -100,13 +111,16 @@ export function withModel(
   // "2014 over 2009" is about two other lines here. Untagged ones are the interview's, so its pack's.
   const interviewHere = !profile.brainInterview?.packId || isPackId(profile.brainInterview.packId, bidPack);
   const here = choices.filter((c) => (c.packId ? isPackId(c.packId, bidPack) : interviewHere));
-  const { model, heldByLimit } = deriveModel(bidPack, base, next, here, pack, pins, profile.brainInterview?.tripChoices ?? [], swapAnswers);
+  // Trips moved on Trip Rankings count on their own pack only, and a move is the latest word on its two trips.
+  const tripChoices = update.tripChoices ?? profile.brainInterview?.tripChoices ?? [];
+  const tripsHere = standingTripChoices(tripChoicesHere(tripChoices, bidPack));
+  const { model, heldByLimit } = deriveModel(bidPack, base, next, here, pack, pins, tripsHere, swapAnswers);
   const changes = shareChanges(before, model);
   return {
     profile: {
       ...next,
       pilotModel: model,
-      brainInterview: { exchanges: profile.brainInterview?.exchanges ?? [], ...profile.brainInterview, choices, reviewedModel: base, pins, ...(swapAnswers.length || profile.brainInterview?.swapAnswers ? { swapAnswers } : {}) },
+      brainInterview: { exchanges: profile.brainInterview?.exchanges ?? [], ...profile.brainInterview, choices, reviewedModel: base, pins, ...(update.tripChoices ? { tripChoices } : {}), ...(swapAnswers.length || profile.brainInterview?.swapAnswers ? { swapAnswers } : {}) },
     },
     changes,
     heldByLimit,

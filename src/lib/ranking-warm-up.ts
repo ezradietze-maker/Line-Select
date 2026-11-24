@@ -12,7 +12,7 @@ import { collectLayoverCities, collectTouchedCities } from "@/lib/line-filters";
 import { tripFactsOf } from "@/lib/metrics/compute";
 import { rankingPack } from "@/lib/scoring-v2/adapter";
 import { measureTasks } from "@/lib/scoring-v2/score";
-import { scoreTripsV2 } from "@/lib/scoring-v2/trip-score";
+import { leansOnTrips, scoreTripsV2 } from "@/lib/scoring-v2/trip-score";
 import type { BidPack } from "@/types/bidpack";
 import type { PilotModel } from "@/types/pilot-model";
 
@@ -101,7 +101,7 @@ export function warmUpTasks(bidPack: BidPack, flown: BidPack, model: PilotModel 
     // The pack the flights lookup picks the best lines on (no flights: they're what it looks up).
     tasks.push(() => measureTasks(bidPack, model, lookupPack(bidPack)));
     // A pilot who graded trips has every trip scored inside the ranking (see `rankLinesWithTrips`).
-    if (model.tripWeights && Object.keys(model.tripWeights).length) {
+    if (leansOnTrips(model)) {
       tasks.push(() => void scoreTripsV2(flown, model, { flights: asked, pack: rankingPack(flown, asked), onLineScale: false }));
       tasks.push(() => void scoreTripsV2(bidPack, model, { pack: lookupPack(bidPack), onLineScale: false }));
     }

@@ -7,10 +7,10 @@ import { useAppState } from "@/lib/app-state";
 
 export default function TripsPage() {
   const router = useRouter();
-  const { bidPack, profile, user, handleStartInterview, handleTrySample } = useAppState();
+  const { bidPack, profile, user, handleStartInterview, handleTrySample, handleUpdateProfileWith } = useAppState();
 
   if (profile && bidPack) {
-    return <TripRankingsView key={`${user?.id ?? "guest"}|${bidPack.id}`} bidPack={bidPack} profile={profile} onEditPreferences={() => router.push("/preferences")} />;
+    return <TripRankingsView key={`${user?.id ?? "guest"}|${bidPack.id}`} bidPack={bidPack} profile={profile} onEditPreferences={() => router.push("/preferences")} onUpdateProfileWith={handleUpdateProfileWith} />;
   }
 
   // No profile yet (or no bid pack at all): the same place My Rankings sends a pilot.

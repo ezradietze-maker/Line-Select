@@ -49,6 +49,23 @@ const PULL_BACK = 2;
  * from freely (0.5: on the trip bench, Oct 2026, the best for two screens of eight graded trips).
  */
 const TRIP_PULL_BACK = { surprised: 0.5, foreseen: 4 } as const;
+/**
+ * How hard trips moved on Trip Rankings are held to the interview's trip factors (the fit is anchored to what the
+ * interview taught, not to nothing). A move is always a trip the ranking had in the wrong order, so the surprise rule
+ * above would learn from every one freely; that made the simulated ex-pilot's unmoved trips worse for the first dozen
+ * one-place moves (0.695 → 0.672 after 6). Measured on a bigger bench — 240+ judged trips per simulated pilot, 30% held
+ * out, the pilot moving trips the way their graders would (Nov 2026) — trips nobody moved, from 0.750:
+ *
+ *   hold        6 moves to a place   20 one-place moves   lines (0.858)
+ *   4           0.767                0.761                0.858
+ *   1           0.782                0.778                0.858
+ *   0.5         0.786                0.773                0.856
+ *   2, strong   0.788                0.778                0.855
+ *
+ * 1 doubles what moves teach without costing lines; looser, and lines start to slip. With drags shared out
+ * (`MOVE_PAIRS_FULL`), 0.5, 1 and 2 land within 0.005 of each other.
+ */
+const MOVE_PULL_BACK = 1;
 /** The share of the grades foreseen at or below which the fit learns freely, and at or above which it holds. */
 const FORESEEN_RANGE = [0.6, 0.9] as const;
 
@@ -167,7 +184,13 @@ interface Shortfall {
  * is pulled back toward zero (where the interview put it), and none moves more than `MAX_FACTOR` either way. Returns
  * the log-weight change for each criterion.
  */
-function fitLogWeights(base: number[], data: { strength: LineChoice["strength"]; direct?: boolean; a: Shortfall[]; b: Shortfall[] }[], pullBack = PULL_BACK, maxFactor = MAX_FACTOR): number[] {
+function fitLogWeights(
+  base: number[],
+  data: { strength: LineChoice["strength"]; direct?: boolean; a: Shortfall[]; b: Shortfall[]; weight?: number }[],
+  pullBack = PULL_BACK,
+  maxFactor = MAX_FACTOR,
+  center: number[] = base.map(() => 0)
+): number[] {
   const scoreOf = (d: Shortfall[], w: number[]) => {
     let num = 0;
     let den = 0;
@@ -183,14 +206,14 @@ function fitLogWeights(base: number[], data: { strength: LineChoice["strength"];
     let total = 0;
     for (const c of data) {
       const miss = -(scoreOf(c.a, w) - scoreOf(c.b, w) - MARGIN[c.strength]) / TEMPERATURE;
-      total += c.strength === "strongly" ? softplus(miss) : c.direct ? DIRECT_CLOSE_CALL * softplus(miss) : 1 / (1 + Math.exp(-miss));
+      total += (c.weight ?? 1) * (c.strength === "strongly" ? softplus(miss) : c.direct ? DIRECT_CLOSE_CALL * softplus(miss) : 1 / (1 + Math.exp(-miss)));
     }
-    return total + pullBack * theta.reduce((s, t) => s + t * t, 0);
+    return total + pullBack * theta.reduce((s, t, i) => s + (t - center[i]) ** 2, 0);
   };
 
   // Gradient descent on the log-weights, with a step that grows while it helps and shrinks when it doesn't.
   const cap = Math.log(maxFactor);
-  let theta = base.map(() => 0);
+  let theta = [...center];
   let current = loss(theta);
   let step = 0.2;
   for (let i = 0; i < MAX_STEPS && step > 1e-4; i++) {
@@ -222,6 +245,23 @@ export interface TripFitOptions {
   pullBack?: number;
   /** No factor moves further than this either way (default `MAX_FACTOR`). */
   maxFactor?: number;
+  /** How hard a fit with trips moved on Trip Rankings is held to the interview's trip factors (default `MOVE_PULL_BACK`). */
+  movePullBack?: number;
+}
+
+/**
+ * How much each choice counts in a fit: one each, except that a move on Trip Rankings past many trips at once counts as
+ * `MOVE_PAIRS_FULL` choices in all, shared out among them — the trips it passed say one thing, about the trip moved.
+ * Dragged as the page drags (past every trip between), a simulated pilot's first drags made 30–66 choices each, and
+ * counted in full one drag swung the fit: the ex-pilot's unmoved trips went 0.696 → 0.584 after three drags. Shared out,
+ * every pilot gains from the first drag (all three, from 0.752: 0.770 after one, 0.793 after three, 0.802 after ten).
+ * At 3 a pilot who keeps dragging ends a hair higher (0.806 after 30); at 20 and uncapped, lower from the start.
+ */
+const MOVE_PAIRS_FULL = 10;
+function moveWeights(choices: readonly TripChoice[]): (c: TripChoice) => number {
+  const size = new Map<string, number>();
+  for (const c of choices) if (c.moveId) size.set(c.moveId, (size.get(c.moveId) ?? 0) + 1);
+  return (c) => (c.moveId ? Math.min(1, MOVE_PAIRS_FULL / size.get(c.moveId)!) : 1);
 }
 
 export function fitTripWeights(
@@ -230,7 +270,13 @@ export function fitTripWeights(
   choices: TripChoice[],
   pack: PackMetrics = prepareMetrics(bidPack),
   options: TripFitOptions = {}
-): { tripWeights: Record<string, number> | undefined; agreedBefore: number; agreedAfter: number } {
+): {
+  tripWeights: Record<string, number> | undefined;
+  /** With trips moved on Trip Rankings, the factors from the interview's trip choices alone (what lines learn from). */
+  interviewWeights?: Record<string, number>;
+  agreedBefore: number;
+  agreedAfter: number;
+} {
   const plain: PilotModel = { ...model, tripWeights: undefined };
   const scored = scoreTripsV2(bidPack, plain, { pack });
   const usable = choices.filter((c) => c.preferred !== c.other && scored.has(c.preferred) && scored.has(c.other));
@@ -245,10 +291,16 @@ export function fitTripWeights(
       const r = scored.get(key)!.results.find((x) => x.criterionId === id)!;
       return { sf: (1 - r.utility) ** 2, half: r.value === null };
     });
-  const pullBack = options.pullBack ?? tripPullBack(agreedBefore / usable.length);
-  const theta = fitLogWeights(base, usable.map((c) => ({ strength: c.strength, a: shortfalls(c.preferred), b: shortfalls(c.other) })), pullBack, options.maxFactor ?? MAX_FACTOR);
+  // Trips moved on Trip Rankings refine what the interview's trip pairs taught: the fit starts from, and is pulled back
+  // to, the interview's own trip factors, and holds firmly (`MOVE_PULL_BACK`).
+  const moved = usable.some((c) => c.moveId);
+  const said = moved ? fitTripWeights(bidPack, model, choices.filter((c) => !c.moveId), pack, options).tripWeights : undefined;
+  const center = ids.map((id) => Math.log(said?.[id] ?? 1));
+  const pullBack = moved ? (options.movePullBack ?? MOVE_PULL_BACK) : (options.pullBack ?? tripPullBack(agreedBefore / usable.length));
+  const weight = moveWeights(usable);
+  const theta = fitLogWeights(base, usable.map((c) => ({ strength: c.strength, a: shortfalls(c.preferred), b: shortfalls(c.other), weight: weight(c) })), pullBack, options.maxFactor ?? MAX_FACTOR, center);
   const tripWeights = Object.fromEntries(ids.map((id, i) => [id, Math.exp(theta[i])]));
   const agreedAfter = agreed(scoreTripsV2(bidPack, { ...model, tripWeights }, { pack }));
-  if (agreedAfter < agreedBefore) return { tripWeights: undefined, agreedBefore, agreedAfter: agreedBefore };
-  return { tripWeights, agreedBefore, agreedAfter };
+  if (agreedAfter < agreedBefore) return { tripWeights: said, interviewWeights: said, agreedBefore, agreedAfter: agreedBefore };
+  return { tripWeights, ...(moved ? { interviewWeights: said } : {}), agreedBefore, agreedAfter };
 }
