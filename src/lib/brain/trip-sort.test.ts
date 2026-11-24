@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { askedTripScreens, choicesFromGrades, pickTripScreen, tripGradesAnswer, tripGradesTranscript, tripsShownSoFar, wantsAnotherScreen, MAX_SCREENS, MIN_SCREENS } from "@/lib/brain/trip-sort";
+import { askedTripScreens, choicesFromGrades, pickTripScreen, sameFlying, tripGradesAnswer, tripGradesTranscript, tripsShownSoFar, wantsAnotherScreen, MAX_SCREENS, MIN_SCREENS } from "@/lib/brain/trip-sort";
 import { prepareMetrics } from "@/lib/metrics/compute";
 import { rankLinesWithTrips, TRIP_LEAN } from "@/lib/scoring-v2/trip-score";
 import { scorePackV2 } from "@/lib/scoring-v2/score";
@@ -80,10 +80,22 @@ describe("trip grades", () => {
     const [a, b] = first.keys.map((k) => k.split("@")[0]);
     const asked = [{ question: `Which trip would you rather fly? [Trip #${a} · Sep 29 {${a}@1} vs Trip #${a} · Oct 8 {${a}@10}: …]` }, { question: `How do you feel about long duty periods? (Examples shown: Trip #${b} · Oct 8 — 13 hours.)` }];
     const shownTrips = tripsShownSoFar(pack, asked);
-    expect([...shownTrips].sort()).toEqual([a, b].sort());
+    expect([...shownTrips]).toEqual(expect.arrayContaining([a, b]));
     const again = pickTripScreen(pack, model, pm, [], { size: 5, shownTrips })!;
     expect(again.keys.map((k) => k.split("@")[0])).not.toContain(a);
     expect(again.keys.map((k) => k.split("@")[0])).not.toContain(b);
+  });
+
+  it("counts a trip flying the very same legs under another number as the same trip", () => {
+    // B0 flies A1's legs (3 days, two legs a day, out of BOS) on another date: B777 ANC FO's #10 and #2006.
+    expect(sameFlying(lines[1].trips[0])).toBe(sameFlying(lines[0].trips[1]));
+    expect(sameFlying(lines[0].trips[0])).not.toBe(sameFlying(lines[0].trips[1]));
+    expect([...tripsShownSoFar(pack, [{ question: "Which? (Examples shown: Trip #A1 · Sep 29 — 3 days.)" }])].sort()).toEqual(["A1", "B0"]);
+    const pm = prepareMetrics(pack);
+    const ids = (s: { keys: string[] } | null) => (s?.keys ?? []).map((k) => k.split("@")[0]);
+    const screen = ids(pickTripScreen(pack, model, pm, [], { size: 18 }));
+    expect(screen.includes("A1") && screen.includes("B0")).toBe(false);
+    expect(ids(pickTripScreen(pack, model, pm, [], { size: 18, shownTrips: new Set(["A1"]) }))).not.toContain("B0");
   });
 });
 

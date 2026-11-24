@@ -81,7 +81,23 @@ export function tripsShownSoFar(bidPack: Pick<BidPack, "lines">, exchanges: { qu
     for (const m of e.question.matchAll(/\{([^}@]+)@[^}]*\}/g)) out.add(m[1]);
     for (const m of e.question.matchAll(/\bTrip #\s*(\w+)/gi)) for (const id of byNumber.get(m[1]) ?? []) out.add(id);
   }
+  // A trip flying the very same legs under another number is the same trip to the pilot: shown once too.
+  const all = bidPack.lines.flatMap((l) => l.trips);
+  const flown = new Set(all.filter((t) => out.has(t.id)).map(sameFlying));
+  for (const t of all) if (flown.has(sameFlying(t))) out.add(t.id);
   return out;
+}
+
+/**
+ * The flying a trip is — its length, credit and every leg — so two pairing numbers that fly the very same legs read as
+ * one trip. Some packs print a trip twice under two numbers (B777 ANC FO's #10 and #2006; B777 MEM FO has 65 such
+ * pairs), and the Nov 24 check found both on one screen of grades, the same card twice. A trip with no schedule to
+ * compare is only ever itself.
+ */
+export function sameFlying(t: Trip): string {
+  if (!t.schedule.length) return `id:${t.id}`;
+  const legs = t.schedule.map((d) => d.legs.map((l) => [l.flightNumber, l.depAirport, l.arrAirport, l.depTimeGmt, l.arrTimeGmt, l.isDeadhead ? "DH" : "", l.isStandby ? "SB" : ""].join(" ")).join(","));
+  return [t.days, t.creditHours, ...legs].join("|");
 }
 
 /** How a screen goes into the transcript: the trips, with their keys in braces for the record. */
@@ -150,9 +166,14 @@ export function pickTripScreen(
   // One date of each trip the pilot's best lines fly, never one already shown.
   const top = scorePackV2(bidPack, model, { pack }).sort((a, b) => b.score - a.score).slice(0, FROM_TOP_LINES);
   const byPairing = new Map<string, Trip>();
+  // …nor the same flying under another number (`sameFlying`), on this screen or an earlier one.
+  const flown = new Set([...byKey.values()].filter((t) => shownPairings.has(t.id)).map(sameFlying));
   for (const s of top)
     for (const t of bidPack.lines.find((l) => l.id === s.lineId)?.trips ?? [])
-      if (scores.has(tripKey(t)) && !byPairing.has(t.id) && !shownPairings.has(t.id) && !options.exclude?.has(tripKey(t))) byPairing.set(t.id, t);
+      if (scores.has(tripKey(t)) && !byPairing.has(t.id) && !shownPairings.has(t.id) && !flown.has(sameFlying(t)) && !options.exclude?.has(tripKey(t))) {
+        byPairing.set(t.id, t);
+        flown.add(sameFlying(t));
+      }
   const trips = [...byPairing.values()];
 
   const novelty = (id: string) => 1 / (1 + (tested.get(id) ?? 0));

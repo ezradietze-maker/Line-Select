@@ -29,8 +29,24 @@ export function answerAck(last: { question: string; answer: string } | undefined
   }
   const tie = answer.match(/^Couldn't choose between (?:line (\d{3,5}) and line (\d{3,5})|Trip #(\d{1,5})[^—]*? and Trip #(\d{1,5}))/);
   if (tie) return tie[1] ? `Lines ${tie[1]} and ${tie[2]} about even. Got it.` : `#${tie[3]} and #${tie[4]} about even. Got it.`;
-  const words = answer.replace(/[.!]+$/, "").split(/\s+/);
-  return words.length <= SHORT ? `${words.join(" ")}. Got it.` : "Got it.";
+  // A question of theirs isn't said back as if it were an answer ("What's a hub turn?. Got it.").
+  if (/\?\s*$/.test(answer)) return "Got it.";
+  const words = answer.replace(/[.!,;:…\s]+$/, "").split(/\s+/);
+  return words.length <= SHORT ? `${toYou(words).join(" ")}. Got it.` : "Got it.";
+}
+
+/** Their "I" and "me" said back as "you": in the app's voice, "I'd take the nap. Got it." read as the app taking it. */
+const YOU: Record<string, string> = { "i'd": "you'd", "i'm": "you're", "i've": "you've", "i'll": "you'll", me: "you", my: "your", mine: "yours", myself: "yourself" };
+const BE: Record<string, string> = { am: "are", was: "were" };
+function toYou(words: string[]): string[] {
+  const out = words.map((w, i) => {
+    const [, core, end] = w.match(/^(.*?)([.,;:!?)]*)$/)!;
+    const k = core.toLowerCase().replace(/’/g, "'");
+    if (k === "i") return `you${end}`;
+    if (BE[k] && words[i - 1]?.toLowerCase() === "i") return `${BE[k]}${end}`;
+    return YOU[k] ? `${YOU[k]}${end}` : w;
+  });
+  return out.length ? [out[0].charAt(0).toUpperCase() + out[0].slice(1), ...out.slice(1)] : out;
 }
 
 /**
