@@ -93,6 +93,7 @@ describe("hotelNameCased: the pack's capitals read as words, initials and codes 
   it("reads LAS and the like as the words they are there, and a projected hotel as before", () => {
     expect(hotelNameCased("HILTON LAS VEGAS")).toBe("Hilton Las Vegas");
     expect(hotelNameCased("MIS'N PALM HTL")).toBe("Mis'n Palm Htl");
+    expect(hotelNameCased("THE WESTIN O'HARE")).toBe("The Westin O'Hare");
     expect(hotelNameCased("PROJECTED: HILTON")).toBe("Hilton (Projected)");
   });
 });

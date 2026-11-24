@@ -129,6 +129,8 @@ export function namesCased(printed: string): string {
   return printed.replace(/[A-Za-z][A-Za-z']*/g, (w) => {
     const up = w.toUpperCase();
     if (HOTEL_INITIALS.has(up) || (up.length === 3 && !/[AEIOU]/.test(up) && timezoneForAirport(up))) return up;
+    // O'HARE reads O'Hare; a shortening such as MIS'N stays Mis'n.
+    if (/^[OD]'./.test(up)) return up.slice(0, 3) + w.slice(3).toLowerCase();
     return up.charAt(0) + w.slice(1).toLowerCase();
   });
 }
