@@ -29,4 +29,18 @@ describe("rankTrips: every trip in the pack, best first, as the Trip Index", () 
     const ranked = rankTrips(pack, scores);
     expect(ranked.map((t) => t.trip.pairingNumber)).toEqual(["103", "104", "101"]);
   });
+
+  it("lists only the trips a non-member's lines fly, with the pack's own scores and places", () => {
+    const shared = trip("105", 12);
+    const both = { lines: [line("1001", [a, shared]), line("1002", [c, d, shared])] } as unknown as BidPack;
+    const scores = new Map([[tripKey(a), score(50)], [tripKey(c), score(60)], [tripKey(d), score(30)], [tripKey(shared), score(40)]]);
+    const all = rankTrips(both, scores);
+    const mine = rankTrips(both, scores, new Set(["line-1002"]));
+    expect(mine.map((t) => t.trip.pairingNumber)).toEqual(["103", "105", "104"]);
+    expect(mine.map((t) => t.rank)).toEqual([1, 3, 4]);
+    // A trip both lines fly is shown on the line the pilot can see, never named on one they can't.
+    expect(mine.map((t) => t.line.lineNumber)).toEqual(["1002", "1002", "1002"]);
+    const byKey = new Map(all.map((t) => [t.key, t.score.score]));
+    for (const t of mine) expect(t.score.score).toBe(byKey.get(t.key));
+  });
 });

@@ -14,6 +14,8 @@ import { tripDateLabel, tripRoute } from "@/lib/brain/line-text";
 import { computeHomeBaseOffsetMinutes } from "@/lib/circadian";
 import { bidMonthOf, cityMarks } from "@/lib/city-ratings";
 import { cachedFlightAnswers } from "@/lib/flights/client";
+import { FREE_PREVIEW_LINES } from "@/lib/membership";
+import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { nextVisibleCount, PAGE_SIZE } from "@/lib/results-list";
 import { rankingPack } from "@/lib/scoring-v2/adapter";
 import { scoreTripsV2, type TripScore } from "@/lib/scoring-v2/trip-score";
@@ -25,6 +27,8 @@ interface TripRankingsViewProps {
   bidPack: BidPack;
   profile: PreferenceProfile;
   onEditPreferences: () => void;
+  /** No membership: only the trips their top lines fly, the lines My Rankings shows them (`rankingSnapshotFor`). */
+  rankedLinesOnly?: boolean;
 }
 
 /**
@@ -33,25 +37,30 @@ interface TripRankingsViewProps {
  * inside a line on My Rankings. A trip is judged on itself; how trips fit together into a month (departures, time at
  * home, days off) is a line's, and stays on My Rankings.
  */
-export function TripRankingsView({ bidPack, profile, onEditPreferences }: TripRankingsViewProps) {
+export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLinesOnly = false }: TripRankingsViewProps) {
   const model = profile.pilotModel;
+  // A non-member's lines are the ones My Rankings worked out for them this visit; none yet until it has.
+  const [onLines] = useState(() => {
+    if (!rankedLinesOnly) return undefined;
+    const snapshot = rankingSnapshotFor(bidPack.id);
+    return snapshot ? new Set(snapshot.byLineId.keys()) : null;
+  });
   // Scored after the first paint: a pack's trips take a moment, and the page shows its heading meanwhile.
   const [ranked, setRanked] = useState<{ model: typeof model; pack: BidPack; trips: RankedTrip[] } | null>(null);
   useEffect(() => {
-    if (!model) return;
+    if (!model || onLines === null) return;
     const start = window.setTimeout(() => {
       const flights = cachedFlightAnswers(bidPack, model) ?? undefined;
       const scores = scoreTripsV2(bidPack, model, { flights, pack: rankingPack(bidPack, flights) });
-      setRanked({ model, pack: bidPack, trips: rankTrips(bidPack, scores) });
+      setRanked({ model, pack: bidPack, trips: rankTrips(bidPack, scores, onLines) });
     });
     return () => window.clearTimeout(start);
-  }, [bidPack, model]);
+  }, [bidPack, model, onLines]);
   const trips = ranked && ranked.model === model && ranked.pack === bidPack ? ranked.trips : null;
 
   const [search, setSearch] = useState("");
   const [shown, setShown] = useState(PAGE_SIZE);
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const rankOf = useMemo(() => new Map((trips ?? []).map((t, i) => [t.key, i + 1])), [trips]);
   const filtered = useMemo(() => {
     const q = search.trim().replace(/^#/, "");
     return (trips ?? []).filter((t) => !q || (t.trip.pairingNumber ?? "").startsWith(q));
@@ -82,7 +91,9 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences }: TripRa
             Your ranked trips
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
-            {trips ? `${trips.length} trips` : "Every trip"} scored against what you told us
+            {rankedLinesOnly
+              ? `${trips ? `${trips.length} trips` : "The trips"} on your top ${FREE_PREVIEW_LINES} lines, scored against what you told us`
+              : `${trips ? `${trips.length} trips` : "Every trip"} scored against what you told us`}
             <span className="hidden sm:inline"> &middot; best match first</span>
           </p>
         </div>
@@ -103,6 +114,14 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences }: TripRa
 
       {!model ? (
         <p className="mt-8 text-sm text-ink-muted">Finish your preferences first, and your trips will be ranked here.</p>
+      ) : onLines === null ? (
+        <p className="mt-8 text-sm text-ink-muted">
+          Your trips are ranked from your top {FREE_PREVIEW_LINES} lines. Open{" "}
+          <Link href="/results" className="text-ink underline decoration-dotted underline-offset-4 hover:text-accent">
+            My Rankings
+          </Link>{" "}
+          first, and they show here.
+        </p>
       ) : (
         <>
           <div className="mt-5 max-w-xs">
@@ -123,14 +142,16 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences }: TripRa
               Scoring every trip&hellip;
             </p>
           ) : filtered.length === 0 ? (
-            <p className="mt-6 text-sm text-ink-muted">No trip in this pack starts with that number.</p>
+            <p className="mt-6 text-sm text-ink-muted">
+              {rankedLinesOnly ? `No trip on your top ${FREE_PREVIEW_LINES} lines starts with that number.` : "No trip in this pack starts with that number."}
+            </p>
           ) : (
             <ul className="mt-4 space-y-2">
               {displayed.map((t) => (
                 <TripRow
                   key={t.key}
                   ranked={t}
-                  rank={rankOf.get(t.key) ?? 0}
+                  rank={t.rank}
                   bidPack={bidPack}
                   open={open.has(t.key)}
                   onToggle={() => toggle(t.key)}
@@ -165,6 +186,16 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences }: TripRa
                 </Button>
               </div>
             </div>
+          )}
+
+          {rankedLinesOnly && trips && (
+            <p className="mt-5 text-center text-sm text-ink-muted">
+              Those are the trips on your top {FREE_PREVIEW_LINES} lines. A{" "}
+              <Link href="/membership" className="text-ink underline decoration-dotted underline-offset-4 hover:text-accent">
+                membership
+              </Link>{" "}
+              ranks every trip in the pack.
+            </p>
           )}
         </>
       )}
