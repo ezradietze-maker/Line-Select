@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
-import { rankTrips } from "@/lib/trip-rankings";
+import { rankTrips, tripRowLabel } from "@/lib/trip-rankings";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 const trip = (num: string, day: number): Trip => ({ id: `t-${num}`, pairingNumber: num, days: 3, startDayIndex: day, schedule: [{ legs: [] }] }) as unknown as Trip;
@@ -42,5 +42,29 @@ describe("rankTrips: every trip in the pack, best first, as the Trip Index", () 
     expect(mine.map((t) => t.line.lineNumber)).toEqual(["1002", "1002", "1002"]);
     const byKey = new Map(all.map((t) => [t.key, t.score.score]));
     for (const t of mine) expect(t.score.score).toBe(byKey.get(t.key));
+  });
+});
+
+describe("tripRowLabel: a trip's row read aloud says everything the row shows", () => {
+  const leg = (dep: string, arr: string, isDeadhead = false) => ({ depAirport: dep, arrAirport: arr, isDeadhead, isStandby: false });
+  const t = {
+    ...trip("2043", 26),
+    days: 9,
+    creditHours: 59 + 10 / 60,
+    international: true,
+    schedule: [{ legs: [leg("ANC", "NRT")] }, { legs: [leg("NRT", "HND", true)] }, { legs: [leg("HND", "ANC")] }],
+  } as unknown as Trip;
+
+  it("gives the date, length, credit, international, carry-over and route after the place and score", () => {
+    expect(tripRowLabel({ rank: 3, trip: t, score: { ...score(81.7), score: 81.7 } }, "Oct 24", "48:57 C/O into November", false)).toBe(
+      "#3, Trip 2043, score 81.7, Oct 24, 9-day, 59:10 credit, international, 48:57 C/O into November, ANC → NRT → DH HND → ANC — show it day by day"
+    );
+  });
+
+  it("says when a limit holds the score down, and that the row is open", () => {
+    const domestic = { ...t, international: false } as Trip;
+    expect(tripRowLabel({ rank: 728, trip: domestic, score: { ...score(40, true), score: 29.3 } }, "Oct 12", null, true)).toBe(
+      "#728, Trip 2043, score 29.3, held down by a limit you set, Oct 12, 9-day, 59:10 credit, ANC → NRT → DH HND → ANC — hide it day by day"
+    );
   });
 });

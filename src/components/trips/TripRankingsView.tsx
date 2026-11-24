@@ -19,7 +19,7 @@ import { rankingSnapshotFor } from "@/lib/ranking-snapshot";
 import { nextVisibleCount, PAGE_SIZE } from "@/lib/results-list";
 import { rankingPack } from "@/lib/scoring-v2/adapter";
 import { scoreTripsV2, type TripScore } from "@/lib/scoring-v2/trip-score";
-import { rankTrips, type RankedTrip } from "@/lib/trip-rankings";
+import { rankTrips, tripRowLabel, type RankedTrip } from "@/lib/trip-rankings";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 
@@ -45,6 +45,11 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLi
     const snapshot = rankingSnapshotFor(bidPack.id);
     return snapshot ? new Set(snapshot.byLineId.keys()) : null;
   });
+  // A pack of ten lines or fewer (the sample's six): their top lines are every line, so the page says what it says to a
+  // member, and nothing of a membership — as My Rankings does. It had told a guest on the sample their 9 trips were the
+  // trips "on your top 10 lines", and that a membership ranks every trip in the pack.
+  const topLines = Math.min(FREE_PREVIEW_LINES, bidPack.lines.length);
+  const preview = rankedLinesOnly && !(onLines && onLines.size >= bidPack.lines.length);
   // Scored after the first paint: a pack's trips take a moment, and the page shows its heading meanwhile.
   const [ranked, setRanked] = useState<{ model: typeof model; pack: BidPack; trips: RankedTrip[] } | null>(null);
   useEffect(() => {
@@ -91,7 +96,7 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLi
             Your ranked trips
           </Heading>
           <p className="mt-1.5 text-sm text-ink-muted">
-            {rankedLinesOnly
+            {preview
               ? `${trips ? `${trips.length} trips` : "The trips"} on your top ${FREE_PREVIEW_LINES} lines, scored against what you told us`
               : `${trips ? `${trips.length} trips` : "Every trip"} scored against what you told us`}
             <span className="hidden sm:inline"> &middot; best match first</span>
@@ -116,7 +121,7 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLi
         <p className="mt-8 text-sm text-ink-muted">Finish your preferences first, and your trips will be ranked here.</p>
       ) : onLines === null ? (
         <p className="mt-8 text-sm text-ink-muted">
-          Your trips are ranked from your top {FREE_PREVIEW_LINES} lines. Open{" "}
+          Your trips are ranked from your top {topLines} lines. Open{" "}
           <Link href="/results" className="text-ink underline decoration-dotted underline-offset-4 hover:text-accent">
             My Rankings
           </Link>{" "}
@@ -143,7 +148,7 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLi
             </p>
           ) : filtered.length === 0 ? (
             <p className="mt-6 text-sm text-ink-muted">
-              {rankedLinesOnly ? `No trip on your top ${FREE_PREVIEW_LINES} lines starts with that number.` : "No trip in this pack starts with that number."}
+              {preview ? `No trip on your top ${FREE_PREVIEW_LINES} lines starts with that number.` : "No trip in this pack starts with that number."}
             </p>
           ) : (
             <ul className="mt-4 space-y-2">
@@ -188,7 +193,7 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, rankedLi
             </div>
           )}
 
-          {rankedLinesOnly && trips && (
+          {preview && trips && (
             <p className="mt-5 text-center text-sm text-ink-muted">
               Those are the trips on your top {FREE_PREVIEW_LINES} lines. A{" "}
               <Link href="/membership" className="text-ink underline decoration-dotted underline-offset-4 hover:text-accent">
@@ -208,7 +213,6 @@ function TripRow({ ranked, rank, bidPack, open, onToggle, details }: { ranked: R
   const { trip, line, score } = ranked;
   const carry = useMemo(() => tripCarryInPack(bidPack, trip), [bidPack, trip]);
   const date = tripDateLabel(bidPack, trip.startDayIndex);
-  const label = `Trip ${trip.pairingNumber ?? ""}`.trim();
   return (
     <li className={`panel-glass overflow-hidden transition-[border-color] ${open ? "!border-border-strong" : "hover:!border-border-strong"}`}>
       <div className="flex items-start gap-3 px-3 py-2.5 sm:px-4">
@@ -216,7 +220,7 @@ function TripRow({ ranked, rank, bidPack, open, onToggle, details }: { ranked: R
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          aria-label={`#${rank}, ${label}, score ${score.score.toFixed(1)} — ${open ? "hide" : "show"} it day by day`}
+          aria-label={tripRowLabel(ranked, date, carry && carryOverWords(carry), open)}
           className="flex min-w-0 flex-1 items-start gap-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           <span className="flex shrink-0 flex-col items-center gap-1">
