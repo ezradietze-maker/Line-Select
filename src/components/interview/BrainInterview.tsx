@@ -32,7 +32,7 @@ import { fitExchanges, MAX_ANSWER, MAX_NOTE } from "@/lib/brain/answer-limits";
 import { requestModelBuild, requestNextStep, type StepResponse } from "@/lib/brain/client";
 import { restoreBack, saveBack, type SavedBackStep, type Snapshot } from "@/lib/brain/interview-back";
 import { fitTripWeights, fitWeightsToChoices } from "@/lib/brain/fit-choices";
-import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
+import { askedTripScreens, choicesFromGrades, pickTripScreen, shareForeseen, tripGradesAnswer, tripGradesTranscript, tripsShownSoFar, wantsAnotherScreen, type TripGradeScreen } from "@/lib/brain/trip-sort";
 import { nextCommuteQuestion } from "@/lib/brain/commute-questions";
 import { askedTopics, pickTopics, topicThread } from "@/lib/brain/question-topics";
 import { askedTripPairs, pickTripPairs } from "@/lib/brain/trip-pairs";
@@ -47,6 +47,7 @@ import { topLines, topShift } from "@/lib/brain/ranking-shift";
 import { applyPriorityPick, priorityOrderQuestion, priorityOrderTranscript } from "@/lib/brain/priority-order";
 import { pilotContextFor } from "@/lib/brain/context";
 import { applyPins } from "@/lib/brain/profile-model";
+import { answerAck } from "@/lib/brain/ack";
 import { buildPackBrief } from "@/lib/brain/pack-brief";
 import { applyPriorityReview, type PriorityVerdict } from "@/lib/brain/review";
 import { cityScoresFromRatings, describeCityRatings, effectiveCityScore, markCityUntried, packCityFacts, rateCity, rateCityHotel, rateCitySeason, saysMore, sentimentFromRating } from "@/lib/city-ratings";
@@ -818,6 +819,8 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // The first question, asked the same way for everyone: which of their top priorities they'd give up last — in
     // their words, before any line choice can reorder them (see lib/brain/priority-order.ts).
     const priority = t === 0 && !checkInRef.current ? priorityOrderQuestion(m) : null;
+    // The questions the app builds itself say back the last answer too, as the interviewer's do (not before the first).
+    const saidBack = t > 0 ? answerAck(all.at(-1)) : undefined;
     if (priority) {
       setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: priority.prompt, helpText: priority.helpText, options: priority.options, priorityIds: priority.criterionIds, transcript: priorityOrderTranscript(priority) });
       setChoiceSelection(null);
@@ -829,7 +832,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // say "never", and enough pay always buys a weight back (see lib/brain/dealbreakers.ts).
     if (!checkInRef.current && !askedDealbreakers(all)) {
       const q = dealbreakerQuestion(bidPack, m, pm);
-      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: q.prompt, helpText: q.helpText, transcript: q.transcript });
+      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", ack: saidBack, prompt: q.prompt, helpText: q.helpText, transcript: q.transcript });
       setPhase("question");
       return;
     }
@@ -837,7 +840,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // the crew-rest hotel when it has those long sits (lib/brain/hub-turn-question.ts).
     const hub = !checkInRef.current ? nextHubTurnQuestion(bidPack, m, pm, all) : null;
     if (hub) {
-      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: hub.prompt, helpText: hub.helpText, options: hub.options, examples: hub.examples, transcript: hub.transcript });
+      setQuestion({ done: false, settled: [], threadId: null, kind: "choice", ack: saidBack, prompt: hub.prompt, helpText: hub.helpText, options: hub.options, examples: hub.examples, transcript: hub.transcript });
       setChoiceSelection(null);
       setChoiceNote("");
       setPhase("question");
@@ -846,18 +849,20 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
     // Then, for a commuter, the time they leave before a report (lib/brain/commute-questions.ts).
     const commute = !checkInRef.current ? nextCommuteQuestion(isCommuter, all) : null;
     if (commute) {
-      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", prompt: commute.prompt, helpText: commute.helpText, transcript: commute.prompt });
+      setQuestion({ done: false, settled: [], threadId: null, kind: "free-text", ack: saidBack, prompt: commute.prompt, helpText: commute.helpText, transcript: commute.prompt });
       setPhase("question");
       return;
     }
     // Real lines and trips at both ends of their main priorities, for the question to show — and the topics still worth
     // asking: what's unclear and would move their top 20 most (lib/brain/question-topics.ts).
-    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm), undefined, all) : { topics: [], examples: [] };
+    // A trip is shown once in an interview: never again as an example, in a trip choice or on a screen of grades.
+    const shownTrips = tripsShownSoFar(bidPack, all.slice(all.length - t));
+    const { topics, examples } = m ? pickTopics(bidPack, m, pm, askedTopics(th), pickQuestionExamples(bidPack, m, pm, shownTrips), undefined, all) : { topics: [], examples: [] };
     // Line pairs, the first built around the top topic whose weight is unclear: what they'd give up for more of it.
     const weightTopic = topics.find((x) => x.unclear === "weight" && x.criterionIds?.length);
     const linePairs: LinePairCandidate[] = m ? pickLinePairs(bidPack, m, pm, compared, 3, tradesRef.current, weightTopic ? { ids: weightTopic.criterionIds!, label: weightTopic.label.toLowerCase() } : undefined) : [];
     // And two real trips that pull their priorities apart, for a trip choice (lib/brain/trip-pairs.ts).
-    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all.slice(all.length - t)), tradesRef.current) : [];
+    const tripPairs = m ? pickTripPairs(bidPack, m, pm, askedTripPairs(all.slice(all.length - t)), tradesRef.current, 2, shownTrips) : [];
     try {
       const step = await requestNextStep({ packBrief: packBrief(), pilotContext: pilotContext(), cohort: cohort(), exchanges: all, model: m, threads: th, linePairs, tripPairs, examples, packNumbers, topics, lastTopic: question?.topic ?? null, turn: t, maxTurns: turnLimitRef.current, rankingShifts: shiftsRef.current });
       const settledThreads = { ...th };
@@ -865,10 +870,10 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       if (step.done) {
         setThreads(settledThreads);
         // Before wrapping up: how would they feel about flying a screen of real trips? (lib/brain/trip-sort.ts)
-        const tripScreen = !checkInRef.current && m ? nextTripScreen(all, m) : null;
+        const tripScreen = !checkInRef.current && m ? nextTripScreen(all, m, shownTrips) : null;
         if (tripScreen) {
           const asked = tripGradesTranscript(tripScreen);
-          setQuestion({ done: false, settled: [], threadId: null, kind: "choice", prompt: asked, transcript: asked, tripScreen });
+          setQuestion({ done: false, settled: [], threadId: null, kind: "choice", ack: saidBack, prompt: asked, transcript: asked, tripScreen });
           setPhase("question");
           return;
         }
@@ -898,7 +903,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
    * The next screen of trips to grade, or none: two screens, then a third only if the last one surprised the model —
    * worked out from the transcript and the grades, so going back or resuming lands on the same answer.
    */
-  function nextTripScreen(all: InterviewExchange[], m: PilotModel): TripGradeScreen | null {
+  function nextTripScreen(all: InterviewExchange[], m: PilotModel, shownTrips: Set<string>): TripGradeScreen | null {
     const shown = askedTripScreens(all);
     const graded = tripRef.current;
     const withGrades = (cs: TripChoice[]): PilotModel => ({ ...m, tripWeights: fitTripWeights(bidPack, m, cs, pm).tripWeights });
@@ -910,7 +915,7 @@ export function BrainInterview({ bidPack, priorProfile, userId, onComplete }: Br
       foreseen = shareForeseen(bidPack, withGrades(graded.filter((c) => !lastScreen.includes(c))), pm, lastScreen);
     }
     if (!wantsAnotherScreen(shown.length, foreseen)) return null;
-    return pickTripScreen(bidPack, withGrades(graded), pm, shown);
+    return pickTripScreen(bidPack, withGrades(graded), pm, shown, { shownTrips });
   }
 
   async function answer(text: string, choice: LineChoice | null = null, tripGraded: TripChoice[] = []) {

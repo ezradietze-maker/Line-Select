@@ -84,7 +84,8 @@ function differencesOf(a: TripScore, b: TripScore): (TripPairDifference & { pull
  * Up to `limit` trip pairs worth asking about: two trips from the pilot's best lines, close overall, each clearly better
  * on something they care about, never two dates of the same trip, never a pair or a trade already asked.
  */
-export function pickTripPairs(bidPack: BidPack, model: PilotModel, pack: PackMetrics, asked: Set<string>, pastTrades: string[] = [], limit = 2): TripPairCandidate[] {
+/** `shownTrips`: trips (by id) the interview already showed, never offered again (`tripsShownSoFar`). */
+export function pickTripPairs(bidPack: BidPack, model: PilotModel, pack: PackMetrics, asked: Set<string>, pastTrades: string[] = [], limit = 2, shownTrips: Set<string> = new Set()): TripPairCandidate[] {
   if (model.criteria.length < 2) return [];
   const scores = scoreTripsV2(bidPack, model, { pack });
   const lines = scorePackV2(bidPack, model, { pack }).sort((a, b) => b.score - a.score).slice(0, FROM_TOP_LINES);
@@ -93,7 +94,7 @@ export function pickTripPairs(bidPack: BidPack, model: PilotModel, pack: PackMet
   const trips: Trip[] = [];
   for (const r of lines)
     for (const t of lineOf.get(r.lineNumber)?.trips ?? []) {
-      if (seen.has(t.id) || mostlyStandby(t) || !scores.get(tripKey(t)) || trips.length >= MAX_CANDIDATES) continue;
+      if (seen.has(t.id) || shownTrips.has(t.id) || mostlyStandby(t) || !scores.get(tripKey(t)) || trips.length >= MAX_CANDIDATES) continue;
       seen.add(t.id);
       trips.push(t);
     }

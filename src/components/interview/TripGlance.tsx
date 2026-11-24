@@ -13,7 +13,7 @@ import { useTimeMode } from "@/lib/time-mode-storage";
 import type { BidPack, Trip } from "@/types/bidpack";
 
 /** The trip's oval — its number and credit, as the calendar marks a trip's first day — then when and how long, and its C/O. */
-function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodStart">; trip: Trip; carry: ReturnType<typeof tripCarryInPack> }) {
+export function TripTag({ bidPack, trip, carry }: { bidPack: Pick<BidPack, "bidPeriodStart">; trip: Trip; carry: ReturnType<typeof tripCarryInPack> }) {
   const date = tripDateLabel(bidPack, trip.startDayIndex);
   return (
     <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-ink-muted">
