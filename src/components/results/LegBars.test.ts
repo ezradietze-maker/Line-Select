@@ -45,6 +45,15 @@ describe("laneWords", () => {
     expect(stay.maxWidth).toBeGreaterThanOrEqual("L/O SAN 15h".length * LABEL_CHAR_PX);
   });
 
+  it("drops L/O, not the hours, when a late stay leaves too little room before the day's edge", () => {
+    // B767 MEM on a 375 phone: a 12h CDG stay from 16:53 on a 215px day; "L/O CDG 12h" lost the end of its "12h".
+    const late = [piece("layover", 16.9 * H, 24 * H, { ...hotel("CDG", 12), continuesToNextDay: true })];
+    const stay = laneWords(dayBars(late, gap(215), undefined, 215), 215).stays[0]!;
+    expect(stay.left + stay.maxWidth).toBeLessThanOrEqual(215);
+    expect(stay.fit).toMatchObject({ lo: false, hours: true });
+    expect(laneWords(dayBars(late, gap(900), undefined, 900), 900).stays[0]!.fit).toMatchObject({ lo: true, hours: true });
+  });
+
   it("writes it all out when there's room", () => {
     const words = laneWords(dayBars(morning, gap(900), undefined, 900), 900);
     expect(words.rests[0]?.text).toBe("Rest HTL IND 4h19");

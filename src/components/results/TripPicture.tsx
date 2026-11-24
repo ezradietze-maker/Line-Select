@@ -43,6 +43,9 @@ interface TripPictureProps {
   heat?: TripHeat | null;
 }
 
+/** The least room after a layover's words worth showing its hotel in: "· Hya…", the gap before it included. */
+const HOTEL_MIN_PX = 30;
+
 /** The days the rows show: the base's calendar on the local clock, Zulu days on Zulu. */
 export function tripPictureDays(trip: Trip, mode: TimeMode): TimelineDay[] {
   return mode === "zulu" ? buildTimelineDays(trip, "zulu") : buildHomeDays(trip, "local");
@@ -173,13 +176,19 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                 stayLabeled={(s) => labeled.has(s)}
                 cityPreferences={cityPreferences}
                 heatOf={heatOf}
-                formatStay={({ city, hours: h, hotel }, mark) => (
+                formatStay={({ city, hours: h, hotel }, mark, fit) => (
                   <>
-                    <span className="font-normal">L/O </span>
+                    {fit.lo && <span className="font-normal">L/O </span>}
                     {city}
-                    <span className="font-normal"> {layoverHours(h)}</span>
+                    {fit.hours && <span className="font-normal"> {layoverHours(h)}</span>}
                     {mark}
-                    {!compact && hotel && <span className="font-sans font-normal capitalize text-ink-muted"> · {displayHotelName(hotel).toLowerCase()}</span>}
+                    {/* The hotel alone gives way when the day runs out, ending in "…" — or left to the day's detail when
+                        not even a few letters fit. The words' box clips what's past it: on a phone the name was sliced
+                        mid-letter at the day's right edge ("· White"). The city and hours before it never shrink; `py-px`
+                        keeps the foot of a "g" inside the name's own clip. */}
+                    {!compact && hotel && fit.lo && fit.restPx >= HOTEL_MIN_PX && (
+                      <span className="min-w-0 truncate py-px font-sans font-normal capitalize text-ink-muted"> · {displayHotelName(hotel).toLowerCase()}</span>
+                    )}
                   </>
                 )}
               />

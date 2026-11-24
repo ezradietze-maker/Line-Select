@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { dayBars, LABEL_CHAR_PX, layoverHours, stayLabelLeft, type BarLabel, type DayBars } from "@/lib/leg-bars";
+import { dayBars, fitStayWords, LABEL_CHAR_PX, layoverHours, STAY_WORD_GAP_PX, stayLabelLeft, type BarLabel, type DayBars } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 import { widthWatcher } from "@/lib/width-watcher";
 import { CityMarkGlyph } from "@/components/results/CityMarkGlyph";
@@ -121,6 +121,10 @@ function middleWords(bars: DayBars, width: number, taken: [number, number][], pl
 /** How far a layover's words reach at the least before anything else may sit after them: "L/O SEA 16h". */
 const stayWordsPx = (s: DayBars["stays"][number]) => `L/O ${s.city} ${Math.round(s.hours)}h`.length * LABEL_CHAR_PX;
 const WORDS_GAP = 4;
+/** How much of a layover's words its room holds (`fitStayWords`). */
+export type StayFit = ReturnType<typeof fitStayWords>;
+/** The pilot's mark on a city ("♥"), one character and the gap before it. */
+const MARK_PX = LABEL_CHAR_PX + STAY_WORD_GAP_PX;
 
 /**
  * Where a layover's words begin, px: just past the hotel van, or further back toward the stay's own start when that
@@ -136,9 +140,14 @@ function stayStart(s: DayBars["stays"][number], width: number): number {
  * The words under the layover and crew-rest lines share one line, so each keeps clear of the others: a crew-rest hotel's
  * words centered on its line, the longest that fits ("Rest HTL IND 4h19", "Rest HTL IND", "HTL IND", or none — it's in
  * the day's detail); a layover's from its start up to the next words after it, cut off there. On a phone a hub turn's
- * rest and the layover beside it ran into each other.
+ * rest and the layover beside it ran into each other. Each layover says as much as its room holds (`fitStayWords`),
+ * `markPx` wide for the pilot's mark on its city.
  */
-export function laneWords(bars: DayBars, width: number): { stays: ({ left: number; maxWidth: number } | null)[]; rests: ({ center: number; text: string } | null)[] } {
+export function laneWords(
+  bars: DayBars,
+  width: number,
+  markPx: (city: string) => number = () => 0,
+): { stays: ({ left: number; maxWidth: number; fit: StayFit } | null)[]; rests: ({ center: number; text: string } | null)[] } {
   const taken: [number, number][] = bars.stays.filter((s) => s.labeled).map((s) => {
     const left = stayStart(s, width);
     return [left, left + stayWordsPx(s)];
@@ -161,7 +170,8 @@ export function laneWords(bars: DayBars, width: number): { stays: ({ left: numbe
     if (!s.labeled) return null;
     const left = stayStart(s, width);
     const next = Math.min(width + WORDS_GAP, ...starts.filter((a) => a > left));
-    return { left, maxWidth: Math.max(0, next - WORDS_GAP - left) };
+    const maxWidth = Math.max(0, next - WORDS_GAP - left);
+    return { left, maxWidth, fit: fitStayWords(s.city, s.hours, maxWidth, markPx(s.city)) };
   });
   return { stays, rests };
 }
@@ -175,8 +185,11 @@ interface LegBarsProps {
   /** Which hotel-stay pieces carry their words (`labeledStayPieces`); by default each stay's first piece. */
   stayLabeled?: (s: TimelineSegment) => boolean;
   cityPreferences?: Record<string, CityMark>;
-  /** The words on a layover, in place of "L/O SEA 16h ♥" — handed the pilot's mark for the city to place. */
-  formatStay?: (stay: { city: string; hours: number; hotel: string | null }, mark: ReactNode) => ReactNode;
+  /**
+   * The words on a layover, in place of "L/O SEA 16h ♥" — handed the pilot's mark for the city to place, and how much
+   * of them the day has room for (`fit`).
+   */
+  formatStay?: (stay: { city: string; hours: number; hotel: string | null }, mark: ReactNode, fit: StayFit) => ReactNode;
   /**
    * The Heat Map: each duty period's band and each layover's line in its heat colour (`lib/line-heat.ts`), everything
    * else in ink over them, so the colour is only ever heat.
@@ -209,7 +222,7 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
   const height = lane ? wordsTop + SIZE.line : citiesTop + Math.max(cityRows, 1) * SIZE.line;
   const cityTop = (row: 0 | 1) => citiesTop + row * SIZE.line;
   const middle = middleWords(bars, width, spans(bars.cities, 0, width), !!heatOf);
-  const words = laneWords(bars, width);
+  const words = laneWords(bars, width, (city) => (cityPreferences?.[city] ? MARK_PX : 0));
 
   return (
     <div className="relative w-full" style={{ height }} aria-hidden>
@@ -269,16 +282,20 @@ export function LegBars({ segments, widthPx, shape, stayLabeled, cityPreferences
               />
               {gtIn !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtIn, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT in — airport to hotel" />}
               {gtOut !== null && <span className={`absolute rounded-full ${gt}`} style={{ left: gtOut, width: GT_PX, top: laneTop - 2, height: SIZE.lane + 4 }} title="GT out — hotel pickup" />}
+              {/* The gap in px, like the words (STAY_WORD_GAP_PX): in rem it doubled at 200% text and cut "19h" short. */}
               {s.labeled && words.stays[i] && (
                 <span
-                  className={`absolute flex min-w-0 items-center gap-0.5 overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
+                  className={`absolute flex min-w-0 items-center gap-[2px] overflow-hidden whitespace-nowrap font-mono text-[11px] font-semibold leading-none ${heatOf ? "text-ink" : "text-layover"}`}
                   style={{ left: words.stays[i]!.left, maxWidth: words.stays[i]!.maxWidth, top: wordsTop, height: SIZE.line }}
                 >
                   {formatStay ? (
-                    formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />)
+                    formatStay(s, <CityMarkGlyph mark={cityPreferences?.[s.city]} />, words.stays[i]!.fit)
                   ) : (
                     <>
-                      L/O {s.city} {layoverHours(s.hours)}
+                      {/* Each word its own piece, as `fitStayWords` measures them. */}
+                      {words.stays[i]!.fit.lo && <span>L/O</span>}
+                      {s.city}
+                      {words.stays[i]!.fit.hours && <span>{layoverHours(s.hours)}</span>}
                       <CityMarkGlyph mark={cityPreferences?.[s.city]} />
                     </>
                   )}

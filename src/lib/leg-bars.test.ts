@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayBars, fitLayoverLabel, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, stagger, stayLabelLeft } from "@/lib/leg-bars";
+import { dayBars, fitLayoverLabel, fitStayWords, labeledStayPieces, layoverHours, LABEL_CHAR_PX, sideBySide, STAY_WORD_GAP_PX, stagger, stayLabelLeft } from "@/lib/leg-bars";
 import type { TimelineSegment } from "@/lib/trip-timeline";
 
 const H = 60;
@@ -169,6 +169,17 @@ describe("layover words", () => {
     expect(fitLayoverLabel("OAK", 28, 30)).toMatchObject({ hours: false });
     // Room for the pilot's mark after it counts too.
     expect(fitLayoverLabel("OAK", 28, "OAK 28h".length * LABEL_CHAR_PX + 4, 10)).toMatchObject({ hours: false });
+  });
+
+  it("fits a trip picture's layover words to their room: L/O goes first, then the hours, never the city", () => {
+    // "L/O CDG 12h" set as three pieces 2px apart: 9 characters and two gaps.
+    const full = 9 * LABEL_CHAR_PX + 2 * STAY_WORD_GAP_PX;
+    expect(fitStayWords("CDG", 12, 200)).toEqual({ lo: true, hours: true, restPx: 200 - full });
+    // B767 MEM, a stay from 17:00 on a 375 phone's 215px day: 64px from its start to the edge, and "12h" was cut.
+    expect(fitStayWords("CDG", 12, 63.8)).toMatchObject({ lo: false, hours: true });
+    expect(fitStayWords("CDG", 12, 30)).toMatchObject({ lo: false, hours: false });
+    // The pilot's mark after the city counts too.
+    expect(fitStayWords("CDG", 12, full + 1, 8.8)).toMatchObject({ lo: false, hours: true });
   });
 
   it("moves a late stay's words back toward its start so they aren't cut at the day's right edge", () => {

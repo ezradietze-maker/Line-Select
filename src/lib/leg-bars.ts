@@ -320,3 +320,22 @@ export function fitLayoverLabel(city: string, hours: number, roomPx: number, ext
   const fit = options.find((o) => width(o.text) <= roomPx) ?? options[1];
   return { hours: fit.hours, widthPx: width(fit.text) };
 }
+
+/** The gap between a trip picture's layover words, px — each word is its own piece, set `gap-[2px]` apart with no space. */
+export const STAY_WORD_GAP_PX = 2;
+
+/**
+ * The most of a layover's words a trip picture's day has room for in `roomPx`: "L/O CDG 12h", then "CDG 12h", then
+ * "CDG" — `extraPx` for the pilot's mark after them — and the room left after them for the hotel. On a phone, a stay
+ * starting late in a narrow day had "L/O CDG 12h" cut to "L/O CDG 12": the words can't start before the stay does.
+ */
+export function fitStayWords(city: string, hours: number, roomPx: number, extraPx = 0): { lo: boolean; hours: boolean; restPx: number } {
+  const options = [
+    { lo: true, hours: true, words: ["L/O", city, layoverHours(hours)] },
+    { lo: false, hours: true, words: [city, layoverHours(hours)] },
+    { lo: false, hours: false, words: [city] },
+  ];
+  const width = (words: string[]) => words.join("").length * LABEL_CHAR_PX + (words.length - 1) * STAY_WORD_GAP_PX + extraPx;
+  const fit = options.find((o) => width(o.words) <= roomPx) ?? options[2];
+  return { lo: fit.lo, hours: fit.hours, restPx: roomPx - width(fit.words) };
+}
