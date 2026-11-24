@@ -20,11 +20,13 @@ export const LEG_MIX_LABEL = "Legs per duty period";
 const WORDS = ["", "single", "two", "three", "four", "five", "six", "seven", "eight"];
 const legWord = (n: number) => `${WORDS[n] ?? n}-leg`;
 
-/** Flying duties by how many legs they operate: "all single-leg duty periods", "1 two-leg duty period and 1 three-leg duty period, the rest single-leg". */
+/** Flying duties by how many legs they operate: "all single-leg duty periods", "1 two-leg duty period and 1 three-leg duty period, the rest single-leg", "no legs flown". */
 export function legMixText(facts: TripFacts[]): string | null {
   const counts = new Map<number, number>();
   for (const f of facts) for (const d of f.duties) if (d.operatedLegs > 0) counts.set(d.operatedLegs, (counts.get(d.operatedLegs) ?? 0) + 1);
-  if (!counts.size) return null;
+  // Duty periods with no leg flown in any (hotel standby, deadheads) are said so, not left to the measure's own 0, which
+  // reads "all single-leg duty periods": an 11-day hotel-standby line (777 ANC FO, Oct 2026) was shown that way.
+  if (!counts.size) return facts.some((f) => f.duties.length) ? "no legs flown" : null;
   const singles = counts.get(1) ?? 0;
   const multi = [...counts.entries()].filter(([legs]) => legs > 1).sort((a, b) => a[0] - b[0]);
   if (!multi.length) return singles === 1 ? "1 single-leg duty period" : "all single-leg duty periods";

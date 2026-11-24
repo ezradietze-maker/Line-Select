@@ -16,7 +16,10 @@ describe("legMixText", () => {
     expect(legMixText([trip(3, 3)])).toBe("2 three-leg duty periods");
     expect(legMixText([trip(2, 3, 4, 1, 1)])).toBe("1 two-leg duty period, 1 three-leg duty period and 1 four-leg duty period, the rest single-leg");
   });
-  it("leaves out duties with no flying, and has nothing to say without any", () => {
-    expect(legMixText([trip(0, 0)])).toBeNull();
+  it("leaves out duties with no flying, and says when no duty has a leg flown", () => {
+    expect(legMixText([trip(0, 1, 0)])).toBe("1 single-leg duty period");
+    // Hotel standby or deadheads only: never "all single-leg duty periods".
+    expect(legMixText([trip(0, 0)])).toBe("no legs flown");
+    expect(legMixText([])).toBeNull();
   });
 });
