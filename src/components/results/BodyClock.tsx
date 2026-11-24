@@ -21,7 +21,8 @@ export function bodyClockTone(score: number): string {
 /**
  * "64/100", colored — and, with `onClick`, a button that opens the reasons (the chevron says which way). Where its box
  * is too narrow for the three on one row (the line card's summary, or a trip's header on a 320 phone, with the phone's
- * text set larger) the score goes under its name: kept beside it, it ran out of the box and the chevron was cut.
+ * text set larger) the score goes under its name: kept beside it, it ran out of the box and the chevron was cut. Its side
+ * padding stays 8px with the text set large: doubled, "20/100" ran out of the badge in an interview line on a 320 phone.
  */
 export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: { result: BodyClockScore; open?: boolean; onClick?: () => void; label?: string }) {
   const body = (
@@ -36,7 +37,7 @@ export function BodyClockBadge({ result, open, onClick, label = "Body clock" }: 
   );
   const title = `Body-clock score ${result.score}/100 — 100 is the gentlest on your body clock`;
   return onClick ? (
-    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[3px] border border-hairline bg-canvas/60 px-2 py-0.5 transition-colors hover:border-border-strong">
+    <button type="button" onClick={onClick} aria-expanded={open} title={title} className="inline-flex max-w-full flex-wrap items-center gap-1.5 rounded-[3px] border border-hairline bg-canvas/60 px-[min(0.5rem,8px)] py-0.5 transition-colors hover:border-border-strong">
       {body}
     </button>
   ) : (

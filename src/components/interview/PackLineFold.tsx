@@ -65,7 +65,9 @@ export function PackLineFold({
             transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
             className="overflow-hidden border-t border-hairline"
           >
-            <div className="p-4 sm:p-5">
+            {/* On a phone its padding stays 16px with the text set large: doubled, a 320 phone at 200% left the line's
+                summary 90px, and its Body clock score ran out of its badge. */}
+            <div className="p-[min(1rem,16px)] sm:p-5">
               {heading ? <p className="text-2xs text-ink-faint font-medium">{heading}</p> : null}
               <p className="mt-0.5 font-display text-xl font-semibold text-ink">Line {lineNumber}</p>
               <p className="mb-3 font-mono text-xs text-ink-muted">{lineFigures(bidPack, line, formatHoursValue)}</p>

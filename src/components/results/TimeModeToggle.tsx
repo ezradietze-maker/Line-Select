@@ -10,13 +10,18 @@ interface TimeModeToggleProps {
   onChange: (mode: TimeMode) => void;
 }
 
-/** Governs how every timestamp in a trip's expanded detail displays — the whole trip schedule below reads one of these two ways at a time, never a per-trip choice. */
+/**
+ * Governs how every timestamp in a trip's expanded detail displays — the whole trip schedule below reads one of these two
+ * ways at a time, never a per-trip choice. No wider than its box: on a 320 phone with the text at 200%, "Local" ran off
+ * the side of an interview trip card (the page scrolled sideways) and was cut off in a line's calendar. There, "Local"
+ * goes under "Zulu".
+ */
 export function TimeModeToggle({ mode, onChange }: TimeModeToggleProps) {
   return (
     <div
       role="radiogroup"
       aria-label="Time system"
-      className="inline-flex items-center gap-0.5 rounded-[3px] border border-hairline bg-surface p-0.5"
+      className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-[3px] border border-hairline bg-surface p-0.5"
     >
       {OPTIONS.map((opt) => (
         <button

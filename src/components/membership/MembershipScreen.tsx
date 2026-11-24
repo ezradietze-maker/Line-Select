@@ -7,7 +7,9 @@ import { checkoutNotLanded, claimFreeMembership, fetchBillingStatus, MEMBERSHIP_
 import { FREE_MEMBER_CAP } from "@/lib/membership";
 import { keepFocusIn } from "@/lib/focus-keeper";
 
-const PANEL = "panel-glass p-6";
+// On a phone its padding stays 24px with the text set large: doubled, a 320 phone at 200% left 158px, and "Start
+// membership" ran out of its panel.
+const PANEL = "panel-glass p-[min(1.5rem,24px)] sm:p-6";
 
 function formatDate(iso: string | null): string | null {
   if (!iso) return null;
@@ -330,7 +332,7 @@ export function MembershipBody({
           <li>Sorts, filters, the calendar feed, and Send to VIPS</li>
           <li>Cancel anytime from Stripe&rsquo;s portal</li>
         </ul>
-        <Button variant={freeLeft > 0 ? "secondary" : "primary"} onClick={onCheckout} disabled={busy}>
+        <Button variant={freeLeft > 0 ? "secondary" : "primary"} onClick={onCheckout} disabled={busy} className="max-w-full px-[min(1rem,16px)]">
           {busy ? "Starting…" : status.freeMonth ? "Start free month" : "Start membership"}
         </Button>
         {lapsed && (

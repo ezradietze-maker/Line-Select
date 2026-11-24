@@ -117,7 +117,7 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
         tabIndex={-1}
         className={`relative w-full animate-fade-in rounded-[6px] border border-border-strong bg-surface shadow-elevated-lg outline-none ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
-        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between border-b border-border px-[min(1.5rem,24px)] py-4 sm:px-6">
           <Heading as="h2" className="text-base text-ink">{title}</Heading>
           {locked ? (
             // Holds the X's room, so a dialog that locks part-way keeps its height.
@@ -137,8 +137,10 @@ export function Modal({ title, onClose, children, wide = false, locked = false }
         </div>
         {/* Positioned, so it holds what's placed inside it: a screen-reader-only label far down Compare sat against the
             dialog instead, and stretched the dim backdrop's scroll a screen or two below it — scrolled past the end of
-            the dialog, a phone carried the whole dialog off the top into empty backdrop. */}
-        <div className="relative max-h-[70vh] overflow-y-auto px-6 py-5">{children}</div>
+            the dialog, a phone carried the whole dialog off the top into empty backdrop. On a phone its sides stay 24px
+            with the text set large: doubled, a 320 phone at 200% left Sort lines by 158px, and its Order choice and
+            measures ran past the right edge, to be scrolled sideways. */}
+        <div className="relative max-h-[70vh] overflow-y-auto px-[min(1.5rem,24px)] py-5 sm:px-6">{children}</div>
       </div>
     </div>,
     document.body
