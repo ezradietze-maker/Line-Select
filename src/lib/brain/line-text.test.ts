@@ -37,6 +37,6 @@ describe("tripDuties: local where it happens, or Zulu", () => {
     expect(tripDuties(flown)).toEqual(["1. FX 0034 IND 04:20 → CDG 18:17"]);
   });
   it("reads Zulu when switched", () => {
-    expect(tripDuties(flown, "zulu")).toEqual(["1. FX 0034 IND 08:20 → CDG 16:17"]);
+    expect(tripDuties(flown, "zulu")).toEqual(["1. FX 0034 IND 08:20Z → CDG 16:17Z"]);
   });
 });

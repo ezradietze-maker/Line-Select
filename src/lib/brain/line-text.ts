@@ -67,8 +67,9 @@ export function tripHeadline(bidPack: PackText, t: Trip, credit = tenths): strin
  * the Local/Zulu switch).
  */
 export function tripDuties(t: Trip, mode: TimeMode = "local"): string[] {
-  const dep = (l: TripLeg) => hm(mode === "zulu" ? l.depTimeGmt : l.depTimeLocal);
-  const arr = (l: TripLeg) => hm(mode === "zulu" ? l.arrTimeGmt : l.arrTimeLocal);
+  // Zulu times end in Z, as the trip picture beside them marks its Rpt and P/U: unmarked, they read as local.
+  const dep = (l: TripLeg) => (mode === "zulu" ? `${hm(l.depTimeGmt)}Z` : hm(l.depTimeLocal));
+  const arr = (l: TripLeg) => (mode === "zulu" ? `${hm(l.arrTimeGmt)}Z` : hm(l.arrTimeLocal));
   return t.schedule.map((d, i) => {
     const legs = d.legs.map((l) =>
       l.isStandby
