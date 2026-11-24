@@ -17,6 +17,6 @@ export function askPackExamples(bidPack: BidPack): string[] {
   return [
     top ? `Lines with ${cityName(top)} and no weekends worked` : "Most days off, no weekends worked",
     "Fewest commutes, at least 15 days off",
-    nightHubTurns ? "No night hub turns and no three-leg duties" : "Longest layovers and no three-leg duties",
+    nightHubTurns ? "No night hub turns and no three-leg duty periods" : "Longest layovers and no three-leg duty periods",
   ];
 }

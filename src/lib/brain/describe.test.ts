@@ -13,8 +13,8 @@ describe("saying the model back in plain words", () => {
   });
 
   it("says each measure's value so it reads on its own, next to a priority written as a wish", () => {
-    expect(formatValue(0, { id: "extraLegs", unit: "legs" })).toBe("no extra legs");
-    expect(formatValue(3, { id: "extraLegs", unit: "legs" })).toBe("3 extra legs");
+    expect(formatValue(0, { id: "extraLegs", unit: "legs" })).toBe("all single-leg duty periods");
+    expect(formatValue(3, { id: "extraLegs", unit: "legs" })).toBe("3 legs after the first in a duty period");
     expect(formatValue(1, { id: "allNighterStreak", unit: "duties" })).toBe("the odd all-night duty, never two in a row");
     expect(formatValue(0, { id: "allNighterStreak", unit: "duties" })).toBe("no all-night duties");
     expect(formatValue(0, { id: "daytimeLayovers", unit: "layovers" })).toBe("a night's sleep on every layover");

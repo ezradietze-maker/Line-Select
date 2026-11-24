@@ -1,4 +1,5 @@
 import { formatValue } from "@/lib/brain/describe";
+import { LEG_MIX_METRICS, lineLegMix } from "@/lib/brain/leg-mix";
 import { namedDomicile } from "@/lib/domicile-name";
 import { METRICS_BY_ID, type MetricCategory } from "@/lib/metrics/catalog";
 import { measure, type PackMetrics } from "@/lib/metrics/compute";
@@ -204,7 +205,7 @@ export function pickTopics(
       kind: "line",
       ref: x.n,
       title: `Line ${x.n}`,
-      fact: namedDomicile(formatValue(x.v, def), bidPack.base),
+      fact: (LEG_MIX_METRICS.has(metric) ? lineLegMix(lineOf.get(x.n)!, pm) : null) ?? namedDomicile(formatValue(x.v, def), bidPack.base),
       priority: def.label,
       criterionId: `feature:${metric}`,
       summary: "",

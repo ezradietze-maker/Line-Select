@@ -327,9 +327,9 @@ export function ResultsFilterBar({
           )}
 
           {options.showSingleLegToggle && (
-            <FilterRow label="Duties">
+            <FilterRow label="Duty periods">
               <Chip active={filters.singleLegDutiesOnly} onClick={() => onChange({ ...filters, singleLegDutiesOnly: !filters.singleLegDutiesOnly })}>
-                Single-leg duties only
+                Single-leg duty periods only
               </Chip>
             </FilterRow>
           )}

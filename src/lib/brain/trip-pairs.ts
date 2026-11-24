@@ -1,5 +1,6 @@
 import { tripHeadline } from "@/lib/brain/line-text";
 import { namedDomicile } from "@/lib/domicile-name";
+import { LEG_MIX_LABEL, LEG_MIX_METRICS, tripLegMix } from "@/lib/brain/leg-mix";
 import { plainBetter } from "@/lib/brain/plain-features";
 import { tripLabel } from "@/lib/brain/trip-sort";
 import type { PackMetrics } from "@/lib/metrics/compute";
@@ -133,6 +134,9 @@ export function pickTripPairs(bidPack: BidPack, model: PilotModel, pack: PackMet
       trade: p.trade,
       tension: `${labelA} is better on ${better("a").join("; ")}. ${labelB} on ${better("b").join("; ")}`,
       differences: shown.map(({ label, a, b, better, metric }) => {
+        // Legs per duty said as the duties themselves ("1 two-leg duty period, 1 single-leg"), never "1 extra leg".
+        const legs = LEG_MIX_METRICS.has(metric) ? [tripLegMix(p.a), tripLegMix(p.b)] : null;
+        if (legs?.[0] && legs[1] && legs[0] !== legs[1]) return { label: LEG_MIX_LABEL, a: legs[0], b: legs[1], better };
         const plain = plainBetter(metric);
         return { label: named(label), a: named(a), b: named(b), better, ...(plain ? { plain } : {}) };
       }),

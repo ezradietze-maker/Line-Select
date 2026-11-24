@@ -255,7 +255,7 @@ const FILTER_PARTS: FilterPart[] = [
   {
     key: "singleLegDutiesOnly",
     active: (f) => f.singleLegDutiesOnly,
-    label: () => "Single-leg duties only",
+    label: () => "Single-leg duty periods only",
     clear: { singleLegDutiesOnly: false },
     matches: (l) => {
       const duties = l.trips.flatMap((t) => factsOf(t).duties).filter((d) => d.operatedLegs > 0);
