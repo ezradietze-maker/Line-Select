@@ -170,8 +170,10 @@ function End({ finish, mode }: { finish: TripFinish; mode: TimeMode }) {
   return (
     // Wraps where a phone's day is too narrow for it all on one line: kept on one, "END ANC +1" ran on into the next
     // day, over its "9 off". Narrower than "END" itself (a phone with its text at its largest), it's left to the day's
-    // details, a tap away, as the trip's number is: there, "END MEM" ran over the next day's "10 off".
-    <span className="flex min-w-0 flex-wrap @max-[0.75rem]:hidden items-baseline gap-x-0.5 gap-y-px whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
+    // details, a tap away, as the trip's number is: there, "END MEM" ran over the next day's "10 off". "END" is 1.34rem
+    // wide and may run into the day's 4px of padding, no further: hidden only below 0.75rem, at 150% on a 320 phone it
+    // ran past its day.
+    <span className="flex min-w-0 flex-wrap @max-[calc(1.34rem-4px)]:hidden items-baseline gap-x-0.5 gap-y-px whitespace-nowrap font-mono text-2xs leading-none text-ink @min-[4.75rem]:text-2xs" title={`Trip ends: lands ${finish.city} ${finish.time} (${clockOf(mode)})${finish.nextDay ? ", just after midnight" : ""}`}>
       <span className="text-2xs font-semibold tracking-wide text-ink-muted">END</span>
       <span className="font-semibold">{finish.city}</span>
       <span className="hidden @min-[4.75rem]:inline">

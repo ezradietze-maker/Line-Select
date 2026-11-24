@@ -35,6 +35,16 @@ const hoursOf = (min: number) => {
 const HOURS_FIT = ["@min-[1.5rem]:inline", "@min-[2rem]:inline", "@min-[2.5rem]:inline", "@min-[2.875rem]:inline", "@min-[3.375rem]:inline"];
 
 /**
+ * The narrowest ribbon, 2rem to 10rem, whose hour marks ("06", "12") each have 1rem before the next, `gap` minutes on.
+ * On a phone with its text at 200% they ran into one another: there every other one goes, then all. Never more than
+ * 10rem, narrower than any ribbon at the normal text size, so that look is as it was.
+ */
+const TICKS_FIT = ["@min-[2rem]/ribbon:inline", "@min-[3rem]/ribbon:inline", "@min-[4rem]/ribbon:inline", "@min-[5rem]/ribbon:inline", "@min-[6rem]/ribbon:inline", "@min-[7rem]/ribbon:inline", "@min-[8rem]/ribbon:inline", "@min-[9rem]/ribbon:inline", "@min-[10rem]/ribbon:inline"];
+const ticksFit = (gap: number, span: number) => TICKS_FIT[Math.min(Math.max(Math.ceil(span / Math.max(gap, 1)) - 2, 0), TICKS_FIT.length - 1)];
+/** The fewest minutes between two of these ticks. */
+const minGap = (ats: number[]) => Math.min(Infinity, ...ats.slice(1).map((at, i) => at - ats[i]));
+
+/**
  * One layover's stay, hotel to wake-up: shaded by how easily the body can sleep, the suggested sleeps on top. Its times
  * are the city's own, marked L: under the Zulu toggle they sat unmarked beside Zulu times and read as Zulu.
  */
@@ -48,8 +58,11 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
     .map((r) => `color-mix(in srgb, var(--color-sleep) ${Math.round(8 + r.ease * 42)}%, transparent) ${(((r.at - plan.inHotel) / span) * 100).toFixed(1)}%`);
   // Local-clock ticks every six hours (on the new clock after a clock change).
   const ticks = plan.ticks;
+  // Every mark where each has room; where they don't, every other one (the 1st, 3rd…), where those still have room.
+  const allFit = ticksFit(minGap(ticks.map((t) => t.at)), span);
+  const evenFit = ticksFit(minGap(ticks.filter((_, i) => i % 2 === 0).map((t) => t.at)), span);
   return (
-    <div className="relative mt-5">
+    <div className="@container/ribbon relative mt-5">
       <div className="relative h-8 overflow-hidden rounded-md ring-1 ring-inset ring-hairline" style={{ background: `linear-gradient(to right, ${stops.join(", ")})` }}>
         {ticks.map((t) => (
           <div key={t.at} className="absolute inset-y-0 w-px bg-ink/15" style={{ left: pct(t.at) }} aria-hidden />
@@ -69,21 +82,22 @@ function Ribbon({ plan }: { plan: LayoverSleepPlan }) {
           );
         })}
       </div>
-      {ticks.map((t) => (
-        <span key={t.at} className="absolute -top-4 -translate-x-1/2 font-mono text-2xs text-ink-faint" style={{ left: pct(t.at) }} aria-hidden>
+      {ticks.map((t, i) => (
+        <span key={t.at} className={`absolute -top-4 hidden -translate-x-1/2 font-mono text-2xs text-ink-faint ${i % 2 === 0 ? evenFit : allFit}`} style={{ left: pct(t.at) }} aria-hidden>
           {t.label}
         </span>
       ))}
       {/* Each end whole on its own line when both won't fit: wrapped inside, "13:52" fell under "In the hotel" and its L
-          drifted over beside "Up by". */}
+          drifted over beside "Up by". Too narrow for an end on one line (a phone with its text at 200%), it wraps between
+          its words, the time and its L kept together: kept whole, "In the hotel 19:35L" ran out of its box. */}
       <div className="mt-1 flex flex-wrap justify-between gap-x-3 font-mono text-2xs text-ink-faint">
-        <span className="inline-flex items-center gap-1 whitespace-nowrap">
-          <BedIcon className="h-3 w-3" /> In the hotel {plan.inHotelLocal}
+        <span className="inline-flex items-center gap-1 whitespace-nowrap @max-[12rem]/rest:block @max-[12rem]/rest:whitespace-normal">
+          <BedIcon className="h-3 w-3 @max-[12rem]/rest:inline" /> In the hotel {plan.inHotelLocal}
           <Zone />
         </span>
-        <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap">
+        <span className="ml-auto inline-flex items-center gap-1 whitespace-nowrap @max-[12rem]/rest:block @max-[12rem]/rest:whitespace-normal @max-[12rem]/rest:text-right">
           Up by {plan.wakeByLocal}
-          <Zone /> <SunriseIcon className="h-3 w-3" />
+          <Zone /> <SunriseIcon className="h-3 w-3 @max-[12rem]/rest:inline" />
         </span>
       </div>
     </div>
@@ -99,9 +113,9 @@ const QUALITY: Record<LayoverSleepPlan["quality"], { label: string; tone: string
 function LayoverPlan({ plan }: { plan: LayoverSleepPlan }) {
   const q = QUALITY[plan.quality];
   return (
-    <li className="rounded-lg border border-hairline bg-canvas/50 p-3">
+    <li className="rounded-lg border border-hairline bg-canvas/50 p-3 @max-[12rem]/rest:p-1.5 @max-[12rem]/rest:break-words">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="inline-flex items-baseline gap-2">
+        <span className="inline-flex items-baseline gap-2 @max-[12rem]/rest:flex-wrap">
           <span className="font-mono text-sm font-semibold text-ink">{plan.city}</span>
           <span className="font-mono text-2xs text-ink-muted">{hoursOf(plan.wakeBy - plan.inHotel)} in the hotel</span>
         </span>
@@ -208,27 +222,36 @@ export function RestPlan({ plans }: { plans: LayoverSleepPlan[] }) {
   const total = plans.reduce((a, p) => a + p.totalSleepHours, 0);
   const short = plans.filter((p) => p.quality !== "good").length;
   return (
-    <div className="mt-3 rounded-lg border border-sleep/25 bg-sleep-soft/40">
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2.5 px-3 py-2 text-left">
+    // Where it's narrow (a phone with its text set larger: 12rem grows with the text) its padding gives way, and the header
+    // takes three rows: the moon and the chevron, the words, the dots. On one, the dots pushed the chevron out of the box,
+    // and each layover's words had room for a word or two and ran out of theirs; a word longer than its line ("grogginess")
+    // breaks there rather than run out.
+    <div className="@container/rest mt-3 rounded-lg border border-sleep/25 bg-sleep-soft/40">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2.5 px-3 py-2 text-left @max-[12rem]/rest:flex-wrap @max-[12rem]/rest:gap-x-1 @max-[12rem]/rest:gap-y-1.5 @max-[12rem]/rest:px-1"
+      >
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sleep text-canvas">
           <MoonIcon className="h-3.5 w-3.5" />
         </span>
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 flex-1 @max-[12rem]/rest:order-1 @max-[12rem]/rest:basis-full @max-[12rem]/rest:break-words">
           <span className="block text-2xs text-sleep font-medium">Rest plan</span>
           <span className="block text-xs text-ink-muted">
             {total.toFixed(0)}h of sleep planned across {plans.length} {plans.length === 1 ? "layover" : "layovers"}
             {short ? ` · ${short} short ${short === 1 ? "rest" : "rests"}` : ""}
           </span>
         </span>
-        <span className="flex shrink-0 gap-1" aria-hidden>
+        <span className="flex shrink-0 gap-1 @max-[12rem]/rest:order-2 @max-[12rem]/rest:basis-full @max-[12rem]/rest:flex-wrap" aria-hidden>
           {plans.map((p, i) => (
             <span key={i} className={`h-2 w-2 rounded-full ${p.quality === "good" ? "bg-good" : p.quality === "short" ? "bg-warn" : "bg-danger"}`} />
           ))}
         </span>
-        <ChevronDownIcon className={`h-3 w-3 shrink-0 text-ink-faint transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDownIcon className={`h-3 w-3 shrink-0 text-ink-faint transition-transform @max-[12rem]/rest:ml-auto ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="border-t border-sleep/20 px-3 pb-3 pt-2">
+        <div className="border-t border-sleep/20 px-3 pb-3 pt-2 @max-[12rem]/rest:px-1">
           <ul className="space-y-2">
             {plans.map((p) => (
               <LayoverPlan key={p.dutyIndex} plan={p} />
