@@ -63,7 +63,8 @@ function lineBrief(line: Line): string {
   return `${line.trips.length} ${line.trips.length === 1 ? "trip" : "trips"}, ${line.daysOff} days off, ${line.totalCreditHours.toFixed(1)} credit`;
 }
 
-export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: PackMetrics): QuestionExample[] {
+/** `shownTrips`: trips (by id) already shown in the interview, never offered again — the next one that shows it is. */
+export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: PackMetrics, shownTrips: Set<string> = new Set()): QuestionExample[] {
   const criteria = [...model.criteria].sort((a, b) => b.weight - a.weight).slice(0, MAX_CRITERIA);
   if (!criteria.length) return [];
   const ranked = scorePackV2(bidPack, model, { pack }).sort((a, b) => b.score - a.score);
@@ -104,7 +105,7 @@ export function pickQuestionExamples(bidPack: BidPack, model: PilotModel, pack: 
     const reading = tripReadingOf(def);
     if (reading && reading !== "none" && reading !== "dates") {
       const shown = [...trips.values()]
-        .filter((t) => topTrips.has(t.key) && (aboutStandby || !mostlyStandbyTrip(tripOf.get(t.key)!)))
+        .filter((t) => topTrips.has(t.key) && !shownTrips.has(tripOf.get(t.key)!.id) && (aboutStandby || !mostlyStandbyTrip(tripOf.get(t.key)!)))
         .map((t) => ({ t, r: t.results.find((x) => x.criterionId === c.id) }))
         .filter((x) => x.r && x.r.value !== null);
       const span = shown.length ? Math.max(...shown.map((x) => x.r!.utility)) - Math.min(...shown.map((x) => x.r!.utility)) : 0;

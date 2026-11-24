@@ -1,4 +1,5 @@
 import type { PilotModel } from "@/types/pilot-model";
+import { ackFitsLast, answerAck } from "./ack";
 import type { InterviewExchange } from "./build-model";
 import { callCeilingUsd, failedCallCost, schemaChars, structuredCall, withSpent, type BrainUsage } from "./llm";
 import { avoidedPhrases, insteadOf, inventedLimit, pilotWordsForPrompt } from "./pilot-words";
@@ -145,7 +146,7 @@ SHOWING LINES AND TRIPS
 A their-words, feature or their-number question can show EXAMPLES YOU MAY SHOW (set examples to their ids): two lines at the two ends of the one thing you're asking about, with their figure, or one trip — never lines and a trip together. Take them from the group of the priority the question is about. If no group shows the very thing you're asking (a hotel-standby stretch, a deadhead from home, one city like IND), show none, or name the real line that has it in helpText and it will be shown. Every line or trip you name in the question is shown under it. A real-choice question shows its two lines or trips itself: no examples.
 
 ACK — SOUND LIKE A PILOT, NOT A FORM
-You're a line pilot who has bid for years, talking to a colleague. Before each question, write ack: one short line (at most 14 words) that takes in what they just said, in their terms, like you'd say it across the crew room ("Saturdays over Sundays — got it."). No praise, no "I understand", no repeating their whole answer. "Ideally no more than two" is a preference ("Two or fewer, ideally — got it"), not "a firm cap". Leave ack empty for the very first question. Vary how questions open.
+You're a line pilot who has bid for years, talking to a colleague. Before each question, write ack: one short line (at most 14 words) that takes in what they just said, in their terms, like you'd say it across the crew room ("Saturdays over Sundays — got it."). No praise, no "I understand", no repeating their whole answer. "Ideally no more than two" is a preference ("Two or fewer, ideally — got it"), not "a firm cap". It's always about their LAST answer (the last A in THE INTERVIEW SO FAR), never an earlier one: after a line or trip pick, name the one they picked ("1210 over 1982 — got it"); after trip grades, the grades. Leave ack empty for the very first question. Vary how questions open.
 
 PILOT WORDS
 Say things the way the pack prints them and a pilot says them. A word this pilot brought up themselves can be said back to them, but only because they said it. Their priorities' names and the fleet notes don't count as their words. Otherwise:
@@ -213,6 +214,12 @@ interface RawStep {
   pairIndex: number;
   tripPairIndex?: number;
   examples: string[];
+}
+
+/** The line over a question: the interviewer's when it takes in their last answer, otherwise the app's own (`ack.ts`). */
+function ackFor(written: string | undefined, last: InterviewExchange | undefined): string {
+  const ack = (written ?? "").trim();
+  return ack && ackFitsLast(ack, last) && !inventedLimit(ack, last?.answer ?? "") ? ack : answerAck(last);
 }
 
 /** A real choice between two lines or two trips. */
@@ -397,10 +404,17 @@ function namedTripExamples(step: Pick<RawStep, "prompt" | "helpText">, offered: 
  * - lines or one trip, never both — unless it names the trip;
  * - only what the question's thread is about, besides what it names.
  */
-function examplesToShow(step: Pick<RawStep, "prompt" | "helpText" | "examples" | "threadId" | "theirWords">, input: Pick<InterviewStepInput, "examples" | "packNumbers" | "model">): QuestionExample[] {
+function examplesToShow(step: Pick<RawStep, "prompt" | "helpText" | "examples" | "threadId" | "theirWords" | "topic">, input: Pick<InterviewStepInput, "examples" | "packNumbers" | "model" | "topics">): QuestionExample[] {
   const all = input.examples ?? [];
   const offered = examplesFitting(step, input);
-  const chosen = [...new Set(step.examples ?? [])].slice(0, 2).flatMap((id) => offered.filter((e) => e.id === id));
+  const asked = topicWords(`${step.prompt} ${step.theirWords ?? ""}`);
+  // Each chosen example shows what the question asks about — its topic's priority, or one it names in words — or is
+  // swapped for one that does. The last try skips the check that refuses off-topic examples, and on the owner's Nov 24
+  // run a long-duty-period question came with a trip labelled "Trips that end early enough to get home that night".
+  const topicIds = new Set(input.topics?.find((t) => t.id === step.topic)?.criterionIds ?? []);
+  const aboutQuestion = (e: QuestionExample) => (topicIds.size && e.criterionId ? topicIds.has(e.criterionId) : [...topicWords(`${e.priority ?? ""} ${e.fact}`)].some((w) => asked.has(w)));
+  const picked = [...new Set(step.examples ?? [])].slice(0, 2).flatMap((id) => offered.filter((e) => e.id === id));
+  const chosen = [...new Set(picked.flatMap((e) => (aboutQuestion(e) ? [e] : offered.filter((x) => x.kind === e.kind && aboutQuestion(x)).slice(0, 1))))];
   const priorities = new Set(chosen.map(priorityOf));
   const lines = chosen.filter((e) => e.kind === "line");
   const add = (e: QuestionExample | undefined) => {
@@ -411,7 +425,6 @@ function examplesToShow(step: Pick<RawStep, "prompt" | "helpText" | "examples" |
   // A named line's example comes from the shown priority, or one the question is about; otherwise it's shown bare —
   // never with another priority's figure, which reads as nonsense under it (a short-layover question showing "4
   // departures").
-  const asked = topicWords(`${step.prompt} ${step.theirWords ?? ""}`);
   const onTopic = (e: QuestionExample) => priorities.has(priorityOf(e)) || [...topicWords(`${e.priority ?? ""} ${e.fact}`)].some((w) => asked.has(w));
   for (const n of namedPackLines(step, input)) {
     if (lines.some((x) => x.ref === n)) continue;
@@ -699,8 +712,9 @@ export async function nextInterviewStep(input: InterviewStepInput): Promise<Inte
       kind,
       questionKind: isChoiceKind(kind) ? "real-choice" : step.questionKind,
       ...(step.topic ? { topic: step.topic } : {}),
-      // A reply still stating a limit they didn't give is left out: better no reply than a rule they never set.
-      ...((step.ack ?? "").trim() && input.turn > 0 && !inventedLimit(step.ack, input.exchanges.at(-1)?.answer ?? "") ? { ack: step.ack.trim() } : {}),
+      // Their last answer said back: the interviewer's line, unless it's missing, takes in an older answer, or states a
+      // limit they didn't give (better the plain one than a rule they never set).
+      ...(input.turn > 0 ? { ack: ackFor(step.ack, input.exchanges.at(-1)) } : {}),
       prompt: step.prompt.trim(),
       ...(step.helpText.trim() ? { helpText: step.helpText.trim() } : {}),
       ...(kind === "choice" ? { options } : {}),

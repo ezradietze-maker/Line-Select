@@ -65,6 +65,25 @@ export function askedTripScreens(exchanges: { question: string }[]): string[][] 
   return exchanges.filter((e) => e.question.startsWith(TRIP_GRADES_LEAD)).map((e) => [...e.question.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]));
 }
 
+/**
+ * Every trip the interview has already shown the pilot, by id (any of its dates): in a trip choice or a screen of
+ * grades (their keys in braces), or under a question ("Trip #306 · Oct 5"). Each trip is shown once: on the owner's
+ * Nov 24 run the second screen of grades brought back the two trips of the trip choice before it.
+ */
+export function tripsShownSoFar(bidPack: Pick<BidPack, "lines">, exchanges: { question: string }[]): Set<string> {
+  const byNumber = new Map<string, string[]>();
+  for (const t of bidPack.lines.flatMap((l) => l.trips)) {
+    const n = String(t.pairingNumber ?? t.id);
+    byNumber.set(n, [...new Set([...(byNumber.get(n) ?? []), t.id])]);
+  }
+  const out = new Set<string>();
+  for (const e of exchanges) {
+    for (const m of e.question.matchAll(/\{([^}@]+)@[^}]*\}/g)) out.add(m[1]);
+    for (const m of e.question.matchAll(/\bTrip #\s*(\w+)/gi)) for (const id of byNumber.get(m[1]) ?? []) out.add(id);
+  }
+  return out;
+}
+
 /** How a screen goes into the transcript: the trips, with their keys in braces for the record. */
 export function tripGradesTranscript(screen: TripGradeScreen): string {
   return `${TRIP_GRADES_LEAD} how would you feel about flying each of these trips? [${screen.keys.map((k) => `${screen.labels[k]} {${k}}`).join("; ")}]`;
@@ -106,11 +125,17 @@ export function wantsAnotherScreen(screensDone: number, lastForeseen: number | n
  * The next screen: the closest call among the pilot's best lines' trips that differs most on untested priorities, then
  * the trips that add the most to it. Null when there aren't two trips left to show.
  */
-export function pickTripScreen(bidPack: BidPack, model: PilotModel, pack: PackMetrics, shown: string[][], options: { exclude?: Set<string>; size?: number } = {}): TripGradeScreen | null {
+export function pickTripScreen(
+  bidPack: BidPack,
+  model: PilotModel,
+  pack: PackMetrics,
+  shown: string[][],
+  options: { exclude?: Set<string>; size?: number; /** Trips (by id) shown elsewhere in the interview, left out too. */ shownTrips?: Set<string> } = {},
+): TripGradeScreen | null {
   if (model.criteria.length < 2) return null;
   const scores = scoreTripsV2(bidPack, model, { pack });
   const byKey = new Map(bidPack.lines.flatMap((l) => l.trips).map((t) => [tripKey(t), t]));
-  const shownPairings = new Set(shown.flat().map((k) => byKey.get(k)?.id).filter(Boolean));
+  const shownPairings = new Set([...shown.flat().map((k) => byKey.get(k)?.id).filter(Boolean), ...(options.shownTrips ?? [])]);
 
   // How often each priority has been tested already: trips on a screen that spread widely on it.
   const tested = new Map<string, number>();

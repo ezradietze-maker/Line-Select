@@ -718,7 +718,7 @@ export const METRICS: MetricDef[] = [
   { id: "landings", label: "Landings", unit: "landings", category: "duty", description: "Operated landings in the month.", line: (l) => l.totalLandings },
   {
     id: "dutiesWithManyLegs",
-    label: "Duties with many legs",
+    label: "Duty periods with many legs",
     unit: "duties",
     category: "duty",
     description: "Duty periods with at least N operated legs (default 3).",
@@ -736,7 +736,7 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "maxLegsInADuty",
-    label: "Most legs in one duty",
+    label: "Most legs in one duty period",
     unit: "legs",
     category: "duty",
     description: "The most operated legs in any single duty period.",
@@ -755,10 +755,10 @@ export const METRICS: MetricDef[] = [
   },
   {
     id: "avgLegsPerDuty",
-    label: "Legs per duty",
+    label: "Legs per duty period",
     unit: "legs",
     category: "duty",
-    description: "Average operated legs per flying duty.",
+    description: "Average operated legs per flying duty period.",
     line: (_l, trips) => mean(trips.flatMap((t) => t.duties).filter((d) => d.operatedLegs > 0).map((d) => d.operatedLegs)),
   },
   {

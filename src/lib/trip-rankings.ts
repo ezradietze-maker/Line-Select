@@ -1,6 +1,8 @@
-import { satisfactionScale } from "@/lib/satisfaction-index";
+import { tripRoute } from "@/lib/brain/line-text";
+import { formatIndex, satisfactionScale } from "@/lib/satisfaction-index";
 import { HARD_LIMIT_CAP } from "@/lib/scoring-v2/score";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
+import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /** One trip of the pack on Trip Rankings, with its score and the line that flies it. */
@@ -9,6 +11,8 @@ export interface RankedTrip {
   trip: Trip;
   /** The line that flies it. */
   line: Line;
+  /** Its place among every trip in the pack, 1 the best, whichever of them are listed. */
+  rank: number;
   /** The trip's score for this pilot, with `score` as the Trip Index (`rankTrips`). */
   score: TripScore;
 }
@@ -21,22 +25,46 @@ export interface RankedTrip {
  * once: that scale runs flat where several lines' trips average about the same. Spread from the trips' own, unrounded
  * scores, they read 306 different ones, and trips still alike are next to identical. Trips with nothing to measure are
  * left out.
+ *
+ * `onLines` lists only the trips those lines fly, each on one of them, for a pilot who sees only their top lines: the
+ * scale and the places stay the pack's, so a trip reads the same score and place a member sees.
  */
-export function rankTrips(bidPack: BidPack, scores: ReadonlyMap<string, TripScore>): RankedTrip[] {
-  const out: { key: string; trip: Trip; line: Line; score: TripScore; fit: number }[] = [];
-  const seen = new Set<string>();
+export function rankTrips(bidPack: BidPack, scores: ReadonlyMap<string, TripScore>, onLines?: ReadonlySet<string>): RankedTrip[] {
+  const out: { key: string; trip: Trip; line: Line; shownOn?: Line; score: TripScore; fit: number }[] = [];
+  const byKey = new Map<string, (typeof out)[number]>();
   for (const line of bidPack.lines) {
     for (const trip of line.trips) {
       const key = tripKey(trip);
       const score = scores.get(key);
-      if (!score || seen.has(key)) continue;
-      seen.add(key);
+      if (!score) continue;
+      const seen = byKey.get(key);
+      // A trip two lines fly is listed once; with `onLines`, on the first of those lines that flies it.
+      if (seen) {
+        if (onLines?.has(line.id) && !seen.shownOn) seen.shownOn = line;
+        continue;
+      }
       // Unrounded, so trips a hair apart stay apart; a limit holds a trip down as it does in its score.
-      out.push({ key, trip, line, score, fit: Math.max(0, score.violations.length ? score.uncapped * HARD_LIMIT_CAP : score.uncapped) });
+      const entry = { key, trip, line, shownOn: onLines?.has(line.id) ? line : undefined, score, fit: Math.max(0, score.violations.length ? score.uncapped * HARD_LIMIT_CAP : score.uncapped) };
+      byKey.set(key, entry);
+      out.push(entry);
     }
   }
   const scale = satisfactionScale(out.map((t) => t.fit));
   return out
     .sort((a, b) => b.fit - a.fit || a.line.lineNumber.localeCompare(b.line.lineNumber) || (a.trip.startDayIndex ?? 0) - (b.trip.startDayIndex ?? 0))
-    .map(({ key, trip, line, score, fit }) => ({ key, trip, line, score: { ...score, score: scale(fit) } }));
+    .flatMap(({ key, trip, line, shownOn, score, fit }, i) =>
+      onLines && !shownOn ? [] : [{ key, trip, line: shownOn ?? line, rank: i + 1, score: { ...score, score: scale(fit) } }]
+    );
+}
+
+/**
+ * What a screen reader says for a trip's row: its place and score, then everything the row shows — the date, length,
+ * credit, international, carry-over and route. The row is one button, and a button's label is all a screen reader
+ * reads of it: with only the place and score, a pilot listening never heard which day the trip goes or where.
+ * `date` and `carry` as the row prints them (`tripDateLabel`, `carryOverWords`).
+ */
+export function tripRowLabel({ rank, trip, score }: Pick<RankedTrip, "rank" | "trip" | "score">, date: string, carry: string | null, open: boolean): string {
+  const said = [date, `${trip.days}-day`, `${hm(Math.round(trip.creditHours * 60))} credit`, trip.international ? "international" : "", carry ?? "", tripRoute(trip)].filter(Boolean);
+  const held = score.violations.length ? ", held down by a limit you set" : "";
+  return `#${rank}, ${`Trip ${trip.pairingNumber ?? ""}`.trim()}, score ${formatIndex(score.score)}${held}, ${said.join(", ")} — ${open ? "hide" : "show"} it day by day`;
 }
