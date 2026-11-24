@@ -24,7 +24,7 @@ import { Modal } from "@/components/ui/Modal";
 import { tripBodyClockScore } from "@/lib/body-clock-score";
 import type { FlightAnswers } from "@/lib/flights/trip-travel";
 import { fetchHotel } from "@/lib/hotel-client";
-import { displayHotelName } from "@/lib/hotels/hotel-names";
+import { hotelNameCased } from "@/lib/hotels/hotel-names";
 import { computeTripFacts } from "@/lib/metrics/trip-facts";
 import { useTimeMode } from "@/lib/time-mode-storage";
 import { computeTripAnalytics } from "@/lib/trip-analytics";
@@ -474,7 +474,7 @@ export function TripList({ trips, homeBaseOffsetMinutes, bidPeriodStart = null, 
                         const content = (
                           <>
                             <span className="font-mono font-medium text-good">{layover.city}</span>
-                            <span className="capitalize">{layover.hotelName ? displayHotelName(layover.hotelName).toLowerCase() : null}</span>
+                            <span>{layover.hotelName ? hotelNameCased(layover.hotelName) : null}</span>
                             {hotel?.rating != null && (
                               <span className="inline-flex items-center gap-0.5 text-accent">
                                 <StarIcon className="h-3 w-3 fill-current" />

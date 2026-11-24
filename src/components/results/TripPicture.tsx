@@ -7,7 +7,7 @@ import { heatOfTrips, heatPiecesOn, HeatReasons } from "@/components/results/Hea
 import type { TripHeat } from "@/lib/line-heat";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { fullDayDates } from "@/lib/full-days";
-import { displayHotelName } from "@/lib/hotels/hotel-names";
+import { hotelNameCased } from "@/lib/hotels/hotel-names";
 import { labeledStayPieces, layoverHours } from "@/lib/leg-bars";
 import { reportsFromHome } from "@/lib/trip-anchor";
 import { dateLabel, tripDayDate } from "@/lib/trip-day-stats";
@@ -187,7 +187,7 @@ export function TripPicture({ trip, mode = "local", bidPeriodStart, cityPreferen
                         mid-letter at the day's right edge ("· White"). The city and hours before it never shrink; `py-px`
                         keeps the foot of a "g" inside the name's own clip. */}
                     {!compact && hotel && fit.lo && fit.restPx >= HOTEL_MIN_PX && (
-                      <span className="min-w-0 truncate py-px font-sans font-normal capitalize text-ink-muted"> · {displayHotelName(hotel).toLowerCase()}</span>
+                      <span className="min-w-0 truncate py-px font-sans font-normal text-ink-muted"> · {hotelNameCased(hotel)}</span>
                     )}
                   </>
                 )}

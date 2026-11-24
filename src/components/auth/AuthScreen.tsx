@@ -170,8 +170,10 @@ export function AuthScreen({ onAuthenticated, onContinueAsGuest, initialMode = "
     <div className="mx-auto w-full max-w-md">
       {/* This page has no sidebar, so the mark is the only thing saying where you are — and the way home. */}
       <Link href="/" className="mx-auto mb-5 flex w-fit items-center gap-1" aria-label="Line Select home">
-        <LogoMark className="h-9 w-9" />
-        <Wordmark className="h-9 text-base" />
+        {/* Held to the screen's width as well: at 200% text the sign ran 31 px past a 320 px phone. Normal text on a phone
+            320 px wide or more is the same 2.25rem and 1rem. */}
+        <LogoMark className="h-[min(2.25rem,12vw)] w-[min(2.25rem,12vw)]" />
+        <Wordmark className="h-[min(2.25rem,12vw)] text-[min(1rem,5vw)]" />
       </Link>
       <div className="rounded-xl border border-border bg-surface p-6 shadow-elevated sm:p-8">
         {mode === "forgot" ? (

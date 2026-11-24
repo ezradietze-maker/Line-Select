@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayHotelName, isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
+import { displayHotelName, hotelNameCased, isPlausibleMatch, pickBestMatch, readHotelName } from "@/lib/hotels/hotel-names";
 
 // Every printed name below is verbatim from the October 2026 bid packs.
 describe("reading the packs' hotel names", () => {
@@ -80,5 +80,19 @@ describe("a pack's short hotel name", () => {
     const far = { name: "Hilton Garden Inn LAX/El Segundo", formattedAddress: "1 Main St, El Segundo, CA 90245, USA", location: { latitude: 33.9, longitude: -118.38 } };
     expect(pickBestMatch("LAX", "HILTON GARDEN", [far, near])?.name).toBe(near.name);
     expect(pickBestMatch("LAX", "HILTON GARDEN", lax)).not.toBeNull();
+  });
+});
+
+describe("hotelNameCased: the pack's capitals read as words, initials and codes as letters", () => {
+  it("keeps initials and vowel-less airport codes in capitals, and capitalises the rest", () => {
+    expect(hotelNameCased("JW MARRIOTT DT")).toBe("JW Marriott DT");
+    expect(hotelNameCased("HAMPTON INN PDX")).toBe("Hampton Inn PDX");
+    expect(hotelNameCased("HOTEL MDR DOUBLETREE")).toBe("Hotel MDR Doubletree");
+  });
+
+  it("reads LAS and the like as the words they are there, and a projected hotel as before", () => {
+    expect(hotelNameCased("HILTON LAS VEGAS")).toBe("Hilton Las Vegas");
+    expect(hotelNameCased("MIS'N PALM HTL")).toBe("Mis'n Palm Htl");
+    expect(hotelNameCased("PROJECTED: HILTON")).toBe("Hilton (Projected)");
   });
 });

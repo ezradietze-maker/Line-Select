@@ -1,4 +1,5 @@
 import { coordinatesForAirport } from "@/lib/airport-coordinates";
+import { timezoneForAirport } from "@/lib/airport-timezones";
 
 /**
  * Bid packs print crew hotels in a compressed house style — "DTREE S PARK",
@@ -109,6 +110,22 @@ export function displayHotelName(printed: string): string {
     .replace(/\s*\+\s*$/, "")
     .trim();
   return n.projected ? `${name} (projected)` : name;
+}
+
+/** Letters the packs print as initials, not words: JW Marriott, NH Collection, MDR (Marina del Rey), DT (downtown). */
+const HOTEL_INITIALS = new Set(["JW", "NH", "MDR", "DT", "CC", "KC", "LLC", "CBM"]);
+
+/**
+ * A hotel name in the pack's words, each word capitalised rather than all capitals, with initials and airport codes
+ * kept as letters: "JW Marriott", "Hampton Inn PDX". Every word had been lowercased and capitalised whole, which read
+ * "Jw Marriott". An airport code is kept only with no vowel, since LAS, SAN and OAK are words in these names too.
+ */
+export function hotelNameCased(printed: string): string {
+  return displayHotelName(printed).replace(/[A-Za-z][A-Za-z']*/g, (w) => {
+    const up = w.toUpperCase();
+    if (HOTEL_INITIALS.has(up) || (up.length === 3 && !/[AEIOU]/.test(up) && timezoneForAirport(up))) return up;
+    return up.charAt(0) + w.slice(1).toLowerCase();
+  });
 }
 
 /** Words too generic to tell one property from another. */

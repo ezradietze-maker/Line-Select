@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
-import { displayHotelName } from "@/lib/hotels/hotel-names";
+import { hotelNameCased } from "@/lib/hotels/hotel-names";
 import { mealWords } from "@/lib/meals";
 import { standbyPlace } from "@/lib/standby";
 import { reportsFromHome } from "@/lib/trip-anchor";
@@ -119,7 +119,7 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
       {leg.dayRoomHotel && next && (
         <div className="mt-0.5 text-ink-muted">
           <span className="font-mono font-semibold text-rest">Rest HTL {leg.arrAirport}</span> <span className="font-mono text-readout">{hm(next.startMinutes - leg.endMinutes)}</span>{" "}
-          <span className="capitalize text-ink">{displayHotelName(leg.dayRoomHotel).toLowerCase()}</span>
+          <span className="text-ink">{hotelNameCased(leg.dayRoomHotel)}</span>
           <span className="text-ink-faint"> · a hotel through the hub turn, same duty</span>
         </div>
       )}
@@ -138,7 +138,7 @@ function LayoverReminder({ layover, mode }: { layover: NonNullable<TripDutyPerio
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 border-l-2 border-layover/60 pl-2">
       <span className="font-mono font-semibold text-layover">L/O {layover.city}</span>
-      {layover.hotelName && <span className="capitalize text-ink">{displayHotelName(layover.hotelName).toLowerCase()}</span>}
+      {layover.hotelName && <span className="text-ink">{hotelNameCased(layover.hotelName)}</span>}
       {layover.hotelPhone && <Phone number={layover.hotelPhone} />}
       {pickup && (
         <span className="text-ink-muted">
@@ -158,7 +158,7 @@ function Layover({ layover, ratings, mode }: { layover: NonNullable<TripDutyPeri
   const rated = layover.hotelName ? ratings[`${layover.city}|${layover.hotelName}`] : undefined;
   const canExpand = !!rated && hasHotelQualityDetails(rated);
   const pickup = mode === "zulu" ? layover.pickupTimeGmt : layover.pickupTimeLocal;
-  const hotel: ReactNode = layover.hotelName ? <span className="capitalize text-ink">{displayHotelName(layover.hotelName).toLowerCase()}</span> : <span className="text-ink-muted">hotel not printed</span>;
+  const hotel: ReactNode = layover.hotelName ? <span className="text-ink">{hotelNameCased(layover.hotelName)}</span> : <span className="text-ink-muted">hotel not printed</span>;
   return (
     <div className="mt-1.5 space-y-0.5 border-l-2 border-layover/60 pl-2">
       <div className="flex flex-wrap items-center gap-x-2">
