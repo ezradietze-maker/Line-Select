@@ -1,6 +1,8 @@
-import { satisfactionScale } from "@/lib/satisfaction-index";
+import { tripRoute } from "@/lib/brain/line-text";
+import { formatIndex, satisfactionScale } from "@/lib/satisfaction-index";
 import { HARD_LIMIT_CAP } from "@/lib/scoring-v2/score";
 import { tripKey, type TripScore } from "@/lib/scoring-v2/trip-score";
+import { hm } from "@/lib/trip-day-stats";
 import type { BidPack, Line, Trip } from "@/types/bidpack";
 
 /** One trip of the pack on Trip Rankings, with its score and the line that flies it. */
@@ -53,4 +55,16 @@ export function rankTrips(bidPack: BidPack, scores: ReadonlyMap<string, TripScor
     .flatMap(({ key, trip, line, shownOn, score, fit }, i) =>
       onLines && !shownOn ? [] : [{ key, trip, line: shownOn ?? line, rank: i + 1, score: { ...score, score: scale(fit) } }]
     );
+}
+
+/**
+ * What a screen reader says for a trip's row: its place and score, then everything the row shows — the date, length,
+ * credit, international, carry-over and route. The row is one button, and a button's label is all a screen reader
+ * reads of it: with only the place and score, a pilot listening never heard which day the trip goes or where.
+ * `date` and `carry` as the row prints them (`tripDateLabel`, `carryOverWords`).
+ */
+export function tripRowLabel({ rank, trip, score }: Pick<RankedTrip, "rank" | "trip" | "score">, date: string, carry: string | null, open: boolean): string {
+  const said = [date, `${trip.days}-day`, `${hm(Math.round(trip.creditHours * 60))} credit`, trip.international ? "international" : "", carry ?? "", tripRoute(trip)].filter(Boolean);
+  const held = score.violations.length ? ", held down by a limit you set" : "";
+  return `#${rank}, ${`Trip ${trip.pairingNumber ?? ""}`.trim()}, score ${formatIndex(score.score)}${held}, ${said.join(", ")} — ${open ? "hide" : "show"} it day by day`;
 }
