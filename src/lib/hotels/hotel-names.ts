@@ -121,7 +121,12 @@ const HOTEL_INITIALS = new Set(["JW", "NH", "MDR", "DT", "CC", "KC", "LLC", "CBM
  * "Jw Marriott". An airport code is kept only with no vowel, since LAS, SAN and OAK are words in these names too.
  */
 export function hotelNameCased(printed: string): string {
-  return displayHotelName(printed).replace(/[A-Za-z][A-Za-z']*/g, (w) => {
+  return namesCased(displayHotelName(printed));
+}
+
+/** Any name the pack prints in capitals (a hotel, the van that takes the crew there), cased as `hotelNameCased`. */
+export function namesCased(printed: string): string {
+  return printed.replace(/[A-Za-z][A-Za-z']*/g, (w) => {
     const up = w.toUpperCase();
     if (HOTEL_INITIALS.has(up) || (up.length === 3 && !/[AEIOU]/.test(up) && timezoneForAirport(up))) return up;
     return up.charAt(0) + w.slice(1).toLowerCase();

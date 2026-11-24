@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { hasHotelQualityDetails, HotelQualityDetails } from "@/components/hotels/HotelQualityDetails";
 import { ChevronDownIcon, StarIcon } from "@/components/ui/icons";
-import { hotelNameCased } from "@/lib/hotels/hotel-names";
+import { hotelNameCased, namesCased } from "@/lib/hotels/hotel-names";
 import { mealWords } from "@/lib/meals";
 import { standbyPlace } from "@/lib/standby";
 import { reportsFromHome } from "@/lib/trip-anchor";
@@ -129,7 +129,7 @@ function LegRow({ leg, mode, next }: { leg: TripLeg; mode: TimeMode; next: TripL
 
 /** "Bespoke Transportation", or "hotel shuttle" when the hotel runs its own van. */
 function rideName(company: string, hotel: string | null): string {
-  return hotel && company.toUpperCase() === hotel.toUpperCase() ? "hotel shuttle" : company.toLowerCase();
+  return hotel && company.toUpperCase() === hotel.toUpperCase() ? "hotel shuttle" : namesCased(company);
 }
 
 /** A layover on a day after the one it started: one line — still at the hotel, its phone, and when the van comes. */
