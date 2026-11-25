@@ -37,7 +37,26 @@ export interface DayStats {
    * into the next. Folding these into one "start–end" read the 23:20 pickup
    * and the 06:13 landing of two different duties as one backwards window.
    */
-  windows: { start: string | null; end: string | null }[];
+  windows: { start: string | null; end: string | null; dateLine?: boolean }[];
+}
+
+/**
+ * A day's pieces as flown, for counting and listing. On the month calendar a flight east across the date line is drawn
+ * in pieces (`buildDateLineDays`): its takeoff up to the line, the line itself back to the arrival side's clock, and on
+ * from there to its landing — one flight, one takeoff, one landing. Counted piece by piece, a day with the landing read
+ * "3 landings" and the day with the takeoff 16:02 of block for an 8:01 flight. Here the line is left out, the takeoff's
+ * piece flies on and the landing's flies in; both on one day are one flight, takeoff to landing.
+ */
+export function asFlown(segments: TimelineSegment[]): TimelineSegment[] {
+  const landing = (s: TimelineSegment) => segments.find((o) => o.dateLineLeg === "after" && o.leg === s.leg);
+  const takeoff = (s: TimelineSegment) => segments.find((o) => o.dateLineLeg === "before" && o.leg === s.leg);
+  return segments.flatMap((s): TimelineSegment[] => {
+    if (s.dateLineBack) return [];
+    if (s.dateLineLeg === "after") return takeoff(s) ? [] : [{ ...s, continuesFromPreviousDay: true }];
+    if (s.dateLineLeg !== "before") return [s];
+    const after = landing(s);
+    return [after ? { ...s, endMinuteOfDay: after.endMinuteOfDay, endClock: after.endClock, endDate: after.endDate, inlineEnd: after.inlineEnd, continuesToNextDay: after.continuesToNextDay } : { ...s, continuesToNextDay: true }];
+  });
 }
 
 const DUTY_KINDS = new Set<TimelineSegment["kind"]>(["ground", "flying", "deadhead", "connection", "standby"]);
@@ -70,7 +89,7 @@ function legMinutes(segs: TimelineSegment[], kind: "flying" | "deadhead"): numbe
 }
 
 export function dayStats(day: TimelineDay): DayStats {
-  const segs = day.segments;
+  const segs = asFlown(day.segments);
   const duty = segs.filter((s) => DUTY_KINDS.has(s.kind));
   // Earliest and latest by where they sit on the day; read on each piece's own clock.
   const byStart = (xs: TimelineSegment[]) => [...xs].sort((a, b) => a.startMinuteOfDay - b.startMinuteOfDay);
@@ -90,6 +109,8 @@ export function dayStats(day: TimelineDay): DayStats {
     windows.push({
       start: first.continuesFromPreviousDay ? null : (first.startClock ?? clock(first.startMinuteOfDay)),
       end: last.continuesToNextDay || last.kind === "ground" ? null : (last.endClock ?? clock(last.endMinuteOfDay)),
+      // Flown in from across the date line, not from the night before: it took off on the next day's date.
+      ...(first.dateLineLeg === "after" ? { dateLine: true } : {}),
     });
     block = [];
   };

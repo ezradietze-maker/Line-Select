@@ -3,6 +3,7 @@ import { pairingToTrip, resolveLayoverVariants } from "@/lib/pdf-parser/build-bi
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
 import { buildDetailedMonth } from "@/lib/month-detail";
 import { anchorTripToItsDate, tripReportUtc } from "@/lib/trip-anchor";
+import { asFlown, dayStats } from "@/lib/trip-day-stats";
 import { buildDateLineDays, buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
 
@@ -92,6 +93,33 @@ describe("a trip home across the date line", () => {
     expect(days[10].flights.at(-1)).toEqual({ kind: "lands", from: "ICN", to: "ANC", arr: "23:41" });
     expect(days[10].segments.find((s) => s.dateLineBack)?.dateLineBack?.part).toBe("arrival");
     expect(days[11].segments.find((s) => s.dateLineBack)).toMatchObject({ startClock: "08:40", dateLineBack: { part: "departure" } });
+  });
+
+  it("counts the flight home across the date line once: its takeoff on the 9th, its landing on the 8th", () => {
+    const line = { id: "l", lineNumber: "1012", trips: [trip], daysOff: 22, totalCreditHours: 35.85, totalTafbHours: 134.43, totalLandings: 5, totalDepartures: 5 };
+    const days = buildDetailedMonth(line, start, 28).days;
+    const [oct8, oct9] = [days[10], days[11]];
+    // Oct 8: Xiamen to Seoul, then the landing in Anchorage — two landings, not the three its drawn pieces made.
+    expect(oct8.landings).toBe(2);
+    expect(oct8.flights).toEqual([
+      { kind: "flying", from: "XMN", to: "ICN", dep: "03:00", arr: "06:37" },
+      { kind: "lands", from: "ICN", to: "ANC", arr: "23:41" },
+    ]);
+    expect(dayStats({ dayNumber: 6, segments: oct8.segments })).toMatchObject({
+      landings: 2,
+      // 5161's 2:37; 5163's 8:01 counts on the day it leaves.
+      blockMinutes: 157,
+      windows: [{ start: "01:30", end: "06:37" }, { start: null, end: "23:41", dateLine: true }],
+    });
+    expect(asFlown(oct8.segments).filter((s) => s.leg?.flightNumber === "5163")).toHaveLength(1);
+    // Oct 9: the takeoff from Seoul, once — no landing that day, and 8:01 of block, not 16:02.
+    expect(oct9.landings).toBe(0);
+    expect(oct9.flights).toEqual([{ kind: "flying", from: "ICN", to: "ANC", dep: "08:40" }]);
+    expect(oct9.route.map((s) => s.city)).toEqual(["ICN", "ANC"]);
+    expect(dayStats({ dayNumber: 7, segments: oct9.segments })).toMatchObject({ landings: 0, blockMinutes: 481 });
+    expect(asFlown(oct9.segments).filter((s) => s.leg?.flightNumber === "5163")).toHaveLength(1);
+    // The trip still ends on the 9th, at its landing on the 8th.
+    expect(oct9.finish).toEqual({ city: "ANC", time: "23:41", nextDay: false });
   });
 
   it("draws the flight out west across the date line bold for its flying and a squiggle for the clock's 17-hour jump", () => {

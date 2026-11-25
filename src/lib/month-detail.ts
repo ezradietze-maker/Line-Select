@@ -9,6 +9,7 @@ import { fullDayDates } from "@/lib/full-days";
 import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { lineDutyPeriods } from "@/lib/duty-periods";
 import { lineStandbyDays } from "@/lib/standby";
+import { asFlown } from "@/lib/trip-day-stats";
 import { dayTripsOf, lineByDay, tripReportUtc } from "@/lib/trip-anchor";
 import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line, Trip } from "@/types/bidpack";
@@ -541,7 +542,9 @@ export function buildDetailedMonth(
 
     const segs = day.segments;
     const flights = segs.filter((s) => s.kind === "flying" || s.kind === "deadhead");
-    const startSeg = dutyStartSegment(segs);
+    // Counted and listed as flown: a flight east across the date line is one takeoff and one landing, not its drawn pieces.
+    const flown = asFlown(segs);
+    const startSeg = dutyStartSegment(flown);
     // Each read on the piece's own clock — local where it happens.
     const dutyStart = startSeg ? (startSeg.startClock ?? hhmm(startSeg.startMinuteOfDay)) : null;
     const layover = segs.find((s) => s.kind === "layover" && !s.continuesFromPreviousDay);
@@ -556,8 +559,8 @@ export function buildDetailedMonth(
       spill,
       kind: hasStandby && !flights.length ? ("standby" as const) : layoverCode ? ("layover" as const) : ("trip" as const),
       // In the order they happen: the end of another trip that morning, then this day's own.
-      flights: dayFlights([...(spill?.segments ?? []), ...segs]),
-      route: dayRoute(segs),
+      flights: dayFlights([...(spill?.segments ?? []), ...flown]),
+      route: dayRoute(flown),
       chain: null,
       finish: lastLanding?.leg ? { city: lastLanding.leg.arr, time: lastLanding.endClock ?? hhmm(lastLanding.endMinuteOfDay), nextDay: false } : null,
       // A day with nothing flown, spent at a layover hotel: the city (the hotel pickup for tonight's flight may fall on it).
@@ -570,11 +573,11 @@ export function buildDetailedMonth(
       dutyStartLocalDate: startSeg?.startDate && day.date && startSeg.startDate !== day.date ? startSeg.startDate : null,
       releaseTime: lastLanding ? (lastLanding.endClock ?? hhmm(lastLanding.endMinuteOfDay)) : null,
       releaseLocalDate: lastLanding?.endDate && day.date && lastLanding.endDate !== day.date ? lastLanding.endDate : null,
-      landings: segs.filter((s) => s.kind === "flying" && !s.continuesToNextDay).length,
+      landings: flown.filter((s) => s.kind === "flying" && !s.continuesToNextDay).length,
       hasDeadhead: segs.some((s) => s.kind === "deadhead"),
       hasStandby,
       // Red-eyes are flying through the body's night, on the clock the pilot lives on — not something Zulu days show.
-      redEye: !local && flights.some((s) => {
+      redEye: !local && flown.filter((s) => s.kind === "flying" || s.kind === "deadhead").some((s) => {
         const dep = clockMinutes(s.startClock ?? hhmm(s.startMinuteOfDay));
         const arr = clockMinutes(s.endClock ?? hhmm(s.endMinuteOfDay));
         return (!s.continuesFromPreviousDay && dep < RED_EYE_END_MIN) || (!s.continuesToNextDay && arr <= RED_EYE_END_MIN && arr > 0);

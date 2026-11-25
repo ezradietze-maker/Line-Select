@@ -15,7 +15,7 @@ import { useTimeMode } from "@/lib/time-mode-storage";
 import { labeledStayPieces } from "@/lib/leg-bars";
 import { Modal } from "@/components/ui/Modal";
 import { buildDetailedMonth, type DetailedDay, type DetailedMonth, type MonthDepartureOptions, type MonthSummary, type TripFinish } from "@/lib/month-detail";
-import { dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
+import { asFlown, dayStats, equipmentLabel, hm } from "@/lib/trip-day-stats";
 import { BASE_TURN_MAX_HOURS, DEFAULT_MIN_HOME_HOURS } from "@/lib/metrics/departures";
 import type { TimeMode, TimelineSegment, TimelineSegmentKind } from "@/lib/trip-timeline";
 import type { Line } from "@/types/bidpack";
@@ -429,7 +429,7 @@ function DayNumbers({ day, mode }: { day: DetailedDay; mode: TimeMode }) {
   // In time order, one phrase per duty — a day can finish last night's flying and start tonight's.
   for (const w of st.windows) {
     if (w.start && w.end) parts.push(`on duty ${w.start}–${w.end} (${c})`);
-    else if (w.end) parts.push(`lands ${w.end} (${c}) from the night before`);
+    else if (w.end) parts.push(`lands ${w.end} (${c}) ${w.dateLine ? "across the date line" : "from the night before"}`);
     else if (w.start) parts.push(`on duty ${w.start} (${c}), through midnight`);
   }
   if (st.blockMinutes > 0) parts.push(`${hm(st.blockMinutes)} block`);
@@ -523,7 +523,8 @@ function DayDetail({ day, mode, heatOf }: { day: DetailedDay; mode: TimeMode; he
             <p className="mt-1">Nothing is scheduled on this day — the bid pack keeps it with the trip rather than counting it as a day off.</p>
           ) : (
             <ul className="mt-1.5 space-y-1">
-              {day.segments
+              {/* As flown: a flight east across the date line once, not each piece it's drawn in. */}
+              {asFlown(day.segments)
                 .filter((s) => s.kind !== "connection")
                 .map((s, i) => (
                   <li key={i} className="flex gap-2">
