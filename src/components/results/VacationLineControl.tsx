@@ -6,10 +6,27 @@ import type { VacationPlacement } from "@/lib/vacation-lines";
 
 const said = (offset: number) => (offset === 0 ? "where the pack has it" : `slid ${Math.abs(offset)} day${Math.abs(offset) === 1 ? "" : "s"} ${offset > 0 ? "later" : "earlier"}`);
 
-/** The option a placement is on this line: the same offsets, and the same waiver. */
+/** Whether two placements expand each vacation the same (CBA 2026 7.E.3), a missing entry counting as not expanded. */
+function sameExpand(a: VacationPlacement["expand"], b: VacationPlacement["expand"]): boolean {
+  for (const id of new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])) {
+    const x = a?.[id] ?? { before: 0, after: 0 };
+    const y = b?.[id] ?? { before: 0, after: 0 };
+    if (x.before !== y.before || x.after !== y.after) return false;
+  }
+  return true;
+}
+
+/** The option a placement is on this line: the same offsets, the same expansion, and the same waiver. */
 export function optionAt(line: LineVacationOptions, placement: VacationPlacement | undefined): VacationOption | null {
   const want = (id: string) => placement?.offsets[id] ?? 0;
-  return line.options.find((o) => Object.keys(o.placement.offsets).every((id) => o.placement.offsets[id] === want(id)) && !!o.placement.waiveFrontBuffer === !!placement?.waiveFrontBuffer) ?? null;
+  return (
+    line.options.find(
+      (o) =>
+        Object.keys(o.placement.offsets).every((id) => o.placement.offsets[id] === want(id)) &&
+        sameExpand(o.placement.expand, placement?.expand) &&
+        !!o.placement.waiveFrontBuffer === !!placement?.waiveFrontBuffer
+    ) ?? null
+  );
 }
 
 /**
@@ -79,7 +96,7 @@ export function VacationLineControl({
         const offset = current.placement.offsets[id];
         // The legal spots for this vacation with the other where it is now.
         const legal = line.options
-          .filter((o) => !o.waived && Object.keys(o.placement.offsets).every((k) => k === id || o.placement.offsets[k] === current.placement.offsets[k]))
+          .filter((o) => !o.waived && !o.expandBefore && !o.expandAfter && Object.keys(o.placement.offsets).every((k) => k === id || o.placement.offsets[k] === current.placement.offsets[k]))
           .map((o) => o.placement.offsets[id])
           .sort((a, b) => a - b);
         const earlier = [...legal].reverse().find((o) => o < offset);
