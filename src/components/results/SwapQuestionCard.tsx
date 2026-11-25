@@ -21,12 +21,12 @@ const quiet = "text-sm font-medium text-ink-muted underline-offset-2 hover:text-
 
 /**
  * The question after every swap (`lib/brain/swap-question.ts`), in a small box that pops up at the side of the screen
- * (along the foot on a phone) and leaves the list free to swap again: the brain's guess with both lines' numbers and one
- * tap to say it's right, the other real differences to pick instead, "something else" in their own words, "about equal",
- * and every way out a single tap — Escape or × to skip this one, or turn the questions off.
+ * (along the foot on a phone) and leaves the list free to swap again. First a box for why in the pilot's own words, open
+ * from the start: it's how they put the brain right when its guess is wrong. Under it, quieter, the brain's guess with
+ * both lines' numbers and one tap to say it's right, the other real differences, "about equal", and every way out a
+ * single tap — Escape or × to skip this one, or turn the questions off.
  */
 export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop }: Props) {
-  const [mode, setMode] = useState<"choose" | "type" | "confirm">("choose");
   const [adding, setAdding] = useState<{ option: FactorOption; text?: string } | null>(null);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -42,7 +42,6 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
     // A measure they never named becomes a new priority only if they say so.
     if (!option.criterionId) {
       setAdding({ option, text: said });
-      setMode("confirm");
       return;
     }
     onReply({ kind: "factor", option, ...(said ? { text: said } : {}) });
@@ -56,7 +55,7 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
     try {
       const reason = await requestSwapReason({ text: said, higher: question.higher, lower: question.lower, ...options });
       if (reason.kind === "notMeasurable") return onReply({ kind: "note", text: said });
-      if (reason.kind === "unclear") return setNote("I couldn't tell what that points to — try saying which part of the lines, or pick one above.");
+      if (reason.kind === "unclear") return setNote("I couldn't tell what that points to — try saying which part of the lines, or pick one below.");
       const { option, same } = optionFromReason(reason, options);
       if (same) return setNote(`Both lines have the same ${same.label.toLowerCase()} (${same.higher}) — was it something else?`);
       if (option) pick(option, said);
@@ -88,7 +87,7 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
         </button>
       </div>
 
-      {mode === "confirm" && adding ? (
+      {adding ? (
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <span className="text-sm text-ink-muted">
             Add &ldquo;{adding.option.label}&rdquo; ({adding.option.amounts}) to your priorities? It starts small, and your swaps can raise it.
@@ -114,59 +113,63 @@ export function SwapQuestionCard({ question, options, onReply, onDismiss, onStop
         </div>
       ) : (
         <>
+          <form
+            className="mt-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void send();
+            }}
+          >
+            <label htmlFor="swap-why" className="text-xs font-medium text-ink">
+              Tell us why, in your own words
+            </label>
+            <div className="mt-1 flex items-end gap-2">
+              {/* Not focused on its own: the box pops up after every swap and must not take the keyboard from the list. */}
+              <textarea
+                id="swap-why"
+                rows={2}
+                value={text}
+                maxLength={300}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  // Enter sends, as a one-line box would; Shift+Enter for a new line.
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder="e.g. “the Honolulu layover” or “I'd rather start the month off”"
+                className="min-w-0 flex-1 resize-none rounded-md border border-field-edge bg-surface px-3 py-1.5 text-sm text-ink"
+                data-swap-why
+              />
+              <button type="submit" className={`${chip} border-accent font-semibold`} disabled={busy || !text.trim()}>
+                {busy ? "Reading…" : "Send"}
+              </button>
+            </div>
+          </form>
           {guess && (
-            <div className="mt-2" data-swap-guess>
-              <p className="text-2xs font-medium text-ink-faint">Our guess</p>
-              <div className="mt-1 flex flex-wrap items-center justify-between gap-2 rounded-md border border-accent/50 bg-accent/10 px-3 py-2">
-                <span className="text-sm text-ink">
-                  {guess.label} <span className="font-mono text-xs text-ink-muted">({guess.amounts})</span>
-                  {guess.criterionId ? "" : <span className="text-xs text-ink-muted"> · new</span>}
-                </span>
-                <button type="button" className={`${chip} border-accent font-semibold`} onClick={() => pick(guess)} data-swap-yes>
-                  Yes, that&rsquo;s it
-                </button>
-              </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2" data-swap-guess>
+              <span className="text-xs text-ink-muted">
+                Our guess: {guess.label} <span className="font-mono">({guess.amounts})</span>
+                {guess.criterionId ? "" : " · new"}
+              </span>
+              <button type="button" className={`${chip} py-1 text-xs`} onClick={() => pick(guess)} data-swap-yes>
+                Yes, that&rsquo;s it
+              </button>
             </div>
           )}
-          <p className="mt-2 text-2xs font-medium text-ink-faint">{guess ? "Or was it something different?" : "Pick what made the difference:"}</p>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <p className="mt-2 text-2xs font-medium text-ink-faint">{guess ? "Or one of these:" : "Or pick what made the difference:"}</p>
+          <div className="mt-1 flex flex-wrap gap-1.5">
             {others.map((o) => (
-              <button key={o.criterionId ?? o.metric} type="button" className={chip} onClick={() => pick(o)}>
+              <button key={o.criterionId ?? o.metric} type="button" className={`${chip} py-1 text-xs`} onClick={() => pick(o)}>
                 {o.label} ({o.amounts}){o.criterionId ? "" : " · new"}
               </button>
             ))}
-            <button type="button" className={chip} onClick={() => setMode("type")} aria-expanded={mode === "type"}>
-              Something else&hellip;
-            </button>
-            <button type="button" className={chip} onClick={() => onReply({ kind: "equal" })}>
+            <button type="button" className={`${chip} py-1 text-xs`} onClick={() => onReply({ kind: "equal" })}>
               About equal
             </button>
           </div>
         </>
-      )}
-
-      {mode === "type" && (
-        <form
-          className="mt-2 flex flex-wrap items-start gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send();
-          }}
-        >
-          <input
-            type="text"
-            value={text}
-            maxLength={300}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="In a few words — e.g. “the Honolulu layover”"
-            aria-label="Why, in your words"
-            className="min-w-0 flex-1 rounded-md border border-field-edge bg-surface px-3 py-1.5 text-sm text-ink"
-            autoFocus
-          />
-          <button type="submit" className={chip} disabled={busy || !text.trim()}>
-            {busy ? "Reading…" : "Send"}
-          </button>
-        </form>
       )}
 
       {note && (
