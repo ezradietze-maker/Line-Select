@@ -72,8 +72,10 @@ export function HeatReasons({ pieces, className = "" }: { pieces: HeatPiece[]; c
           <span className="min-w-0">
             <span className="font-medium text-ink">{heatPieceName(p)}</span>
             <span className="ml-1 flex flex-wrap gap-x-2.5 gap-y-0.5">
+              {/* Each reason wraps rather than running on unbroken: on a 320px phone at 200% text "Commute in to the domicile"
+                  ran past the card and was cut off. */}
               {p.factors.map((f, k) => (
-                <span key={k} className="inline-flex items-center gap-1 whitespace-nowrap">
+                <span key={k} className="inline-flex max-w-full items-center gap-1">
                   <Swatch heat={f.heat} size="h-2 w-2" />
                   {f.text}
                   {f.dealbreaker && <span className="font-semibold text-danger">past your limit</span>}
@@ -91,7 +93,8 @@ export function HeatReasons({ pieces, className = "" }: { pieces: HeatPiece[]; c
 export function HeatKey({ className = "" }: { className?: string }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-ink-muted ${className}`}>
-      <span className="inline-flex items-center gap-1.5">
+      {/* No wider than the key, as the strip's: on a 320px phone at 200% text the scale ran off the card and cut "Hot". */}
+      <span className="inline-flex max-w-full items-center gap-1.5">
         Cold
         <span aria-hidden className="inline-block h-2.5 w-20 rounded-[2px] border border-border-strong/60" style={{ background: HEAT_GRADIENT }} />
         Hot
