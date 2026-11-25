@@ -242,12 +242,17 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, onUpdate
     const r = row.getBoundingClientRect();
     return at.y >= r.top - DROP_SLACK_PX && at.y <= r.bottom + DROP_SLACK_PX;
   };
+  // The trip it's over, for the place it would go: said on the dragged trip, not on the trip under it, where it covered
+  // that trip's number, credit and dates.
+  const [overKey, setOverKey] = useState<string | null>(null);
   const handleDragStart = (event: DragStartEvent) => {
     pointerAt.current = null;
+    setOverKey(null);
     setDragKey(String(event.active.id));
   };
   const handleDragEnd = (event: DragEndEvent) => {
     setDragKey(null);
+    setOverKey(null);
     const { active, over } = event;
     if (!over || active.id === over.id || !trips) return;
     if (!droppedOnIt(event, String(over.id))) {
@@ -260,6 +265,7 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, onUpdate
   };
   const dragTrip = dragKey ? (trips ?? []).find((t) => t.key === dragKey) ?? null : null;
   const dragRank = dragKey ? rankOf.get(dragKey) ?? null : null;
+  const goesTo = dragKey && overKey && overKey !== dragKey ? rankOf.get(overKey) ?? null : null;
 
   const toggle = (key: string) =>
     setOpen((prev) => {
@@ -357,8 +363,12 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, onUpdate
               collisionDetection={closestCenter}
               modifiers={[restrictToVerticalAxis, restrictToWindowEdges]}
               onDragStart={handleDragStart}
+              onDragOver={(e) => setOverKey(e.over ? String(e.over.id) : null)}
               onDragEnd={handleDragEnd}
-              onDragCancel={() => setDragKey(null)}
+              onDragCancel={() => {
+                setDragKey(null);
+                setOverKey(null);
+              }}
               // Nothing moves until the drop, so every trip's place measured as the drag starts holds for the whole drag.
               measuring={{ droppable: { strategy: MeasuringStrategy.BeforeDragging } }}
               accessibility={dragSpeech}
@@ -395,7 +405,10 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, onUpdate
                 {dragTrip ? (
                   <div className="flex w-56 cursor-grabbing items-center gap-3 rounded-xl border border-accent bg-surface-raised px-4 py-3 shadow-elevated-lg">
                     <ScoreRing score={dragTrip.score.score} size={36} index />
-                    <span className="text-sm font-semibold text-ink">{`Trip ${dragTrip.trip.pairingNumber ?? ""}`.trim()}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-ink">{`Trip ${dragTrip.trip.pairingNumber ?? ""}`.trim()}</span>
+                      <span className="block font-mono text-2xs font-semibold text-accent">{goesTo !== null ? `Goes here, #${goesTo}` : `#${dragRank}`}</span>
+                    </span>
                   </div>
                 ) : null}
               </DragOverlay>
@@ -474,14 +487,12 @@ function TripRow({
     <li
       ref={setDropRef}
       data-trip-key={ranked.key}
-      className={`panel-glass relative overflow-hidden transition-[border-color,opacity] ${open ? "!border-border-strong" : "hover:!border-border-strong"} ${isDragging ? "opacity-40" : ""} ${dropping ? "ring-2 ring-accent" : ""}`}
+      className={`panel-glass relative overflow-hidden transition-[border-color,opacity] ${open ? "!border-border-strong" : "hover:!border-border-strong"} ${isDragging ? "opacity-40" : ""} ${dropping ? "outline-2 outline-accent" : ""}`}
     >
-      {edge && (
-        <span aria-hidden className={`pointer-events-none absolute inset-x-0 ${edge} z-10 flex justify-center`}>
-          <span className="h-1 w-full bg-accent" />
-          <span className={`absolute ${edge === "top-0" ? "top-1.5" : "bottom-1.5"} rounded-full bg-accent px-2 py-0.5 text-2xs font-semibold text-canvas`}>Goes here, #{rank}</span>
-        </span>
-      )}
+      {/* The edge it goes in at, in the row's padding: its place is said on the trip being dragged (a label here covered
+          this trip's number and dates). A border and an outline, not a fill and a shadow: Windows high contrast keeps
+          those. */}
+      {edge && <span aria-hidden className={`pointer-events-none absolute inset-x-0 ${edge} z-10 border-t-4 border-accent`} />}
       <div className="flex items-start gap-3 px-3 py-2.5 sm:px-4">
         {onMove && (
           <button
