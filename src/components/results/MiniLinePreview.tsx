@@ -240,11 +240,11 @@ function Cell({
     >
       {!isOff && day.tripIndex !== null && day.kind !== "estimated" && <TripRail joinLeft={joinLeft} joinRight={joinRight} standby={day.kind === "standby"} />}
       {/* The vacation: its days ringed and washed gold, where the pack had it dashed, the days it could slide to hatched along the foot. */}
-      {vacation?.on && <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md bg-accent/12 ring-2 ring-inset ring-accent" />}
+      {vacation?.on && <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md bg-accent/12 ring-2 ring-inset ring-accent forced-color-adjust-none" />}
       {vacation?.awarded && !vacation.on && <span aria-hidden className="pointer-events-none absolute inset-0 rounded-md border border-dashed border-accent/70" />}
       {vacation?.reach && !vacation.on && (
         // Along the foot: the top edge is the trip's own rail, in much the same colour.
-        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] rounded-b-md opacity-80" style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)" }} />
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] rounded-b-md opacity-80 forced-color-adjust-none" style={{ backgroundImage: "repeating-linear-gradient(135deg, var(--color-accent) 0 1.5px, transparent 1.5px 4px)" }} />
       )}
       {day.nextMonth && <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] rounded-b-md bg-carry" />}
       <span className="flex h-3 items-center justify-between gap-0.5">

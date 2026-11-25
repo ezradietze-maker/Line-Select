@@ -1662,4 +1662,42 @@ html.theme-sweep::view-transition-new(root) {
   .pin-ping { animation: none; }
 }
 
+/*
+ * Windows high contrast (forced colours) paints every background in the theme's one page colour and drops shadows and
+ * background images. The pack's pictures are drawn in background colour, so every leg, layover, duty period, trip
+ * band, carry-over bar and colour-key swatch went blank; a chosen option looked like the ones beside it; and a focus
+ * ring drawn as a shadow was gone.
+ */
+@media (forced-colors: active) {
+  /* The pack's marks keep their own colours: they are the information. (The vacation's are kept where they're drawn.) */
+  .bg-leg,
+  .bg-deadhead,
+  .bg-layover,
+  .bg-standby,
+  .bg-rest,
+  .bg-gt,
+  .bg-trip-band,
+  .bg-calendar-accent,
+  .bg-carry {
+    forced-color-adjust: none;
+  }
+  /* A trip's days carry their words on the wash: laid over the theme's own surface, so the words read whatever the
+     system's colours. */
+  .bg-trip-wash {
+    forced-color-adjust: none;
+    background-color: var(--color-surface-raised);
+    background-image: linear-gradient(var(--color-trip-wash), var(--color-trip-wash));
+  }
+  /* A chosen option is outlined in the system's highlight, its fill gone. */
+  :is([aria-pressed="true"], [role="radio"][aria-checked="true"], [role="tab"][aria-selected="true"]):not(:focus-visible) {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* Every focus ring is an outline. */
+  :focus-visible {
+    outline-style: solid;
+    outline-width: 2px;
+  }
+}
+
 

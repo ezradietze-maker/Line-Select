@@ -145,7 +145,7 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
           {/* No wider than the key: at 320px and 200% text "Hot" ran 7px off the side; the scale gives the room. */}
           <span className="inline-flex max-w-full items-center gap-1.5">
             Cold
-            <span aria-hidden className="inline-block h-2.5 w-24 rounded-[2px] border border-border-strong/60" style={{ background: HEAT_GRADIENT }} />
+            <span aria-hidden className="inline-block h-2.5 w-24 rounded-[2px] border border-border-strong/60 forced-color-adjust-none" style={{ background: HEAT_GRADIENT }} />
             Hot
           </span>
           <span>each duty period and layover, colder the worse it is for you, hotter the better</span>
@@ -189,12 +189,12 @@ export function StripKey({ view, hint = "Tap a line for everything about it.", c
       {vacation && (
         <>
           {item(
-            <span aria-hidden className="relative inline-block h-3 w-7 rounded-[2px] bg-accent/15">
+            <span aria-hidden className="relative inline-block h-3 w-7 rounded-[2px] bg-accent/15 forced-color-adjust-none">
               <span className="absolute inset-x-0 top-0 h-[3px] rounded-t-[2px] bg-accent" />
             </span>,
             "your vacation"
           )}
-          {item(<span aria-hidden className="inline-block h-[5px] w-6 opacity-80" style={{ backgroundImage: HATCH }} />, "how far it can slide")}
+          {item(<span aria-hidden className="inline-block h-[5px] w-6 opacity-80 forced-color-adjust-none" style={{ backgroundImage: HATCH }} />, "how far it can slide")}
           {view !== "heat" && item(<span aria-hidden className="inline-block h-3 w-5 rounded-[3px] border border-dashed border-accent bg-surface/60" />, "a trip it takes off, paid from your bank")}
           {item(<span aria-hidden className="inline-block h-[3px] w-6 border-t-[3px] border-dotted border-accent" />, "free time a long trip needs beside it")}
         </>
@@ -345,7 +345,7 @@ function VacationDays({ mark, columns, layout }: { mark: LineVacationMark; colum
   const col = (d: number) => Math.min(Math.max(d, 0), columns - 1) + 1;
   const inView = (a: number, b: number) => b >= 0 && a <= columns - 1;
   return (
-    <div className="pointer-events-none absolute inset-0 grid" style={{ gridTemplateColumns: gridColumns(columns, layout) }} aria-hidden>
+    <div className="pointer-events-none absolute inset-0 grid forced-color-adjust-none" style={{ gridTemplateColumns: gridColumns(columns, layout) }} aria-hidden>
       {mark.pieces.flatMap((p) => {
         const reach = reachSpans(p);
         const before = reach.before ? [p.firstDay - Math.round((reach.before[1] - reach.before[0]) / 1440), p.firstDay - 1] : null;
