@@ -50,6 +50,27 @@ describe("saying nothing carries in", () => {
   });
 });
 
+describe("each line's vacation, kept as My Rankings placed it", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps an expansion (CBA 2026 7.E.3), so Strategies and the Logbook rank the line My Rankings shows", () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) } });
+    const goal = { text: "Max out my credit", aims: [{ kind: "credit" as const }] };
+    const placed = { "line-2191": { offsets: { v: 0 }, expand: { v: { before: 0, after: 8 } } }, "line-2163": { offsets: { v: 2 }, expand: { v: { before: 1, after: 5 } } }, "line-2001": { offsets: { v: -3 } } };
+    saveCarryIn("u1", "p", { items: [], elections: NO_ELECTIONS, vacationGoal: goal, slidesRank: true, appliedPlacements: placed });
+    expect(loadCarryIn("u1", "p").appliedPlacements).toEqual(placed);
+  });
+
+  it("drops what the app never writes: a day count that isn't whole days out", () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) } });
+    const odd = { offsets: { v: 1 }, expand: { v: { before: -2, after: 1.5 }, w: { before: 3, after: 0 }, x: "far" } };
+    kept.set("line-select:carry-in:u1:p:v1", JSON.stringify({ items: [], elections: NO_ELECTIONS, appliedPlacements: { l: odd } }));
+    expect(loadCarryIn("u1", "p").appliedPlacements).toEqual({ l: { offsets: { v: 1 }, expand: { w: { before: 3, after: 0 } } } });
+  });
+});
+
 describe("whether what trades fit around is still what this device has", () => {
   const trip = { kind: "trip" as const, id: "c", label: "Trip 213", report: "2026-11-28T14:00:00Z", release: "2026-12-01T02:00:00Z", international: false };
 

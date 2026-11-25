@@ -101,12 +101,14 @@ export function lineVacationMark(pack: BidPack, vl: VacationLine | undefined, va
 /**
  * Where a piece's hashes run, in minutes, each side: from where it could slide to, to where it is now. A slid vacation
  * reaches its legal slides measured from where it was awarded, so the hashes are from the awarded place's reach, not
- * moved with it.
+ * moved with it. An expanded one (CBA 2026 7.E.3) is longer than the vacation: its added days come off the reach after
+ * it, or the hashes ran on past the last day a slide could take it, over trips it can't reach.
  */
 export function reachSpans(p: VacationMarkPiece): { before: [number, number] | null; after: [number, number] | null } {
   const offset = Math.round((p.start - p.awardedStart) / 1440);
+  const added = Math.max(0, Math.round((p.end - p.start - (p.awardedEnd - p.awardedStart)) / 1440));
   const toEarliest = p.earlier + offset;
-  const toLatest = p.later - offset;
+  const toLatest = p.later - offset - added;
   return {
     before: toEarliest > 0 ? [p.start - toEarliest * 1440, p.start] : null,
     after: toLatest > 0 ? [p.end, p.end + toLatest * 1440] : null,

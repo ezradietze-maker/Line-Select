@@ -586,13 +586,13 @@ export function ResultsView({
     // `vacationPlacements` is what `appliedKey` says.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appliedKey, vacationOptions.options]);
-  // For Send to VIPS: how far the vacation is slid on each line it moves, by line number (the first vacation's, or the second's).
+  // For Send to VIPS: where the vacation is on each line it slides or expands (CBA 2026 7.E.3), by line number.
   const vacationSlides = useMemo(() => {
     const byId = new Map(bidPack.lines.map((l) => [l.id, l.lineNumber]));
-    const out = new Map<string, number>();
+    const out = new Map<string, VacationPlacement>();
     for (const [id, p] of vacationPlacements) {
-      const moved = Object.values(p.offsets).find((o) => o !== 0);
-      if (moved && byId.has(id)) out.set(byId.get(id)!, moved);
+      const moved = Object.values(p.offsets).some((o) => o !== 0) || Object.values(p.expand ?? {}).some((e) => e.before > 0 || e.after > 0);
+      if (moved && byId.has(id)) out.set(byId.get(id)!, p);
     }
     return out;
   }, [vacationPlacements, bidPack]);
