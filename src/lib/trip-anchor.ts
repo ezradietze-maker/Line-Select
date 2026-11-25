@@ -155,11 +155,13 @@ export function rejoinRunDays(trips: Trip[]): Trip[] {
 
 /**
  * Trips taken off a line, named for a sentence: the days of one run together ("trip 31 (3 days, 19.2 CH)"), not the
- * same trip named once a day.
+ * same trip named once a day, and a trip the line flies more than once named once ("trip 2194 twice (37:46 CH)"), not
+ * "trip 2194 and trip 2194".
  */
 export function namedWithHours(items: readonly { trip: Trip; creditHours: number }[], name: (t: Trip) => string): string {
-  const groups: { trip: Trip; days: number; creditHours: number }[] = [];
+  const groups: { trip: Trip; days: number; times: number; creditHours: number }[] = [];
   const byRun = new Map<Trip, (typeof groups)[number]>();
+  const byName = new Map<string, (typeof groups)[number]>();
   for (const { trip, creditHours } of items) {
     const run = runOf.get(trip)?.run;
     const group = run ? byRun.get(run) : undefined;
@@ -168,11 +170,19 @@ export function namedWithHours(items: readonly { trip: Trip; creditHours: number
       group.creditHours += creditHours;
       continue;
     }
-    const g = { trip, days: 1, creditHours };
+    const again = run ? undefined : byName.get(name(trip));
+    if (again) {
+      again.times++;
+      again.creditHours += creditHours;
+      continue;
+    }
+    const g = { trip, days: 1, times: 1, creditHours };
     groups.push(g);
     if (run) byRun.set(run, g);
+    else byName.set(name(trip), g);
   }
-  return groups.map((g) => `${name(g.trip)} (${g.days > 1 ? `${g.days} days, ` : ""}${formatHoursValue(g.creditHours)} CH)`).join(" and ");
+  const times = (n: number) => (n === 1 ? "" : n === 2 ? " twice" : ` ${n} times`);
+  return groups.map((g) => `${name(g.trip)}${times(g.times)} (${g.days > 1 ? `${g.days} days, ` : ""}${formatHoursValue(g.creditHours)} CH)`).join(" and ");
 }
 
 /** A stretch of a run's days as one run, kept so its days are the same objects again (`dayTripsOf`). */

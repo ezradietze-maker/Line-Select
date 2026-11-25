@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { pairingToTrip, resolveLayoverVariants } from "@/lib/pdf-parser/build-bidpack";
 import { parsePairingColumn } from "@/lib/pdf-parser/pairing-parser";
 import { buildDetailedMonth } from "@/lib/month-detail";
-import { anchorTripToItsDate, tripReportUtc } from "@/lib/trip-anchor";
+import { anchorTripToItsDate, namedWithHours, tripReportUtc } from "@/lib/trip-anchor";
 import { asFlown, dayStats } from "@/lib/trip-day-stats";
 import { buildDateLineDays, buildHomeDays, buildRawSegments, buildTimelineDays } from "@/lib/trip-timeline";
 import type { Trip } from "@/types/bidpack";
@@ -213,5 +213,19 @@ describe("a report in the hour the clocks go back", () => {
       schedule: [{ reportTimeLocal: "0130", startMinutes: 0, legs: [{ depTimeGmt: "0730", startMinutes: 60 }], layover: null }],
     } as unknown as Trip;
     expect(tripReportUtc({ bidPeriodStart: "2026-11-01", base: "MEM" }, trip)).toBe(Date.UTC(2026, 10, 1, 6, 30));
+  });
+});
+
+describe("trips taken off a line, named for a sentence", () => {
+  it("names a trip the line flies more than once a single time, with how many and their hours together", () => {
+    // B777 MEM FO line 2478: trip 2194 three times in the month, each 18:53 CH, all under one vacation.
+    const t = (startDayIndex: number) => ({ pairingNumber: "2194", startDayIndex, days: 2, creditHours: 18.88, schedule: [] }) as unknown as Trip;
+    const other = { pairingNumber: "243", startDayIndex: 14, days: 2, creditHours: 6.73, schedule: [] } as unknown as Trip;
+    const name = (trip: Trip) => `trip ${trip.pairingNumber}`;
+    expect(namedWithHours([4, 11, 18].map((d) => ({ trip: t(d), creditHours: 18.88 })), name)).toBe("trip 2194 3 times (56:38 CH)");
+    expect(namedWithHours([{ trip: t(4), creditHours: 18.88 }, { trip: other, creditHours: 6.73 }, { trip: t(11), creditHours: 18.88 }], name)).toBe(
+      "trip 2194 twice (37:46 CH) and trip 243 (6:44 CH)"
+    );
+    expect(namedWithHours([{ trip: other, creditHours: 6.73 }], name)).toBe("trip 243 (6:44 CH)");
   });
 });
