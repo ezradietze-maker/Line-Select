@@ -71,7 +71,7 @@ export interface VacationPlacement {
 const name = (t: Trip) => (t.pairingNumber ? `trip ${t.pairingNumber}` : "a trip");
 
 /** How the vacation was moved, in a pilot's words: slid, expanded, or both. Empty when it sits where the pack has it. */
-function placementPhrase(moved: number | undefined, expanded: { before: number; after: number } | undefined): string {
+export function placementPhrase(moved: number | undefined, expanded: { before: number; after: number } | undefined): string {
   const parts: string[] = [];
   if (moved) parts.push(`slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}`);
   if (expanded && (expanded.before || expanded.after)) {
@@ -81,6 +81,13 @@ function placementPhrase(moved: number | undefined, expanded: { before: number; 
     parts.push(`expanded ${ends.join(" and ")}`);
   }
   return parts.join(" and ");
+}
+
+/** A line's placement in those words (the first vacation moved, as the reason names it); empty where the pack has it. */
+export function placementWords(placement: VacationPlacement | undefined): string {
+  const moved = Object.values(placement?.offsets ?? {}).find((o) => o !== 0);
+  const expanded = Object.values(placement?.expand ?? {}).find((e) => e.before > 0 || e.after > 0);
+  return placementPhrase(moved, expanded);
 }
 
 /** One line with the pilot's vacations on it. `carriedDays`: days a carry-in is still flying, which a vacation can't make free here. */

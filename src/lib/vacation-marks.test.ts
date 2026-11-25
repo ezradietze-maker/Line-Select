@@ -48,6 +48,22 @@ describe("the vacation as a line's pictures draw it", () => {
     expect(after).toEqual([p.end, p.end + 3 * 1440]);
   });
 
+  it("expanded (CBA 2026 7.E.3), its hatches still stop where a slide could take it: 5 days past where the pack has it", () => {
+    // Expanded 3 days later, it runs to day 19: a slide reaches day 21 at most, so 2 days are hatched after it, not 5.
+    const later = flyVacationsOnLine(L, P, chosen, new Set(), { offsets: { [vacationId(V)]: 0 }, expand: { [vacationId(V)]: { before: 0, after: 3 } } });
+    const p = lineVacationMark(P, later, chosen)!.pieces[0];
+    expect([p.firstDay, p.lastDay]).toEqual([10, 19]);
+    expect(reachSpans(p)).toEqual({ before: [p.start - 5 * 1440, p.start], after: [p.end, p.end + 2 * 1440] });
+    // Expanded 2 days earlier, from day 8: the earliest slide starts on day 5, the latest ends on day 21.
+    const earlier = flyVacationsOnLine(L, P, chosen, new Set(), { offsets: { [vacationId(V)]: 0 }, expand: { [vacationId(V)]: { before: 2, after: 0 } } });
+    const q = lineVacationMark(P, earlier, chosen)!.pieces[0];
+    expect([q.firstDay, q.lastDay]).toEqual([8, 16]);
+    expect(reachSpans(q)).toEqual({ before: [q.start - 3 * 1440, q.start], after: [q.end, q.end + 5 * 1440] });
+    // Expanded past every slide's reach: no hatch that side.
+    const past = flyVacationsOnLine(L, P, chosen, new Set(), { offsets: { [vacationId(V)]: 2 }, expand: { [vacationId(V)]: { before: 0, after: 4 } } });
+    expect(reachSpans(lineVacationMark(P, past, chosen)!.pieces[0]).after).toBeNull();
+  });
+
   it("takes each line's own reach when it's been worked out", () => {
     const p = lineVacationMark(P, flyVacationsOnLine(L, P, chosen), chosen, [{ id: vacationId(V), earlier: 2, later: 0 }])!.pieces[0];
     expect([p.earlier, p.later]).toEqual([2, 0]);

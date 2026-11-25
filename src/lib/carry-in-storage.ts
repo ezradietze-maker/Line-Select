@@ -54,14 +54,26 @@ function readGoal(raw: unknown): CarryInState["vacationGoal"] | null {
   return aims.length ? { text: g.text.slice(0, 300), aims } : null;
 }
 
-/** Stored placements, whole days by vacation id, each within a slide's reach. */
+/** Whole days out from the vacation, as an expansion is counted (`expansionReach` looks 60 days at most). */
+const expandDays = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 60;
+
+/**
+ * Stored placements, whole days by vacation id, each within a slide's reach, and any expansion (CBA 2026 7.E.3): read
+ * back without it, Strategies and the Logbook ranked an expanded line as only slid, not the line My Rankings showed.
+ */
 function readOverrides(raw: unknown): CarryInState["vacationOverrides"] | null {
   if (!raw || typeof raw !== "object") return null;
   const out: Record<string, VacationPlacement> = {};
-  for (const [line, p] of Object.entries(raw as Record<string, { offsets?: Record<string, unknown>; waiveFrontBuffer?: unknown }>)) {
+  for (const [line, p] of Object.entries(raw as Record<string, { offsets?: Record<string, unknown>; expand?: Record<string, unknown>; waiveFrontBuffer?: unknown }>)) {
     if (!p || typeof p.offsets !== "object" || !p.offsets) continue;
     const offsets = Object.fromEntries(Object.entries(p.offsets).filter(([, o]) => Number.isInteger(o) && Math.abs(o as number) <= 5)) as Record<string, number>;
-    out[line] = { offsets, ...(p.waiveFrontBuffer === true ? { waiveFrontBuffer: true } : {}) };
+    const expand = Object.fromEntries(
+      Object.entries(p.expand && typeof p.expand === "object" ? p.expand : {}).flatMap(([id, e]) => {
+        const { before, after } = (e ?? {}) as { before?: unknown; after?: unknown };
+        return expandDays(before) && expandDays(after) ? [[id, { before, after }]] : [];
+      })
+    );
+    out[line] = { offsets, ...(Object.keys(expand).length ? { expand } : {}), ...(p.waiveFrontBuffer === true ? { waiveFrontBuffer: true } : {}) };
   }
   return Object.keys(out).length ? out : null;
 }

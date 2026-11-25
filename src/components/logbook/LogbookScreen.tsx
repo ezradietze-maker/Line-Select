@@ -3,6 +3,7 @@
 import { DateTime } from "luxon";
 import { loadCarryIn } from "@/lib/carry-in-storage";
 import { slideWhere } from "@/lib/vacation-slide";
+import { placementWords } from "@/lib/vacation-lines";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ConfirmEmailButton } from "@/components/auth/ConfirmEmail";
@@ -453,8 +454,8 @@ function MonthEntry({
 }: {
   entry: LoggedMonth;
   isThisPack: boolean;
-  /** This month's awarded line has the pilot's vacation slid: how far, and when the window to ask for it opens. */
-  vacationSlide?: { offset: number; opens: string | null } | null;
+  /** This month's awarded line has the pilot's vacation slid or expanded: where, and when the window to ask for it opens. */
+  vacationSlide?: { words: string; cite: string; opens: string | null } | null;
   onRelog: () => void;
   onCheckIn: (feel: MonthFeel, words: { bestTrip?: string; worstTrip?: string; note?: string }) => void;
   onDelete: () => Promise<void>;
@@ -505,9 +506,8 @@ function MonthEntry({
       )}
       {m.outcome === "line" && vacationSlide && (
         <p className="mt-1.5 rounded-md border border-accent/50 bg-accent/5 px-3 py-1.5 text-xs text-ink" data-vacation-reminder>
-          Ask for your vacation slid {Math.abs(vacationSlide.offset)} day{Math.abs(vacationSlide.offset) === 1 ? "" : "s"} {vacationSlide.offset > 0 ? "later" : "earlier"} on line{" "}
-          {m.lineNumber} in the Conflict Input Window
-          {vacationSlide.opens ? `, which opens ${DateTime.fromISO(vacationSlide.opens, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'")}` : ""} (CBA 2026 7.E.2.a).
+          Ask for your vacation {vacationSlide.words} on line {m.lineNumber} in the Conflict Input Window
+          {vacationSlide.opens ? `, which opens ${DateTime.fromISO(vacationSlide.opens, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'")}` : ""} (CBA 2026 {vacationSlide.cite}).
         </p>
       )}
 
@@ -635,12 +635,14 @@ export function CheckInForm({
 }
 
 /**
- * The slide My Rankings placed the pilot's vacation at on the line they were awarded (`appliedPlacements`), and when the
- * Conflict Input Window to ask for it opens; null when it's where the pack has it.
+ * The slide (and expansion, CBA 2026 7.E.3) My Rankings placed the pilot's vacation at on the line they were awarded
+ * (`appliedPlacements`), in a pilot's words, and when the Conflict Input Window to ask for it opens; null when it's where
+ * the pack has it.
  */
-function awardedSlide(pack: BidPack, lineNumber: string | null, userId: string | null): { offset: number; opens: string | null } | null {
+function awardedSlide(pack: BidPack, lineNumber: string | null, userId: string | null): { words: string; cite: string; opens: string | null } | null {
   const line = pack.lines.find((l) => l.lineNumber === lineNumber);
   const placed = line ? loadCarryIn(userId, pack.id).appliedPlacements?.[line.id] : undefined;
-  const offset = placed ? Object.values(placed.offsets).find((o) => o !== 0) : undefined;
-  return offset ? { offset, opens: slideWhere(pack).opens } : null;
+  const words = placementWords(placed);
+  const cite = [Object.values(placed?.offsets ?? {}).some((o) => o !== 0) ? "7.E.2.a" : "", Object.values(placed?.expand ?? {}).some((e) => e.before > 0 || e.after > 0) ? "7.E.3" : ""].filter(Boolean).join(", ");
+  return words ? { words, cite, opens: slideWhere(pack).opens } : null;
 }

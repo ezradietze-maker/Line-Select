@@ -2,9 +2,10 @@
 
 import { formatHoursValue as hm } from "@/lib/interview-config";
 import type { LineVacationOptions, VacationOption } from "@/lib/vacation-engine";
-import type { VacationPlacement } from "@/lib/vacation-lines";
+import { placementPhrase, placementWords, type VacationPlacement } from "@/lib/vacation-lines";
 
-const said = (offset: number) => (offset === 0 ? "where the pack has it" : `slid ${Math.abs(offset)} day${Math.abs(offset) === 1 ? "" : "s"} ${offset > 0 ? "later" : "earlier"}`);
+/** Where a vacation is on the line: slid, and expanded (CBA 2026 7.E.3) when it is, or where the pack has it. */
+const said = (offset: number, expand?: { before: number; after: number }) => placementPhrase(offset, expand) || "where the pack has it";
 
 /** Whether two placements expand each vacation the same (CBA 2026 7.E.3), a missing entry counting as not expanded. */
 function sameExpand(a: VacationPlacement["expand"], b: VacationPlacement["expand"]): boolean {
@@ -105,13 +106,17 @@ export function VacationLineControl({
         return (
           <div key={id} className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{ids.length > 1 ? `Slide vacation ${n + 1}` : bare ? "Slide it" : "Your vacation on this line"}{ids.length > 1 && !bare ? " on this line" : ""}:</span>
-            <button type="button" className="rounded border border-hairline px-1.5 disabled:opacity-40" disabled={earlier === undefined} onClick={() => step(earlier)} aria-label="A day earlier">
-              ◀
-            </button>
-            <span className="tabular-nums">{said(offset)}</span>
-            <button type="button" className="rounded border border-hairline px-1.5 disabled:opacity-40" disabled={later === undefined} onClick={() => step(later)} aria-label="A day later">
-              ▶
-            </button>
+            {/* The arrows stay either side of where it is: "slid 3 days earlier and expanded 5 days earlier" is long, and on
+                a phone it wrapped onto a row of its own, ◀ above it and ▶ under it. */}
+            <span className="flex min-w-0 max-w-full items-center gap-2">
+              <button type="button" className="shrink-0 rounded border border-hairline px-1.5 disabled:opacity-40" disabled={earlier === undefined} onClick={() => step(earlier)} aria-label="A day earlier">
+                ◀
+              </button>
+              <span className="min-w-0 tabular-nums">{said(offset, current.placement.expand?.[id])}</span>
+              <button type="button" className="shrink-0 rounded border border-hairline px-1.5 disabled:opacity-40" disabled={later === undefined} onClick={() => step(later)} aria-label="A day later">
+                ▶
+              </button>
+            </span>
           </div>
         );
       })}
@@ -168,8 +173,8 @@ export function VacationOnLine({
  * takes off, and whether there's anywhere else to slide it.
  */
 export function vacationHint(removedTrips: number, placement: VacationPlacement | undefined, canSlide: boolean): string {
-  const moved = Object.values(placement?.offsets ?? {}).find((o) => o !== 0);
-  const where = moved ? `slid ${Math.abs(moved)} day${Math.abs(moved) === 1 ? "" : "s"} ${moved > 0 ? "later" : "earlier"}` : "where the pack has it";
+  // Expanded too (CBA 2026 7.E.3): an expansion alone read "where the pack has it".
+  const where = placementWords(placement) || "where the pack has it";
   const takes = removedTrips ? `takes off ${removedTrips} trip${removedTrips === 1 ? "" : "s"}` : "takes off no trips";
   return [where, takes, canSlide ? "slide it" : null].filter(Boolean).join(" · ");
 }

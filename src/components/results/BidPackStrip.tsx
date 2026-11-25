@@ -350,7 +350,8 @@ function VacationDays({ mark, columns, layout }: { mark: LineVacationMark; colum
         const reach = reachSpans(p);
         const before = reach.before ? [p.firstDay - Math.round((reach.before[1] - reach.before[0]) / 1440), p.firstDay - 1] : null;
         const after = reach.after ? [p.lastDay + 1, p.lastDay + Math.round((reach.after[1] - reach.after[0]) / 1440)] : null;
-        const slid = p.firstDay !== p.awardedFirstDay;
+        // Slid, or expanded (CBA 2026 7.E.3): expanded only later, it started on the pack's day and read as one long vacation.
+        const slid = p.firstDay !== p.awardedFirstDay || p.lastDay !== p.awardedLastDay;
         const out = [];
         if (slid && inView(p.awardedFirstDay, p.awardedLastDay))
           out.push(<div key={`${p.id}a`} className="rounded-[3px] border border-dashed border-accent/70" style={{ gridColumn: `${col(p.awardedFirstDay)} / ${col(p.awardedLastDay) + 1}`, gridRow: 1 }} />);
@@ -578,13 +579,15 @@ function VacationLayer({ mark, x, height, wash, id, clear = [] }: { mark: LineVa
       {mark.pieces.map((p) => {
         const { before, after } = reachSpans(p);
         const slid = p.start !== p.awardedStart;
+        // Expanded (CBA 2026 7.E.3): longer than the vacation, so where the pack has it is outlined though it starts there.
+        const added = Math.round((p.end - p.start - (p.awardedEnd - p.awardedStart)) / 1440);
         return (
           <g key={p.id}>
             {wash && <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={height} fill="var(--color-accent)" opacity={0.13} />}
-            {slid && <rect x={x(p.awardedStart) + 0.5} y={0.5} width={Math.max(1, x(p.awardedEnd) - x(p.awardedStart) - 1)} height={height - 1} rx={3} fill="none" stroke="var(--color-accent)" strokeOpacity={0.7} strokeDasharray="3 2" />}
+            {(slid || added > 0) && <rect x={x(p.awardedStart) + 0.5} y={0.5} width={Math.max(1, x(p.awardedEnd) - x(p.awardedStart) - 1)} height={height - 1} rx={3} fill="none" stroke="var(--color-accent)" strokeOpacity={0.7} strokeDasharray="3 2" />}
             {[before, after].flatMap((r, k) => (r ? hatched(x(r[0]), x(r[1])).map(([a, b], j) => <rect key={`${k}-${j}`} x={a} y={0} width={Math.max(1, b - a)} height={5} fill={`url(#${hatch})`} opacity={0.85} />) : []))}
             <rect x={x(p.start)} y={0} width={Math.max(1, x(p.end) - x(p.start))} height={3} rx={1.5} fill="var(--color-accent)">
-              <title>{`Your vacation, ${p.days} days${slid ? ", slid" : ""}`}</title>
+              <title>{`Your vacation, ${p.days} days${added > 0 ? `, expanded ${added} day${added === 1 ? "" : "s"}` : slid ? ", slid" : ""}`}</title>
             </rect>
           </g>
         );

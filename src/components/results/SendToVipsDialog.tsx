@@ -19,6 +19,7 @@ import { deriveSeniorityInput } from "@/lib/seniority-derive";
 import { fullBidOrder, runPresendChecks, vipsQuestionNotes, type CheckFix, type PresendCheck } from "@/lib/vips-presend";
 import { useFlownSoFar } from "@/components/results/BlockLimitsPanel";
 import { loadVipsHeaderText, parseVipsHeader, saveVipsHeaderText, seatWords } from "@/lib/vips-header";
+import { placementPhrase, type VacationPlacement } from "@/lib/vacation-lines";
 import type { BidPack } from "@/types/bidpack";
 import type { PreferenceProfile } from "@/types/preferences";
 import {
@@ -66,10 +67,10 @@ export interface PresendContext {
    */
   payOnly?: { aboveAverage: Set<string>; aboveReserve: Set<string> | null } | null;
   /**
-   * Lines where the pilot's vacation is slid from where the pack has it, by line number, how far: the bid can't ask for
-   * a slide, so this reminds them to ask in the Conflict Input Window after the award.
+   * Lines where the pilot's vacation is slid or expanded from where the pack has it, by line number, and where it is: the
+   * bid can't ask for either, so this reminds them to ask in the Conflict Input Window after the award.
    */
-  vacationSlides?: Map<string, number> | null;
+  vacationSlides?: Map<string, VacationPlacement> | null;
 }
 
 const CHECK_TONE: Record<PresendCheck["level"], string> = {
@@ -467,20 +468,28 @@ export function SendToVipsDialog({
 
 /**
  * Your vacation slid on lines in this order: the bid itself can't ask for that, so after the award the pilot asks for the
- * awarded line's slide in the Conflict Input Window (CBA 2026 7.E.2.a, 25.E.2), when it opens.
+ * awarded line's slide in the Conflict Input Window (CBA 2026 7.E.2.a, 25.E.2), when it opens. An expansion too (7.E.3.a:
+ * the same window): left out, the pilot asked for the slide alone, or nothing, and the line didn't fly as it was ranked.
  */
-export function VacationSlideReminder({ pack, slides, order }: { pack: BidPack; slides: Map<string, number>; order: string[] }) {
+export function VacationSlideReminder({ pack, slides, order }: { pack: BidPack; slides: Map<string, VacationPlacement>; order: string[] }) {
   const where = slideWhere(pack);
   const top = order.slice(0, 10);
   const slidTop = top.filter((n) => slides.has(n));
-  const said = (offset: number) => `${Math.abs(offset)} day${Math.abs(offset) === 1 ? "" : "s"} ${offset > 0 ? "later" : "earlier"}`;
+  const grownOf = (p: VacationPlacement) => Object.values(p.expand ?? {}).find((e) => e.before > 0 || e.after > 0);
+  const said = (p: VacationPlacement) => {
+    const offset = Object.values(p.offsets).find((o) => o !== 0);
+    const slide = offset ? `${Math.abs(offset)} day${Math.abs(offset) === 1 ? "" : "s"} ${offset > 0 ? "later" : "earlier"}` : "";
+    return [slide, placementPhrase(undefined, grownOf(p))].filter(Boolean).join(", ");
+  };
+  const grown = [...slides.values()].some((p) => grownOf(p));
+  const ask = grown ? "slide or expansion" : "slide";
   const opens = where.opens ? DateTime.fromISO(where.opens, { zone: "America/Chicago" }).toFormat("LLL d, HH:mm 'CT'") : null;
   return (
     <section className="rounded-md border border-accent/50 bg-accent/5 px-3 py-2 text-xs leading-relaxed text-ink" data-vacation-reminder>
-      <p className="font-medium">After your award: ask for your vacation&rsquo;s slide</p>
+      <p className="font-medium">After your award: ask for your vacation&rsquo;s {ask}</p>
       <p className="mt-0.5 text-ink-muted">
-        Your vacation is slid on {slidTop.length ? `${slidTop.length} of your top ${top.length} lines` : `${slides.size} of your lines`}. VIPS&rsquo;s bid can&rsquo;t ask for that: once
-        you know your line, ask for its slide in the Conflict Input Window{opens ? `, which opens ${opens}` : ""}. {where.rule}
+        Your vacation is {grown ? "slid or expanded" : "slid"} on {slidTop.length ? `${slidTop.length} of your top ${top.length} lines` : `${slides.size} of your lines`}. VIPS&rsquo;s bid can&rsquo;t ask for that: once
+        you know your line, ask for its {ask} in the Conflict Input Window{opens ? `, which opens ${opens}` : ""}. {where.rule}
       </p>
       {slidTop.length > 0 && (
         <p className="mt-1 font-mono text-2xs text-ink">
