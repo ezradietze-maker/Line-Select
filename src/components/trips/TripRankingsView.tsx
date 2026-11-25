@@ -198,8 +198,9 @@ export function TripRankingsView({ bidPack, profile, onEditPreferences, onUpdate
   const sensors = useSensors(
     // A plain tap on a trip opens it; only a real movement starts a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    // From the keyboard, Up and Down step to the trip above or below, and Space puts it there.
-    useSensor(KeyboardSensor, { coordinateGetter: swapKeyboardCoordinates })
+    // From the keyboard, Up and Down step to the trip above or below, and Space puts it there. The page scrolls to it at
+    // once: while a smooth scroll ran, every other quick press was lost.
+    useSensor(KeyboardSensor, { coordinateGetter: swapKeyboardCoordinates, scrollBehavior: "auto" })
   );
   const dragSpeech = useMemo(() => {
     const say = (id: string | number | undefined) => {

@@ -1253,7 +1253,8 @@ export function ResultsView({
     // (no real movement) never gets mistaken for the start of a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     // From the keyboard, Up and Down jump straight to the line above or below, so Space–arrow–Space swaps like a drop.
-    useSensor(KeyboardSensor, { coordinateGetter: swapKeyboardCoordinates })
+    // The page scrolls to it at once: while a smooth scroll ran, every other quick press was lost.
+    useSensor(KeyboardSensor, { coordinateGetter: swapKeyboardCoordinates, scrollBehavior: "auto" })
   );
 
   // What a screen reader hears while swapping: line numbers and places, never internal ids.
