@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   // Each screen names its own tab ("My Rankings · Line Select") — see the small layout.tsx beside each page.
   title: { default: "Line Select — Bid Line Matching for FedEx Pilots", template: "%s · Line Select" },
   description:
-    "An independent prototype that ranks FedEx pilot bid lines against your stated preferences. Not affiliated with or endorsed by FedEx.",
+    "Upload your FedEx bid pack and every line is ranked for how you like to fly, with the reason, your vacation drawn on every line, and your bid ready to send to VIPS. Independent; not affiliated with or endorsed by FedEx.",
   // A shared link shows the big card from app/opengraph-image.tsx.
   openGraph: { siteName: "Line Select", type: "website" },
   twitter: { card: "summary_large_image" },

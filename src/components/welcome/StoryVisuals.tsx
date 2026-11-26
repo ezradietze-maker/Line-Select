@@ -2,17 +2,16 @@
 
 import { motion } from "motion/react";
 import { FlightPathProgress } from "@/components/ui/FlightPathProgress";
-import { Gauge } from "@/components/ui/Gauge";
 import { NumberTicker } from "@/components/ui/NumberTicker";
 import { formatHoursValue } from "@/lib/interview-config";
 import { DURATION, EASE } from "@/lib/motion-tokens";
 import { useMediaQuery } from "@/lib/use-media-query";
 
 /**
- * The four panels of the landing page's "how it flies" story. Each takes
+ * The five panels of the landing page's "how it flies" story. Each takes
  * `active` and plays when its step is the one on screen. Every number is
  * real, from one real October 767 Memphis first-officer bid pack, except
- * the illustrative scores in the ranking panel, which say so.
+ * the illustrative indexes in the ranking panel, which say so.
  *
  * Reduced motion is read with `useStill`, not motion's `useReducedMotion`: that one is already true on the browser's
  * first render, so a panel that drew differently for it never matched the server's HTML (a hydration error on every
@@ -139,11 +138,11 @@ export function InterviewVisual({ active }: { active: boolean }) {
 
 /** Credit to the minute, as the pack prints it (73:45 is 73 + 45/60): rounded to a tenth, 73:45 read 73:48. */
 export const LINES = [
-  { n: "2016", off: 15, credit: 73 + 45 / 60, via: "SJC · MIA · BOG", score: 73 },
-  { n: "2024", off: 15, credit: 77 + 28 / 60, via: "CDG · BLL · DUB", score: 84 },
-  { n: "2033", off: 15, credit: 79 + 53 / 60, via: "CDG · DUB · MXP", score: 88 },
-  { n: "2035", off: 15, credit: 78 + 6 / 60, via: "CDG · DUB · MXP", score: 81 },
-  { n: "2164", off: 15, credit: 81 + 52 / 60, via: "SAT · ELP · DTW", score: 67 },
+  { n: "2016", off: 15, credit: 73 + 45 / 60, via: "SJC · MIA · BOG", score: 81.2 },
+  { n: "2024", off: 15, credit: 77 + 28 / 60, via: "CDG · BLL · DUB", score: 93.1 },
+  { n: "2033", off: 15, credit: 79 + 53 / 60, via: "CDG · DUB · MXP", score: 97.4 },
+  { n: "2035", off: 15, credit: 78 + 6 / 60, via: "CDG · DUB · MXP", score: 89.6 },
+  { n: "2164", off: 15, credit: 81 + 52 / 60, via: "SAT · ELP · DTW", score: 70.8 },
 ];
 
 export function RankVisual({ active }: { active: boolean }) {
@@ -167,22 +166,20 @@ export function RankVisual({ active }: { active: boolean }) {
                 {l.off} off &middot; {formatHoursValue(l.credit)} cr &middot; {l.via}
               </div>
             </div>
-            {active ? (
-              <Gauge
-                value={l.score}
-                size={40}
-                tone={{ stroke: "var(--color-accent)", track: "var(--color-accent-soft)", text: "text-readout" }}
-                label={`Illustrative score ${l.score}`}
-                // The ring is the same size at any text size, so its score grows only to 150%: at 200% it ran over the ring.
-                readoutClassName="text-[length:min(var(--text-2xs),16.5px)] font-semibold"
-              />
-            ) : (
-              <div className="h-10 w-10" />
-            )}
+            {/* The index as My Rankings boxes it: one decimal, the best line in the pack in the high 90s. */}
+            <motion.span
+              className={`shrink-0 rounded-[3px] border px-1.5 py-0.5 font-mono text-sm font-semibold ${active && i === 0 ? "border-accent text-accent" : "border-border-strong text-ink"}`}
+              initial={false}
+              animate={{ opacity: active ? 1 : 0 }}
+              transition={{ delay: active && !reduce ? 0.5 : 0, duration: 0.3 }}
+              aria-label={`Illustrative Satisfaction Index ${l.score.toFixed(1)}`}
+            >
+              {l.score.toFixed(1)}
+            </motion.span>
           </motion.li>
         ))}
       </ol>
-      <Caption>Real lines from that pack &middot; illustrative scores</Caption>
+      <Caption>Real lines from that pack &middot; illustrative Satisfaction Index</Caption>
     </div>
   );
 }
@@ -253,6 +250,50 @@ export function CalendarVisual({ active }: { active: boolean }) {
         </div>
       </div>
       <Caption>Line 2033&rsquo;s real month &middot; Sep 28 &ndash; Oct 25</Caption>
+    </div>
+  );
+}
+
+/** The top of that ranking, in the order it would go to VIPS. */
+const ORDER = ["2033", "2024", "2035", "2016", "2164"];
+
+export function SendVisual({ active }: { active: boolean }) {
+  const reduce = useStill();
+  return (
+    <div>
+      <div className="panel-glass p-6">
+        <div className="text-2xs font-medium text-ink-faint">Your bid, in order</div>
+        <ol className="mt-3 flex flex-wrap gap-1.5">
+          {ORDER.map((n, i) => (
+            <motion.li
+              key={n}
+              className="rounded-[3px] border border-border bg-canvas/60 px-2 py-1 font-mono text-sm text-ink"
+              initial={false}
+              animate={{ opacity: active || reduce ? 1 : 0.3, y: active || reduce ? 0 : 6 }}
+              transition={{ delay: active && !reduce ? i * 0.08 : 0, duration: 0.3 }}
+            >
+              {n}
+            </motion.li>
+          ))}
+          <li className="px-1 py-1 font-mono text-sm text-ink-faint">+ {PACK.lines - ORDER.length} more</li>
+        </ol>
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <span className="rounded-[4px] bg-sign px-4 py-2 font-display text-sm font-bold text-on-sign">Send to VIPS</span>
+          <motion.span
+            className="inline-flex items-center gap-2 rounded-[3px] border border-good/40 bg-good-soft px-2.5 py-1 text-2xs font-medium text-good"
+            initial={false}
+            animate={{ opacity: active ? 1 : 0 }}
+            transition={{ delay: active && !reduce ? 0.9 : 0, duration: 0.4 }}
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden>
+              <path strokeLinecap="square" d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+            Filled in on VIPS&rsquo;s bid page
+          </motion.span>
+        </div>
+        <p className="mt-4 text-sm text-ink-muted">You sign in to VIPS, check it and submit it yourself. Nothing is sent until you do.</p>
+      </div>
+      <Caption>Every line of the pack, in your order &middot; or copy the order and enter it yourself</Caption>
     </div>
   );
 }

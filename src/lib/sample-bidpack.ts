@@ -350,6 +350,12 @@ const SAMPLE_LINES = [
   buildLine("9006", [onDay(tripB, 6), onDay(tripC, 14)]),
 ];
 
+/** A made-up line flying the sample's trips on the days given (0 the period's first day): a picture of a line, as the landing page draws one. */
+export function sampleLineFlying(lineNumber: string, flights: [pairing: "501" | "502" | "503", day: number][]): Line {
+  const byPairing = { "501": tripA, "502": tripB, "503": tripC };
+  return buildLine(lineNumber, flights.map(([p, d]) => onDay(byPairing[p], d)));
+}
+
 export const SAMPLE_BID_PACK: BidPack = {
   id: "sample-bidpack",
   month: "SAMPLE",

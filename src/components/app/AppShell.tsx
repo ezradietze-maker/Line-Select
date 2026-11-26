@@ -412,7 +412,7 @@ function Footer() {
           </p>
           <p>
             <strong className="font-semibold text-ink-muted">Not affiliated with FedEx.</strong> An independent, unofficial
-            prototype, not endorsed by or connected to Federal Express Corporation.
+            tool, not endorsed by or connected to Federal Express Corporation.
           </p>
         </div>
         <details className="group mt-2">

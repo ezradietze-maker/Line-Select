@@ -6,7 +6,10 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/Button";
 import { LogoMark, Wordmark } from "@/components/ui/Logo";
 import { ApproachLights } from "@/components/welcome/ApproachLights";
-import { CalendarVisual, InterviewVisual, ParseVisual, RankVisual } from "@/components/welcome/StoryVisuals";
+import { FeatureTour } from "@/components/welcome/FeatureTour";
+import { CalendarVisual, InterviewVisual, ParseVisual, RankVisual, SendVisual } from "@/components/welcome/StoryVisuals";
+import { MEMBERSHIP_PRICE } from "@/lib/billing";
+import { FREE_MEMBER_CAP, FREE_PREVIEW_LINES } from "@/lib/membership";
 import { DURATION, EASE } from "@/lib/motion-tokens";
 
 const STEPS: { eyebrow: string; title: string; body: string; Visual: ComponentType<{ active: boolean }> }[] = [
@@ -19,27 +22,33 @@ const STEPS: { eyebrow: string; title: string; body: string; Visual: ComponentTy
   {
     eyebrow: "02 · Brief",
     title: "Then it asks what matters, the way a pilot would.",
-    body: "No quiz. A short conversation that goes deeper where your answers get interesting, skips what you've already said, and picks up how you talk.",
+    body: "No quiz. A short conversation about real lines and trips from your pack, that goes deeper where your answers get interesting, skips what you've already said, and picks up how you talk.",
     Visual: InterviewVisual,
   },
   {
     eyebrow: "03 · Rank",
-    title: "Every line scored against you — with the reason.",
-    body: "A 0–100 score for each line, weighted by how much each thing matters to you, and a plain-English reason for every one. A limit you set puts a line at the bottom of your list.",
+    title: "Every line ranked for you — with the reason.",
+    body: "Each line gets a Satisfaction Index from 1 to 100, weighted by how much each thing matters to you, and a plain-English reason. The best line in your pack lands in the high 90s. A limit you set puts a line at the bottom of your list.",
     Visual: RankVisual,
   },
   {
     eyebrow: "04 · Check",
     title: "Then see the month before you bid it.",
-    body: "Each line laid out on the real calendar — trips, layovers, days off in a row — and checked against the dates you need home.",
+    body: "Each line laid out on the real calendar — trips, layovers, days off in a row, your vacation — and checked against the dates you need home.",
     Visual: CalendarVisual,
+  },
+  {
+    eyebrow: "05 · Send",
+    title: "And send it to VIPS when you're ready.",
+    body: "Your whole order goes into VIPS's bid page, filled in, so there's nothing to retype. You sign in there and submit it yourself.",
+    Visual: SendVisual,
   },
 ];
 
 const TRUST = [
   {
     title: "Scored, not guessed",
-    body: "Every line gets a 0–100 score against what you said matters, weighted by how much it matters.",
+    body: "Every line is scored against what you said matters, weighted by how much it matters.",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-5 w-5">
         <circle cx="12" cy="12" r="9" />
@@ -165,8 +174,9 @@ function Story() {
 /**
  * The public front door — a hero with the theme's one showpiece (approach lights running in toward the Line Select
  * sign, and a real route on the sign under it), then a scroll story of what the app actually does, each step shown
- * with real data from a real bid pack. Every honesty note the old landing carried is still here: not affiliated,
- * what happens to the PDF, which numbers are illustrative.
+ * with real data from a real bid pack, then the tour of the rest (`FeatureTour`): what only Line Select shows, the
+ * kit, how it learns, the price and the first questions. Every honesty note the old landing carried is still here: not
+ * affiliated, what happens to the PDF, which numbers are illustrative.
  */
 export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStart: () => void; onTrySample: () => void; appHref?: string | null }) {
   // The hero rises in with CSS, not motion: CSS starts on first paint, from
@@ -191,6 +201,9 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
           <Link href="/tutorial" className="hidden rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink sm:inline-block">
             Tutorial
           </Link>
+          <Link href="/pricing" className="rounded-md px-3 py-2 text-ink-muted transition-colors hover:text-ink">
+            Pricing
+          </Link>
           {/* Signed in already (shown this page with "/?welcome"): `appHref` goes back into the app, not to a sign-in form. */}
           <Link href={appHref ?? "/auth"} className="rounded-[4px] border border-border-strong px-3 py-2 font-display font-bold text-ink transition-colors hover:border-ink">
             {appHref ? "Open Line Select" : "Sign in"}
@@ -204,7 +217,7 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
             style={rise(0)}
             className="animate-hero-in inline-block max-w-full text-balance rounded-[3px] border border-border-strong px-2.5 py-1 text-2xs font-medium leading-relaxed text-ink-muted"
           >
-            Independent prototype &middot; not affiliated with FedEx
+            For FedEx pilots &middot; independent, not affiliated with FedEx
           </span>
           {/* No bigger than 15% of the phone's width: at 200% text "actually" was wider than a 320 phone's column and
               carried the column, and its buttons, past the right edge. */}
@@ -216,8 +229,8 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
             <span className="text-accent">how you want to fly.</span>
           </h1>
           <p style={rise(2)} className="animate-hero-in mx-auto mt-6 max-w-xl text-lg leading-relaxed text-ink-muted lg:mx-0">
-            Upload your bid pack, tell it what matters, and every line gets scored against you &mdash; with a plain-English
-            reason for each score, so you can trust the answer instead of re-checking it by hand.
+            Upload your bid pack, tell it how you like to fly, and every line is ranked for you &mdash; with the reason
+            for each, your vacation drawn on every line, and your bid ready to send to VIPS.
           </p>
           <div style={rise(3)} className="animate-hero-in mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
             <Button onClick={onStart} className="w-full px-7 py-3.5 text-base sm:w-auto">
@@ -251,6 +264,8 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
         <Story />
       </div>
 
+      <FeatureTour freeSpots={FREE_MEMBER_CAP} price={MEMBERSHIP_PRICE} previewLines={FREE_PREVIEW_LINES} />
+
       <section className="mx-auto max-w-6xl px-4 sm:px-8">
         <ul className="grid gap-4 border-y border-hairline py-10 sm:grid-cols-3">
           {TRUST.map((t) => (
@@ -271,7 +286,9 @@ export function WelcomeScreen({ onStart, onTrySample, appHref = null }: { onStar
           <h2 className="mt-5 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
             Your next bid starts with your pack.
           </h2>
-          <p className="mx-auto mt-3 max-w-md text-ink-muted">About a minute to upload and read. A few more if you want the interview to go deep.</p>
+          <p className="mx-auto mt-3 max-w-md text-ink-muted">
+            About a minute to upload and read, a few more for the interview. Your top {FREE_PREVIEW_LINES} lines are free to see.
+          </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button onClick={onStart} className="w-full px-7 py-3.5 text-base sm:w-auto">
               Upload your bid pack

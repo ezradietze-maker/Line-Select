@@ -56,7 +56,7 @@ export default function RootError({ error, reset }: { error: Error & { digest?: 
         </svg>
         <h1 className="mt-4 text-lg font-semibold text-ink">Something went wrong</h1>
         <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-          This is a prototype and something broke unexpectedly. Nothing was
+          Something broke unexpectedly, and we&rsquo;ve been told. Nothing was
           lost &mdash; your bid pack and preferences are safe. Try again, and
           if it keeps happening, reloading the page or re-uploading your bid
           pack usually clears it.

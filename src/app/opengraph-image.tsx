@@ -78,12 +78,12 @@ export default function OpengraphImage() {
               <span style={{ color: ACCENT }}>how you want to fly.</span>
             </div>
             <div style={{ display: "flex", marginTop: 26, fontSize: 28, lineHeight: 1.35, color: MUTED, maxWidth: 760 }}>
-              Upload your FedEx bid pack, say what matters, and every line is scored against you — with the reason why.
+              Upload your FedEx bid pack, say how you like to fly, and every line is ranked for you — with the reason why.
             </div>
           </div>
 
           <div style={{ display: "flex", fontSize: 22, color: MUTED }}>
-            Independent prototype · Not affiliated with FedEx
+            Independent · Not affiliated with FedEx
           </div>
         </div>
       </div>

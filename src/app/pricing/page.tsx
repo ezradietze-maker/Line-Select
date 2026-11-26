@@ -10,12 +10,13 @@ import { FREE_MEMBER_CAP, FREE_PREVIEW_LINES } from "@/lib/membership";
 
 /** What a membership (free spot or Pro, the same app) unlocks. */
 const MEMBER_FEATURES = [
-  "The full adaptive preference interview",
-  "Every line in your bid pack scored against your own Satisfaction Index, with a detailed month calendar for each",
-  "A bid forecast: your chance at every line, from where your seniority number puts you in bid order",
-  "The Strategies board, including score-lift context and real award-history grounding",
-  "Trade Board, Inbox, and Hotel Ratings",
-  "Bid-order export and .ics calendar export",
+  "Every line in your bid pack ranked by your own Satisfaction Index, with the reason and a month calendar for each",
+  "Trip Rankings: every trip in the pack, best first, learning from the trips you move",
+  "Your vacation on every line, slid to its best legal spot for what you want from it",
+  "Send to VIPS, the bid-order copy and the calendar feed",
+  "Sorts, filters and Ask your pack",
+  "Strategies, with your chance at every line from where your seniority number puts you in bid order",
+  "The Pay check, Logbook, Tools and Hotel Ratings",
 ];
 
 /** The Pro card's button: its side padding stays 16px with the text set large, so "membership" fits a 320 phone at 200%. */
