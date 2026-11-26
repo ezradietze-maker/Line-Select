@@ -1,4 +1,4 @@
-import { sendEmail } from "@/lib/server/email";
+import { sendEmail, sendEmailExplained } from "@/lib/server/email";
 import { getJson, incrementCounter } from "@/lib/server/kv";
 import { posthogServer } from "@/lib/server/posthog";
 import { siteSpentOn, spendCaps } from "@/lib/server/spend-guard";
@@ -141,6 +141,29 @@ async function sendAlert(kind: ProblemKind, count: number, latest: string): Prom
     subject: `Line Select: ${LABELS[kind].toLowerCase()} failing`,
     text: `${LABELS[kind]}: ${count} failures in the last hour. You'll get at most one email about this per hour.\n\nLatest: ${latest}\n\nPostHog's error tracking has each one, with the page it came from.`,
   });
+}
+
+/**
+ * A failure alert on demand (`/api/admin/test-alert`): the email in the real alert's words, marked as a test, and one
+ * made-up error in PostHog's error tracking, so the owner sees both arrive. Counts nothing toward the hour's real alerts
+ * or the daily summary. Says what happened to each.
+ */
+export async function sendTestAlert(): Promise<{ email: { sent: boolean; reason?: string }; posthog: { sent: boolean; reason?: string } }> {
+  const to = alertAddress();
+  const email = to
+    ? await sendEmailExplained({
+        to,
+        subject: "Line Select: TEST — interview questions failing",
+        text: `This is a test of Line Select's failure alerts; nothing is broken. A real one reads like this:\n\nInterview questions: ${ALERT_THRESHOLD} failures in the last hour. You'll get at most one email about this per hour.\n\nLatest: (the error's message)\n\nPostHog's error tracking has each one, with the page it came from. It has this test too, as "Test alert from Line Select".`,
+      })
+    : { sent: false, reason: "ALERT_EMAIL isn't set" };
+  if (!posthogServer) return { email, posthog: { sent: false, reason: "NEXT_PUBLIC_POSTHOG_KEY isn't set" } };
+  try {
+    await posthogServer.captureExceptionImmediate(new Error("Test alert from Line Select"), undefined, { kind: "test-alert" });
+    return { email, posthog: { sent: true } };
+  } catch (e) {
+    return { email, posthog: { sent: false, reason: describe(e) } };
+  }
 }
 
 export interface DailySummary {

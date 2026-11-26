@@ -22,9 +22,13 @@ vi.mock("@/lib/server/email", () => ({
     sent.push(m);
     return true;
   },
+  sendEmailExplained: async (m: { to: string; subject: string; text: string }) => {
+    sent.push(m);
+    return { sent: true };
+  },
 }));
 
-const { dailySummaryText, noteActivity, reportBrowserProblem, reportProblem, sendDailySummary, sendFeedbackNote, summarizeDay } = await import("./alerts");
+const { dailySummaryText, noteActivity, reportBrowserProblem, reportProblem, sendDailySummary, sendFeedbackNote, sendTestAlert, summarizeDay } = await import("./alerts");
 const { recordSpend } = await import("./spend-guard");
 
 const at = new Date("2026-11-05T15:10:00Z");
@@ -131,5 +135,25 @@ describe("the daily summary", () => {
   it("reads all clear on a quiet day", () => {
     const text = dailySummaryText({ day: "2026-11-05", spentUsd: 0, activity: { "brain-read": 0, "interview-question": 0, ask: 0, "pack-parsed": 0 }, problems: {}, feedbackHeld: 0 }, { results: [] });
     expect(text).toMatch(/Failures: none/);
+  });
+});
+
+describe("the test alert", () => {
+  it("emails the owner an alert marked as a test, and counts nothing toward a real one", async () => {
+    const result = await sendTestAlert();
+    expect(result.email.sent).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toBe("owner@example.com");
+    expect(sent[0].subject).toMatch(/TEST/);
+    expect(sent[0].text).toMatch(/nothing is broken/);
+    expect(store.size).toBe(0);
+  });
+
+  it("says why when it can't: no alert address, no PostHog key", async () => {
+    delete process.env.ALERT_EMAIL;
+    const result = await sendTestAlert();
+    expect(result.email).toEqual({ sent: false, reason: "ALERT_EMAIL isn't set" });
+    expect(result.posthog.sent).toBe(false);
+    expect(sent).toHaveLength(0);
   });
 });
