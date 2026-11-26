@@ -241,6 +241,27 @@ function datesTouched(from: number | null, to: number | null, zone: string): str
   for (let d = Date.parse(`${DateTime.fromMillis(from, { zone }).toISODate()}T00:00:00Z`); d <= end; d += 86_400_000) dates.push(new Date(d).toISOString().slice(0, 10));
   return dates;
 }
+/**
+ * The month's chosen weekdays as instants on the clock at home, [from, to] each — the part of the day the pilot named,
+ * or 08:00–20:00. The same for every line of a pack, so worked out once per month and choice: worked out per line, it
+ * was most of what the measures cost on a big pack.
+ */
+const chosenDays = new Map<string, [number, number][]>();
+function chosenDayWindows(bidPeriodStart: string, days: number, zone: string, weekdays: number[], parts: Record<string, DayPart> | undefined): [number, number][] {
+  const key = JSON.stringify([bidPeriodStart, days, zone, weekdays, parts ?? null]);
+  const kept = chosenDays.get(key);
+  if (kept) return kept;
+  const start = DateTime.fromISO(bidPeriodStart, { zone });
+  const windows: [number, number][] = [];
+  for (let i = 0; i < days; i++) {
+    const day = start.plus({ days: i });
+    if (!weekdays.includes(day.weekday)) continue;
+    const [from, to] = DAY_PART_HOURS[parts?.[String(day.weekday)] ?? "day"];
+    windows.push([day.plus({ hours: from }).toMillis(), day.plus({ hours: to }).toMillis()]);
+  }
+  chosenDays.set(key, windows);
+  return windows;
+}
 /** Standby days (one standby row each) at cities matching `where`. */
 const standbyDaysWhere = (trips: TripFacts[], where: (city: string) => boolean) =>
   sum(trips.map((f) => f.trip.schedule.flatMap((d) => d.legs).filter((l) => isHotelStandbyLeg(l) && where(l.depAirport)).length));
@@ -602,16 +623,8 @@ export const METRICS: MetricDef[] = [
       if (!home) return null;
       const homeAirport = p.homeAirports?.find((a) => a && a !== ctx.base);
       const zone = timezoneForAirport(homeAirport ?? ctx.base) ?? timezoneForAirport(ctx.base) ?? "UTC";
-      const start = DateTime.fromISO(ctx.bidPeriodStart, { zone });
       let n = 0;
-      for (let i = 0; i < ctx.bidPeriodDays; i++) {
-        const day = start.plus({ days: i });
-        if (!p.weekdays.includes(day.weekday)) continue;
-        const [from, to] = DAY_PART_HOURS[p.weekdayParts?.[String(day.weekday)] ?? "day"];
-        const a = day.plus({ hours: from }).toMillis();
-        const b = day.plus({ hours: to }).toMillis();
-        if (home.stretches.some((s) => s.from <= a && s.to >= b)) n++;
-      }
+      for (const [a, b] of chosenDayWindows(ctx.bidPeriodStart, ctx.bidPeriodDays, zone, p.weekdays, p.weekdayParts)) if (home.stretches.some((s) => s.from <= a && s.to >= b)) n++;
       return n;
     },
   },

@@ -255,3 +255,36 @@ describe("sleep plan", () => {
     expect(dark.blocks[0].why).toMatch(/body clock's night/);
   });
 });
+
+describe("sleepPropensity, made faster", () => {
+  // The curve as it was worked out before its search started at the hour: every knot from midnight on.
+  const KNOTS: [number, number][] = [
+    [0, 1],
+    [6, 1],
+    [7, 0.85],
+    [8, 0.55],
+    [9, 0.35],
+    [12, 0.3],
+    [14, 0.55],
+    [15.5, 0.5],
+    [17, 0.3],
+    [19, 0.12],
+    [21, 0.12],
+    [22, 0.5],
+    [23, 0.9],
+    [24, 1],
+  ];
+  const before = (bodyMinute: number) => {
+    const h = (((bodyMinute % 1440) + 1440) % 1440) / 60;
+    for (let i = 1; i < KNOTS.length; i++) {
+      const [h1, v1] = KNOTS[i];
+      const [h0, v0] = KNOTS[i - 1];
+      if (h <= h1) return v0 + ((v1 - v0) * (h - h0)) / (h1 - h0);
+    }
+    return 1;
+  };
+
+  it("gives exactly the number it always did, at every minute, on the knots and between them", () => {
+    for (let m = -1500; m <= 3000; m += 0.25) expect(sleepPropensity(m)).toBe(before(m));
+  });
+});

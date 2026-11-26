@@ -175,28 +175,35 @@ export function driftBodyClock(body: number, target: number, minutes: number): n
   return body + Math.sign(diff) * step;
 }
 
+/** The propensity curve's knots: body-clock hour, ease. Made once, not on each of the million calls a big pack makes. */
+const KNOTS: [number, number][] = [
+  [0, 1],
+  [6, 1],
+  [7, 0.85],
+  [8, 0.55],
+  [9, 0.35],
+  [12, 0.3],
+  [14, 0.55],
+  [15.5, 0.5],
+  [17, 0.3],
+  [19, 0.12],
+  [21, 0.12],
+  [22, 0.5],
+  [23, 0.9],
+  [24, 1],
+];
+/**
+ * For each whole hour, the first knot at or after it. The search below starts there: every knot before it is earlier
+ * than the hour, so the search would have passed it anyway, and it finds the same knot it always did.
+ */
+const FIRST_KNOT = Array.from({ length: 24 }, (_, hour) => Math.max(1, KNOTS.findIndex(([h]) => h >= hour)));
+
 /** How easily sleep comes at a body-clock time (minute of day), 0–1: highest in the body's night, lowest just before it. */
 export function sleepPropensity(bodyMinute: number): number {
-  const knots: [number, number][] = [
-    [0, 1],
-    [6, 1],
-    [7, 0.85],
-    [8, 0.55],
-    [9, 0.35],
-    [12, 0.3],
-    [14, 0.55],
-    [15.5, 0.5],
-    [17, 0.3],
-    [19, 0.12],
-    [21, 0.12],
-    [22, 0.5],
-    [23, 0.9],
-    [24, 1],
-  ];
   const h = mod(bodyMinute) / 60;
-  for (let i = 1; i < knots.length; i++) {
-    const [h1, v1] = knots[i];
-    const [h0, v0] = knots[i - 1];
+  for (let i = FIRST_KNOT[Math.floor(h)] ?? 1; i < KNOTS.length; i++) {
+    const [h1, v1] = KNOTS[i];
+    const [h0, v0] = KNOTS[i - 1];
     if (h <= h1) return v0 + ((v1 - v0) * (h - h0)) / (h1 - h0);
   }
   return 1;
@@ -222,30 +229,53 @@ interface Context {
   pressureAt: (m: number) => number;
   /** How easily sleep comes at a trip minute, 0–1 — worked out once per minute and remembered (the search asks again and again). */
   sample: (m: number) => number;
+  /** Each stretch's mean ease once it's been worked out (`easeOf`): the searches for a layover's sleeps ask for many of the same. */
+  eases: Map<number, number>;
 }
 
-/** A layover's `sample`: its body clock and sleep pressure, each minute's ease remembered once it's been asked. */
-function sampler(zOff: number, bodyAt: (m: number) => number, pressureAt: (m: number) => number): (m: number) => number {
+/**
+ * A layover's `sample`: its body clock and sleep pressure, each minute's ease remembered once it's been asked. The
+ * searches step 15 minutes from the layover's first sleepable minute (`from`) to its wake-up, so those minutes are kept
+ * in a plain array by step — on a big pack, a general table's lookups were most of the ranking's time — and any other
+ * minute in a table.
+ */
+function sampler(zOff: number, bodyAt: (m: number) => number, pressureAt: (m: number) => number, from: number, to: number): (m: number) => number {
+  const ease = (m: number) => Math.min(1, sleepPropensity(m + zOff + bodyAt(m)) + pressureAt(m));
+  const steps = Number.isInteger(from) && to >= from ? Math.floor((to - from) / 15) + 1 : 0;
+  const onStep = new Float64Array(steps).fill(NaN);
   const seen = new Map<number, number>();
   return (m) => {
+    const d = m - from;
+    if (d >= 0 && d % 15 === 0 && d / 15 < steps) {
+      const k = d / 15;
+      let v = onStep[k];
+      if (Number.isNaN(v)) onStep[k] = v = ease(m);
+      return v;
+    }
     let v = seen.get(m);
     if (v === undefined) {
-      v = Math.min(1, sleepPropensity(m + zOff + bodyAt(m)) + pressureAt(m));
+      v = ease(m);
       seen.set(m, v);
     }
     return v;
   };
 }
 
-/** Mean ease of sleep over [s, e), sampled every 15 minutes. */
+/** Mean ease of sleep over [s, e), sampled every 15 minutes. Remembered by stretch, worked out the same way each time. */
 function easeOf(ctx: Context, s: number, e: number): number {
+  // One number for the stretch: its start and its length (whole minutes, under a day, as every stretch here is).
+  const key = Number.isInteger(s) && Number.isInteger(e) && e >= s && e - s < 2048 ? s * 2048 + (e - s) : null;
+  const kept = key === null ? undefined : ctx.eases.get(key);
+  if (kept !== undefined) return kept;
   let sum = 0;
   let n = 0;
   for (let m = s; m < e; m += 15) {
     sum += ctx.sample(m);
     n++;
   }
-  return n ? sum / n : 0;
+  const ease = n ? sum / n : 0;
+  if (key !== null) ctx.eases.set(key, ease);
+  return ease;
 }
 
 /**
@@ -409,14 +439,21 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
     const bodyAt = (m: number) => driftBodyClock(startBody, localOff, m - inHotel);
     // Very tired, sleep comes early whatever the body clock says — fading over the first hours in.
     const pressureAt = (m: number) => Math.max(0, Math.min(0.5, (awakeMin / 60 - 14) / 10)) * Math.exp(-(m - from) / 240);
-    const ctx: Context = { zOff, bodyAt, pressureAt, sample: sampler(zOff, bodyAt, pressureAt) };
+    const ctx: Context = { zOff, bodyAt, pressureAt, sample: sampler(zOff, bodyAt, pressureAt, from, wakeBy), eases: new Map() };
     const nextDutyEnd = next.legs.at(-1)?.endMinutes ?? report;
     const local = (m: number) => clockText(m + zOff + offAt(m));
     const blocks = planLayover(ctx, from, wakeBy, awakeMin / 60, report, nextDutyEnd).map((b) => ({ ...b, startLocal: local(b.start), endLocal: local(b.end) }));
     // The nap on the hub sit counts toward the rest the pilot gets between duties.
     const total = blocks.reduce((a, b) => a + (b.end - b.start), 0) + (dutyNap ? dutyNap.end - dutyNap.start : 0);
-    const ribbon: { at: number; ease: number }[] = [];
-    for (let m = inHotel; m <= wakeBy; m += 15) ribbon.push({ at: m, ease: sleepPropensity(m + zOff + ctx.bodyAt(m)) });
+    // Only for drawing the stay (a trip's rest plan, opened): worked out when it's first read, not for every trip a ranking
+    // scores — on a big pack it was half of every call to `sleepPropensity`.
+    let ribbon: { at: number; ease: number }[] | undefined;
+    const ribbonOf = () => {
+      if (ribbon) return ribbon;
+      ribbon = [];
+      for (let m = inHotel; m <= wakeBy; m += 15) ribbon.push({ at: m, ease: sleepPropensity(m + zOff + ctx.bodyAt(m)) });
+      return ribbon;
+    };
     // Counted on from the arrival clock, the marks after a clock change came an hour off.
     const ticks: { at: number; label: string }[] = [];
     for (const [s, e] of [[inHotel, Math.min(changeAt, wakeBy)], [Math.max(inHotel, changeAt), wakeBy]]) {
@@ -437,7 +474,9 @@ export function planTripSleep(trip: Trip, homeBaseOffsetMinutes: number | null):
       summary: blocks.length ? blocks.map((b) => `${b.kind === "sleep" ? "Sleep" : b.kind === "recovery" ? "Recovery" : "Nap"} ${b.startLocal}–${b.endLocal}`).join(" · ") : "No real chance to sleep",
       inHotelLocal: local(inHotel),
       wakeByLocal: local(wakeBy),
-      ribbon,
+      get ribbon() {
+        return ribbonOf();
+      },
       ticks,
       ...(dutyNap ? { dutyNap } : {}),
       bodyClockNote:
