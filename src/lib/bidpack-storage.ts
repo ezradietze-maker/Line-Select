@@ -6,6 +6,7 @@ import { isInternationalCity } from "@/lib/pdf-parser/airports";
 import { anchorTripToItsDate } from "@/lib/trip-anchor";
 import type { BidPack, Trip, TripDutyPeriod } from "@/types/bidpack";
 import { moveKeptUnderOldId, withCurrentPackId } from "@/lib/pack-id";
+import { keepStorage } from "@/lib/persistent-storage";
 
 function bidPackKey(userId: string | null): string {
   return userId ? `line-select:bidpack:${userId}:v1` : "line-select:bidpack:guest:v1";
@@ -224,7 +225,11 @@ async function writePack(userId: string | null, pack: BidPack, asOf: number, sta
     // Started over (or signed out) while this waited: the pack isn't wanted here any more.
     if ((cleared.get(key) ?? 0) !== asOf) return true;
     window.localStorage.setItem(key, text);
-    if (stamp) window.localStorage.setItem(savedAtKey(userId), String(Date.now()));
+    if (stamp) {
+      window.localStorage.setItem(savedAtKey(userId), String(Date.now()));
+      // A pack the pilot just saved is worth keeping: ask the browser not to clear it (see `persistent-storage.ts`).
+      void keepStorage();
+    }
     return true;
   } catch {
     return false;
