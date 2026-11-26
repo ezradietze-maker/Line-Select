@@ -62,6 +62,18 @@ describe("each line's vacation, kept as My Rankings placed it", () => {
     expect(loadCarryIn("u1", "p").appliedPlacements).toEqual(placed);
   });
 
+  it("ranks with the vacation slid unless the pilot turned that off", () => {
+    const kept = new Map<string, string>();
+    vi.stubGlobal("window", { localStorage: { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) } });
+    saveCarryIn("u1", "p", { items: [], elections: NO_ELECTIONS, slidesRank: false });
+    expect(loadCarryIn("u1", "p").slidesRank).toBe(false);
+    // On is the default: nothing kept for it, and an old "on" reads as the default.
+    saveCarryIn("u1", "q", { items: [], elections: NO_ELECTIONS, none: true });
+    expect(loadCarryIn("u1", "q").slidesRank).toBeUndefined();
+    kept.set("line-select:carry-in:u1:r:v1", JSON.stringify({ items: [], elections: NO_ELECTIONS, slidesRank: true }));
+    expect(loadCarryIn("u1", "r").slidesRank).toBeUndefined();
+  });
+
   it("drops what the app never writes: a day count that isn't whole days out", () => {
     const kept = new Map<string, string>();
     vi.stubGlobal("window", { localStorage: { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v), removeItem: (k: string) => void kept.delete(k) } });

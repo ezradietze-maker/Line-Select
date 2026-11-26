@@ -2,6 +2,7 @@ import { DateTime } from "luxon";
 import { airportCityName, airportsByCityName } from "@/lib/airport-city-names";
 import type { VacationAim, VacationGoal } from "@/lib/vacation-engine";
 import type { BidPack } from "@/types/bidpack";
+import type { PilotModel } from "@/types/pilot-model";
 
 /**
  * What a pilot types in "What do you want from your vacation?", read into the aims the slide engine weighs
@@ -11,11 +12,22 @@ import type { BidPack } from "@/types/bidpack";
 
 /** An aim as typed and as the model answers it: dates as "YYYY-MM-DD", cities as airport codes. */
 export type GoalAim =
-  | { kind: "credit" | "keep-bank" | "days-off" | "stretch" | "weekends" | "as-awarded" }
+  | { kind: "credit" | "keep-bank" | "days-off" | "stretch" | "weekends" | "as-awarded" | "pay" }
   | { kind: "dates"; dates: string[] }
   | { kind: "keep" | "drop"; cities: string[] };
 
-export const GOAL_KINDS = ["credit", "keep-bank", "days-off", "stretch", "weekends", "dates", "keep", "drop", "as-awarded"] as const;
+export const GOAL_KINDS = ["credit", "keep-bank", "days-off", "stretch", "weekends", "dates", "keep", "drop", "as-awarded", "pay"] as const;
+
+/**
+ * "Most pay" said without which kind: the pilot is asked (`PAY_CHOICES`) before it slides anything. Pay from a vacation
+ * means one of two opposite things (the ex-pilot, Nov 26): the biggest trips taken off, paid from the bank and not flown
+ * ("paid time off", `credit`), or every trip flown and the vacation put on days off, the bank kept for the year-end buyback,
+ * so "they get paid for both" ("most money overall", `keep-bank`).
+ */
+export const PAY_CHOICES: { kind: "credit" | "keep-bank"; title: string; detail: string }[] = [
+  { kind: "credit", title: "Paid time off", detail: "Your vacation takes off your biggest trips: paid from your bank, not flown." },
+  { kind: "keep-bank", title: "Most money overall", detail: "Keep flying: your vacation goes on your days off, and your bank is kept for the buyback." },
+];
 
 export interface ReadGoal {
   aims: GoalAim[];
@@ -24,16 +36,18 @@ export interface ReadGoal {
 }
 
 /** The examples under the box, each read on the device. */
-export const GOAL_EXAMPLES = ["Max out my credit", "Most days off", "Longest stretch at home", "Weekends off", "Keep my bank", "Leave it where it is"];
+export const GOAL_EXAMPLES = ["Paid time off", "Most money overall", "Most days off", "Longest stretch at home", "Weekends off", "Leave it where it is"];
 
 const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
 const MONTH_RE = "(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)";
 
 /** The phrases for each simple aim, in the words pilots use. */
-const SIMPLE: { kind: "credit" | "keep-bank" | "days-off" | "stretch" | "weekends" | "as-awarded"; re: RegExp }[] = [
+const SIMPLE: { kind: "credit" | "keep-bank" | "days-off" | "stretch" | "weekends" | "as-awarded" | "pay"; re: RegExp }[] = [
   { kind: "as-awarded", re: /\b(leave it where it is|leave it alone|leave it|where it is|don'?t (move|slide)|no slide|as awarded|as it was awarded|keep it where)\b/ },
-  { kind: "keep-bank", re: /\b((keep|save|protect|preserve|hold on to)\s+(my\s+)?(vacation\s+)?bank|least credit|use (the )?least|keep (my )?flying|min(imum|imi[sz]e)?\s+(my\s+)?credit|(work|fly)( as)? (much|many hours) as (i can|possible)|(work|fly) (the )?most|(work|fly) more|most flying|as little (time )?off( as (i can|possible))?)\b/ },
-  { kind: "credit", re: /\b(max(imum|imi[sz]e|ing)?( out)?( my)?( the)? (credit|pay|ch|hours|money)|most (credit|pay|ch|money|hours)|biggest trips?|cover (the )?(most|biggest|big)|more (credit|pay|money)|get paid|pay ?max)\b/ },
+  { kind: "keep-bank", re: /\b((keep|save|protect|preserve|hold on to)\s+(my\s+)?(vacation\s+)?bank|least credit|use (the )?least|keep (my )?flying|min(imum|imi[sz]e)?\s+(my\s+)?credit|(work|fly)( as)? (much|many hours) as (i can|possible)|(work|fly) (the )?most|(work|fly) more|most flying|as little (time )?off( as (i can|possible))?|(most|max(imum)?|more) (money|pay) overall|buy ?backs?|paid (for )?both|get paid twice|de-?conflict)\b/ },
+  { kind: "credit", re: /\b(paid time off|max(imum|imi[sz]e|ing)?( out)?( my)?( the)? (credit|ch|hours)|most (credit|ch|hours)|biggest trips?|cover (the )?(most|biggest|big)|more credit|knock(ing)? out( the)?( most| biggest)?( flying| trips?| credit| hours)?|paid not to fly|get paid (not to fly|for not flying))\b/ },
+  // Pay without saying which kind: asked (see `PAY_CHOICES`).
+  { kind: "pay", re: /\b(max(imum|imi[sz]e|ing)?( out)?( my)?( the)? (pay|money)|most (pay|money)|more (pay|money)|get paid|pay ?max|make (the )?most money)\b/ },
   { kind: "stretch", re: /\b((longest|longer)( (stretch|block|run|break))?( (of days )?(off|at home|home))?|(days )?in a row|consecutive( days)?|block of (days )?off|stretch( (off|at home|home))?|straight days)\b/ },
   { kind: "weekends", re: /\bweekends?\b/ },
   { kind: "days-off", re: /\b((most|max(imum|imi[sz]e)?|more) (days|time) (off|at home|home)|days off|time off|time at home|at home|be home|home more)\b/ },
@@ -140,9 +154,15 @@ export function readGoalText(original: string, pack: Pick<BidPack, "bidPeriodSta
     const m = s.re.exec(text);
     return m ? [{ kind: s.kind, at: m.index, end: m.index + m[0].length }] : [];
   });
-  // "Days off" said as part of "weekend days off" or "a stretch at home" is that, not a goal of its own: read, but not twice.
+  // "Days off" said as part of "weekend days off", "a stretch at home" or "paid time off" is that, not a goal of its own;
+  // and pay said as "most money overall", "paid time off" or "get paid not to fly" is that kind of pay: read, but not twice.
+  const near = (a: { at: number; end: number }, b: { at: number; end: number }, by: number) => a.at < b.end + by && b.at < a.end + by;
   const simple = found
-    .filter((s, _, all) => !(s.kind === "days-off" && all.some((o) => (o.kind === "weekends" || o.kind === "stretch") && o.at < s.end + 12 && s.at < o.end + 12)))
+    .filter((s, _, all) => !(s.kind === "days-off" && all.some((o) => (o.kind === "weekends" || o.kind === "stretch") && near(s, o, 12))))
+    .filter((s, _, all) => !(s.kind === "days-off" && all.some((o) => o.kind === "credit" && near(s, o, 0))))
+    .filter((s, _, all) => !(s.kind === "pay" && all.some((o) => (o.kind === "credit" || o.kind === "keep-bank") && near(s, o, 0))))
+    // "Knock out the most flying" takes the flying off: it isn't "the most flying" kept.
+    .filter((s, _, all) => !(s.kind === "keep-bank" && all.some((o) => o.kind === "credit" && o.at <= s.at && o.end >= s.end)))
     .sort((a, b) => a.at - b.at);
   const covered = [...dates.spans, ...cities.spans, ...found.map((s) => [s.at, s.end] as [number, number])];
   const unread = [...text.matchAll(/[a-z']+/g)].filter((m) => !covered.some(([a, b]) => m.index! >= a && m.index! < b) && !FILLER.has(m[0])).map((m) => m[0]);
@@ -159,9 +179,54 @@ export function toEngineGoal(aims: GoalAim[], pack: Pick<BidPack, "bidPeriodStar
     aims: aims.flatMap((a): VacationAim[] => {
       if (a.kind === "dates") return start ? [{ kind: "dates", days: a.dates.map((d) => Math.round(DateTime.fromISO(d, { zone: "utc" }).diff(start, "days").days)) }] : [];
       if (a.kind === "keep" || a.kind === "drop") return [{ kind: a.kind, cities: a.cities }];
+      // Not yet answered which kind of pay: nothing to slide by until it is.
+      if (a.kind === "pay") return [];
       return [{ kind: a.kind }];
     }),
   };
+}
+
+/**
+ * Measures that say what a pilot would want from a vacation, and which way: a pilot who wants more days off wants the
+ * vacation where it frees the most days, one who wants more credit wants to keep flying. Credit wanted means the most
+ * money overall, not paid time off: a pilot after high-credit lines wants the flying and the buyback.
+ */
+const FROM_PRIORITY: { metric: string; wants: "more" | "less"; kind: "days-off" | "stretch" | "weekends" | "keep-bank" | "dates" }[] = [
+  { metric: "requestedDatesWorked", wants: "less", kind: "dates" },
+  { metric: "daysOff", wants: "more", kind: "days-off" },
+  { metric: "nightsHome", wants: "more", kind: "days-off" },
+  { metric: "homeDepartures", wants: "less", kind: "days-off" },
+  { metric: "workDays", wants: "less", kind: "days-off" },
+  { metric: "tripCount", wants: "less", kind: "days-off" },
+  { metric: "homeAwayHours", wants: "less", kind: "days-off" },
+  { metric: "creditHours", wants: "less", kind: "days-off" },
+  { metric: "longestDaysOffBlock", wants: "more", kind: "stretch" },
+  { metric: "longestHomeStretch", wants: "more", kind: "stretch" },
+  { metric: "singleDaysOff", wants: "less", kind: "stretch" },
+  { metric: "weekendDaysOff", wants: "more", kind: "weekends" },
+  { metric: "creditHours", wants: "more", kind: "keep-bank" },
+];
+
+/**
+ * What a pilot who hasn't said what they want from their vacation would want, read from their interview: the aims their
+ * own priorities point to, most weighted first (up to three). With none of them, the most days off — what most pilots
+ * use a vacation for, "some extra time off with pay" (the ex-pilot, Nov 26). Each line's vacation slides by this until
+ * the pilot types their own, or moves it on a line.
+ */
+export function guessVacationGoal(model: Pick<PilotModel, "criteria"> | null | undefined): GoalAim[] {
+  const aims: GoalAim[] = [];
+  const byWeight = [...(model?.criteria ?? [])].filter((c) => c.weight > 0).sort((a, b) => b.weight - a.weight);
+  for (const c of byWeight) {
+    const wants = c.shape.kind === "more" ? "more" : c.shape.kind === "less" || c.shape.kind === "perOccurrence" ? "less" : null;
+    const found = wants && FROM_PRIORITY.find((f) => f.metric === c.metric && f.wants === wants);
+    if (!found || aims.some((a) => a.kind === found.kind)) continue;
+    if (found.kind === "dates") {
+      const dates = (c.params?.dates ?? []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      if (dates.length) aims.push({ kind: "dates", dates });
+    } else aims.push({ kind: found.kind });
+    if (aims.length === 3) break;
+  }
+  return aims.length ? aims : [{ kind: "days-off" }];
 }
 
 /** One aim in a pilot's words, for "Read as". */
@@ -169,9 +234,11 @@ export function aimLabel(a: GoalAim): string {
   const place = (codes: string[]) => codes.map((c) => airportCityName(c) ?? c).join(" and ");
   switch (a.kind) {
     case "credit":
-      return "Most credit under your vacation";
+      return "Paid time off: your biggest trips under your vacation";
     case "keep-bank":
-      return "Fly the most: keep your vacation bank";
+      return "Most money overall: keep flying, keep your bank";
+    case "pay":
+      return "Which kind of pay?";
     case "days-off":
       return "Most days off";
     case "stretch":

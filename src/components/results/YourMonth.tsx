@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDownIcon } from "@/components/ui/icons";
 import { zoneOf } from "@/lib/phase-in";
 import type { CarryIn } from "@/lib/use-carry-in";
-import { aimLabel } from "@/lib/vacation-goal";
+import { aimLabel, type GoalAim } from "@/lib/vacation-goal";
 import { vacationLabel } from "@/lib/vacation-slide";
 import type { BidPack } from "@/types/bidpack";
 
@@ -82,7 +82,7 @@ export function YourMonth({ tabs }: { tabs: MonthTab[] }) {
 }
 
 /** The vacation in a few words: its dates, how it's used, the goal it slides for, and how many lines it slid on. */
-export function vacationSummary(pack: BidPack, carry: CarryIn, moved: number | null): { text: string; attention: boolean } {
+export function vacationSummary(pack: BidPack, carry: CarryIn, moved: number | null, guessed: GoalAim[] = []): { text: string; attention: boolean } {
   const { status } = carry.vacations;
   if (status === "no-number" || status === "band") return { text: "needs your seniority number", attention: true };
   if (status === "not-listed") return { text: "your number isn't on this pack's list", attention: true };
@@ -95,8 +95,9 @@ export function vacationSummary(pack: BidPack, carry: CarryIn, moved: number | n
   const dates = active.map((v) => vacationLabel(v.vacation, zone).replace(/ \(.*\)$/, "")).join(", ");
   const parts = [dates];
   if (active.some((v) => v.choice === "keep-flying")) parts.push("keep flying");
-  const aim = carry.state.vacationGoal?.aims[0];
-  // "Fly the most: keep your vacation bank" → "fly the most".
+  // The pilot's own goal, or until they type one, their interview's.
+  const aim = carry.state.vacationGoal ? carry.state.vacationGoal.aims[0] : guessed[0];
+  // "Most money overall: keep flying, keep your bank" → "most money overall".
   if (aim) parts.push(aimLabel(aim).split(":")[0].replace(/^./, (c) => c.toLowerCase()));
   if (aim && moved !== null) parts.push(moved ? `slid on ${moved}` : "best where it is");
   return { text: parts.join(" · "), attention: false };

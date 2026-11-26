@@ -125,7 +125,7 @@ import { withSatisfactionIndex } from "@/lib/satisfaction-index";
 import { useVacationOptions } from "@/lib/use-vacation-options";
 import { lineVacationMark } from "@/lib/vacation-marks";
 import { bestPlacements } from "@/lib/vacation-engine";
-import { toEngineGoal } from "@/lib/vacation-goal";
+import { guessVacationGoal, toEngineGoal } from "@/lib/vacation-goal";
 import { flyVacationsOnLine, rankedAsFlown, type VacationPlacement } from "@/lib/vacation-lines";
 import { VacationGoal } from "@/components/results/VacationGoal";
 import { YourMonth, carrySummary, vacationSummary } from "@/components/results/YourMonth";
@@ -544,11 +544,14 @@ export function ResultsView({
   // Every legal place for the pilot's vacation on every line, worked out in the background (`lib/vacation-engine.ts`); and
   // what each line's pictures draw of it: where it falls, how far it can slide, what it takes off.
   const vacationOptions = useVacationOptions(carry.flown.carriedPack, carry.chosen, carry.flown.carriedDays);
-  // Where each line has the vacation: the goal's best spot for it, or where the pilot put it on that line themselves.
-  const vacationGoal = carry.state.vacationGoal;
+  // Where each line has the vacation: the goal's best spot for it, or where the pilot put it on that line themselves. The
+  // goal is the pilot's own, or until they type one, what their interview says they'd want (`guessVacationGoal`).
+  const guessedVacationAims = useMemo(() => guessVacationGoal(pilotModel), [pilotModel]);
+  const typedVacationGoal = carry.state.vacationGoal;
+  const vacationGoal = useMemo(() => typedVacationGoal ?? { text: "", aims: guessedVacationAims }, [typedVacationGoal, guessedVacationAims]);
   const vacationOverrides = carry.state.vacationOverrides;
   const vacationPlacements = useMemo(() => {
-    const goal = vacationGoal ? toEngineGoal(vacationGoal.aims, bidPack) : null;
+    const goal = vacationGoal.aims.length ? toEngineGoal(vacationGoal.aims, bidPack) : null;
     const placed = vacationOptions.options && goal ? bestPlacements(vacationOptions.options, goal) : new Map<string, VacationPlacement>();
     for (const [id, p] of Object.entries(vacationOverrides ?? {})) placed.set(id, p);
     return placed;
@@ -570,7 +573,8 @@ export function ResultsView({
   );
   // The pilot's switch: ranked with each line's vacation where it's placed, or where the pack has it. On, a line is scored
   // as the very line its pictures and note show — flown by the same call, its slid days off and the trips it takes off.
-  const slidesRank = !!carry.state.slidesRank;
+  // On unless they turned it off: lines ranked with the vacation slid as the pilot would slide it (the ex-pilot, Nov 26).
+  const slidesRank = carry.state.slidesRank !== false;
   const rankingFlown = useMemo(() => {
     if (!slidesRank || !vacationPlacements.size) return carry.flown;
     // A line the vacation stays put on keeps its own flown line, measured already; only the moved ones are new.
@@ -1672,7 +1676,7 @@ export function ResultsView({
                   id: "vacation",
                   label: "Vacation",
                   ...(() => {
-                    const v = vacationSummary(bidPack, carry, vacationMoved);
+                    const v = vacationSummary(bidPack, carry, vacationMoved, guessedVacationAims);
                     return { summary: v.text, attention: v.attention };
                   })(),
                   content: (
@@ -1680,7 +1684,7 @@ export function ResultsView({
                       <VacationChoicePanel bare bidPack={bidPack} carry={carry} order={panelOrder} profile={profile} onUpdateProfile={onUpdateProfile} onSaveSeniority={onSaveSeniority} />
                       {carry.chosen.some((v) => v.choice !== "not-taking") && (
                         <div className="mt-4 border-t border-hairline pt-4">
-                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={vacationLineCount} />
+                          <VacationGoal bare pack={bidPack} carry={carry} share={vacationOptions.share} moved={vacationMoved} total={vacationLineCount} guessed={guessedVacationAims} />
                         </div>
                       )}
                     </>
@@ -2174,7 +2178,7 @@ export function ResultsView({
                                               reason={vl?.reason}
                                               line={options}
                                               placement={vacationPlacements.get(id)}
-                                              goal={!!vacationGoal}
+                                              goal={vacationGoal.aims.length > 0}
                                               overridden={!!vacationOverrides?.[id]}
                                               onPlace={(p) => placeVacation(id, p)}
                                               onReset={() => placeVacation(id, null)}

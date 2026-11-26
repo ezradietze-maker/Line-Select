@@ -36,8 +36,8 @@ export function rankingAsShown(bidPack: BidPack, profile: PreferenceProfile, use
 function flownAsShown(bidPack: BidPack, profile: Pick<PreferenceProfile, "seniorityNumber"> | null, userId: string | null) {
   const carry = loadCarryIn(userId, bidPack.id);
   const vacations = pilotVacations(bidPack, profile, loadSeniority(userId), carry).vacations;
-  // With the pilot's switch on, each line's vacation where My Rankings last placed it (`appliedPlacements`).
-  const placements = carry.slidesRank && carry.appliedPlacements ? new Map(Object.entries(carry.appliedPlacements)) : undefined;
+  // With the pilot's switch on (unless they turned it off), each line's vacation where My Rankings last placed it (`appliedPlacements`).
+  const placements = carry.slidesRank !== false && carry.appliedPlacements ? new Map(Object.entries(carry.appliedPlacements)) : undefined;
   return flySchedule(bidPack, carry, withChoices(vacations, carry.vacationChoices), placements);
 }
 

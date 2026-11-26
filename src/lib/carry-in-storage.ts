@@ -19,7 +19,7 @@ export interface CarryInState {
   vacationGoal?: { text: string; aims: GoalAim[] };
   /** Lines where the pilot placed the vacation themselves, by line id: kept over the goal. */
   vacationOverrides?: Record<string, VacationPlacement>;
-  /** The pilot's switch: lines are ranked with their vacation where it's placed (on), or where the pack has it (off, the default). */
+  /** The pilot's switch: lines are ranked with their vacation where it's placed (on, the default), or where the pack has it (off: stored as false). */
   slidesRank?: boolean;
   /**
    * Each moved line's placement as My Rankings last placed it (goal and the pilot's own), for screens that rank without
@@ -94,7 +94,8 @@ export function loadCarryIn(userId: string | null, packId: string): CarryInState
       ...(stored.preferTyped === true ? { preferTyped: true } : {}),
       ...(readGoal(stored.vacationGoal) ? { vacationGoal: readGoal(stored.vacationGoal)! } : {}),
       ...(readOverrides(stored.vacationOverrides) ? { vacationOverrides: readOverrides(stored.vacationOverrides)! } : {}),
-      ...(stored.slidesRank === true ? { slidesRank: true } : {}),
+      // Off only when the pilot turned it off: on is the default since Nov 26 (lines ranked with the vacation slid).
+      ...(stored.slidesRank === false ? { slidesRank: false } : {}),
       ...(readOverrides(stored.appliedPlacements) ? { appliedPlacements: readOverrides(stored.appliedPlacements)! } : {}),
       ...(stored.none === true && !items.length ? { none: true } : {}),
     };
@@ -107,7 +108,7 @@ export function saveCarryIn(userId: string | null, packId: string, state: CarryI
   if (typeof window === "undefined") return;
   try {
     // Kept while it says anything: a typed vacation or a goal alone is worth keeping.
-    const says = state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length || state.typedVacations?.length || state.preferTyped || state.vacationGoal || Object.keys(state.vacationOverrides ?? {}).length || state.slidesRank;
+    const says = state.items.length || state.none || Object.keys(state.vacationChoices ?? {}).length || state.typedVacations?.length || state.preferTyped || state.vacationGoal || Object.keys(state.vacationOverrides ?? {}).length || state.slidesRank === false;
     if (says) window.localStorage.setItem(key(userId, packId), JSON.stringify(state));
     else window.localStorage.removeItem(key(userId, packId));
   } catch {

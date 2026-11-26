@@ -40,8 +40,9 @@ const SCHEMA = {
 const SYSTEM = `You read what a FedEx pilot wants from their vacation this bid month into a short list of aims, most important first. A vacation can slide up to 5 days either way; the trips it then covers come off the line and are paid from the vacation bank.
 
 Aims (use only these):
-- credit: cover the most trip credit with the vacation ("max my credit", "most pay", "cover the big trips").
-- keep-bank: cover the least trip credit, so the pilot flies the most and keeps vacation bank hours ("keep my bank", "work as much as possible", "fly the most", "keep my flying"). Wanting to work or fly more is always keep-bank, never credit: credit takes the most flying off the line.
+- credit: paid time off — cover the most trip credit with the vacation, those trips paid from the bank and not flown ("max my credit", "paid time off", "cover the big trips", "knock out the most flying").
+- keep-bank: most money overall — cover the least trip credit, so the pilot flies the most, the vacation sits on days off and the bank is kept for the year-end buyback ("keep my bank", "work as much as possible", "fly the most", "keep my flying", "get paid for both", "the buyback"). Wanting to work or fly more is always keep-bank, never credit: credit takes the most flying off the line.
+- pay: the pilot wants pay or money from it but doesn't say which kind ("most pay", "max money", "get paid"): they're asked. Never guess credit or keep-bank for pay alone.
 - days-off: the most days off in the month.
 - stretch: the longest run of days off in a row.
 - weekends: the most weekend days off.

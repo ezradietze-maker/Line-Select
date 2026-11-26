@@ -7,7 +7,7 @@ import { FIELD } from "@/components/ui/field";
 import { airportCityName } from "@/lib/airport-city-names";
 import { apiFetch } from "@/lib/shown-account";
 import type { CarryIn } from "@/lib/use-carry-in";
-import { aimLabel, cleanAims, GOAL_EXAMPLES, readGoalText, withDeviceReading, type GoalAim } from "@/lib/vacation-goal";
+import { aimLabel, cleanAims, GOAL_EXAMPLES, PAY_CHOICES, readGoalText, withDeviceReading, type GoalAim } from "@/lib/vacation-goal";
 import { vacationLabel } from "@/lib/vacation-slide";
 import { zoneOf } from "@/lib/phase-in";
 import type { BidPack } from "@/types/bidpack";
@@ -28,10 +28,13 @@ function goalContext(pack: BidPack, carry: CarryIn): string {
 /**
  * At the top of My Rankings when the pilot has a vacation: what they want from it, in their own words or an example's.
  * Read on the device when it can be (`readGoalText`), else by a small model, then shown back as chips they can reorder
- * or drop. Every line's vacation then slides to its best legal spot for it (`lib/vacation-engine.ts`).
+ * or drop. Every line's vacation then slides to its best legal spot for it (`lib/vacation-engine.ts`). Until they say,
+ * it slides by what their interview says they'd want (`guessed`, `guessVacationGoal`), shown the same way.
  */
-export function VacationGoal({ pack, carry, share, moved, total, bare = false }: { pack: BidPack; carry: CarryIn; share: number; moved: number | null; total: number; bare?: boolean }) {
-  const goal = carry.state.vacationGoal;
+export function VacationGoal({ pack, carry, share, moved, total, guessed = [], bare = false }: { pack: BidPack; carry: CarryIn; share: number; moved: number | null; total: number; guessed?: GoalAim[]; bare?: boolean }) {
+  const typed = carry.state.vacationGoal;
+  // Not typed: the interview's guess, which any change below makes the pilot's own.
+  const goal = typed ?? (guessed.length ? { text: "", aims: guessed } : undefined);
   const [text, setText] = useState(goal?.text ?? "");
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +67,8 @@ export function VacationGoal({ pack, carry, share, moved, total, bare = false }:
   };
 
   const aims = goal?.aims ?? [];
+  // "Most pay" answered: that kind of pay where it was asked, once.
+  const choosePay = (kind: "credit" | "keep-bank") => save(goal!.text, aims.flatMap((a) => (a.kind === "pay" ? (aims.some((b) => b.kind === kind) ? [] : [{ kind }]) : [a])));
   const move = (i: number, by: -1 | 1) => {
     const next = [...aims];
     [next[i], next[i + by]] = [next[i + by], next[i]];
@@ -115,7 +120,7 @@ export function VacationGoal({ pack, carry, share, moved, total, bare = false }:
       )}
       {aims.length > 0 && (
         <div className="mt-3" data-goal-read>
-          <p className="text-2xs font-medium text-ink-faint">Read as, most important first:</p>
+          <p className="text-2xs font-medium text-ink-faint">{typed ? "Read as, most important first:" : "From your interview, until you say otherwise:"}</p>
           <ol className="mt-1 flex flex-wrap gap-1.5">
             {aims.map((a, i) => (
               <li key={`${a.kind}-${i}`} className="flex items-center gap-1 rounded-[3px] border border-accent/60 bg-accent/10 py-0.5 pl-2 pr-1 text-xs text-ink">
@@ -125,30 +130,62 @@ export function VacationGoal({ pack, carry, share, moved, total, bare = false }:
                     ↑
                   </button>
                 )}
-                <button type="button" className="px-0.5 text-ink-muted hover:text-ink" aria-label={`Drop "${aimLabel(a)}"`} onClick={() => save(goal!.text, aims.filter((_, j) => j !== i))}>
+                <button type="button" className="px-0.5 text-ink-muted hover:text-ink" aria-label={`Drop "${aimLabel(a)}"`} onClick={() => {
+                    // Dropping the interview's last guess leaves it where the pack has it, not the guess back again.
+                    const rest = aims.filter((_, j) => j !== i);
+                    save(goal!.text, rest.length || typed ? rest : [{ kind: "as-awarded" }]);
+                  }}
+                >
                   ×
                 </button>
               </li>
             ))}
           </ol>
+          {aims.some((a) => a.kind === "pay") && (
+            <div role="group" aria-labelledby="pay-kind" className="mt-2 rounded-[4px] border border-accent/60 bg-accent/5 p-3" data-pay-question>
+              <p id="pay-kind" className="text-sm font-semibold text-ink">
+                Which kind of pay?
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {PAY_CHOICES.map((c) => (
+                  <button
+                    key={c.kind}
+                    type="button"
+                    className="rounded-[4px] border border-hairline bg-surface px-3 py-2 text-left transition-colors hover:border-accent"
+                    onClick={() => choosePay(c.kind)}
+                    data-pay-choice={c.kind}
+                  >
+                    <span className="block text-sm font-medium text-ink">{c.title}</span>
+                    <span className="mt-0.5 block text-xs text-ink-muted">{c.detail}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="mt-1.5 text-xs text-ink-muted" data-goal-summary>
-            {share < 1 && moved === null
+            {aims.some((a) => a.kind === "pay")
+              ? "Pick one, and your vacation slides for it on every line."
+              : share < 1 && moved === null
               ? `Working out every spot on every line… ${Math.round(share * 100)}%`
               : moved === null
                 ? ""
                 : moved === 0
                   ? "Where the pack has it is already best on every line for this."
                   : `Slid on ${moved} of ${total} lines; where the pack has it is best on the rest. Open a line to see what it gains there.`}{" "}
-            <button
-              type="button"
-              className="font-medium text-brand underline underline-offset-2"
-              onClick={() => {
-                setText("");
-                save("", []);
-              }}
-            >
-              Clear
-            </button>
+            {typed ? (
+              <button
+                type="button"
+                className="font-medium text-brand underline underline-offset-2"
+                onClick={() => {
+                  setText("");
+                  save("", []);
+                }}
+              >
+                {guessed.length ? "Back to your interview's" : "Clear"}
+              </button>
+            ) : (
+              "Type your own above to change it."
+            )}
           </p>
         </div>
       )}
@@ -156,13 +193,13 @@ export function VacationGoal({ pack, carry, share, moved, total, bare = false }:
         <input
           type="checkbox"
           className="mt-0.5 h-4 w-4 shrink-0 accent-brand"
-          checked={!!carry.state.slidesRank}
-          onChange={(e) => carry.update({ ...carry.state, slidesRank: e.target.checked || undefined })}
+          checked={carry.state.slidesRank !== false}
+          onChange={(e) => carry.update({ ...carry.state, slidesRank: e.target.checked ? undefined : false })}
         />
         <span>
           <span className="font-medium">Slides change my ranking.</span>{" "}
           <span className="text-ink-muted">
-            {carry.state.slidesRank
+            {carry.state.slidesRank !== false
               ? "On: each line is ranked with your vacation where it slides on that line, so a line a good slide makes better rises. Total CH and the notes follow."
               : "Off: lines are ranked with your vacation where the pack has it, and each line just shows where it would slide."}
           </span>
